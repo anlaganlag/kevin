@@ -8,6 +8,8 @@ By treating the **Git Repository** as the mandatory **Single Source of Truth (SS
 
 ## 🏛️ System Architecture
 
+![System Architecture](./architecture.png)
+
 The Agentic SDLC is built on four distinct layers that work in a continuous feedback loop:
 
 1.  **Intent & Planning Layer**: Translates human ideas into structured technical blueprints and micro-tasks.
