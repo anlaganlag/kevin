@@ -17,5 +17,5 @@ Triggered by the initial formal Blueprint (created by the Planning Agent) if inf
 
 ## Interaction with Other Agents
 - **Planning & Builder Agents**: The Platform agent acts as a dependency block. An application feature cannot deploy to production if the Platform Agent's infrastructure PR hasn't merged.
-- **Security Agent**: Its outputs (IAM roles, Security Groups) are heavily scrutinized by the Red Team Agent to prevent leaky buckets or misconfigured permissions.
+- **Security (Red Team) Agent**: Its outputs (IAM roles, Security Groups) are heavily scrutinized to prevent leaky buckets or misconfigured permissions.
 - **SRE Agent**: The Platform Agent *defines* the infrastructure; the SRE Agent *applies* it during deployment.
