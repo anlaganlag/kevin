@@ -49,64 +49,8 @@ Together, these principles define the operating model for the rest of the docume
 ### 3.1 Overview
 The Agentic SDLC architecture is designed as a closed-loop system where the Git Repository acts as the central orchestrator and Single Source of Truth. The system is composed of three primary operational loops: an execution loop that turns intent into implementation, a learning loop that feeds historical context back into future work, and a governance layer that independently evaluates whether work is allowed to continue.
 
-```mermaid
-graph TD
-    %% Styling
-    classDef human fill:#f9d0c4,stroke:#333,stroke-width:2px;
-    classDef agent fill:#d4e6f1,stroke:#333,stroke-width:2px;
-    classDef repo fill:#d5f5e3,stroke:#333,stroke-width:2px;
-    classDef gov fill:#fcf3cf,stroke:#333,stroke-width:2px;
-    classDef prod fill:#ebdef0,stroke:#333,stroke-width:2px;
-    classDef learn fill:#d1f2eb,stroke:#333,stroke-width:2px;
+![Agentic SDLC System Architecture](architecture.png)
 
-    %% Nodes
-    Human[Human Developers<br/>Orchestrators & Reviewers]:::human
-    GitRepo[(Git Repository<br/>Primary SSOT)]:::repo
-    
-    subgraph Agentic_Execution_Loop ["Agentic Execution Loop"]
-        BA[BA Agent]:::agent
-        Planner[Planning Agent]:::agent
-        Builder[Builder Agents]:::agent
-        Platform[Platform Agent]:::agent
-        QA[QA Agent]:::agent
-        Security[Security (Red Team) Agent]:::agent
-        PM[PM Agent]:::agent
-    end
-    
-    subgraph Knowledge_Layer ["Continuous Learning Loop"]
-        Learning[(Learning Agent)]:::learn
-    end
-    
-    subgraph Governance_Layer ["Governance Layer (The Overseer)"]
-        GovPolicy[Automated Policy Enforcement]:::gov
-        Audit[Immutable Audit Logging]:::gov
-    end
-    
-    subgraph Operations ["Operations & Post-Deploy"]
-        SRE[SRE Agent]:::agent
-        Doc[Documentation Agent]:::agent
-    end
-    
-    Production[(Production Environment)]:::prod
-
-    %% Key Flows
-    Human -- "1. Intent" --> BA
-    BA -- "2. Req" --> Planner
-    Planner -- "3. Blueprint" --> GitRepo
-    GitRepo -- "4. Tasks" --> Builder
-    GitRepo -. "4a. Status" .-> PM
-    Builder -- "5. PRs" --> GitRepo
-    GitRepo -- "6. Review" --> QA
-    GitRepo -- "6a. Security Review" --> Security
-    QA -- "7. Pass/Fail" --> GitRepo
-    Security -- "7a. Pass/Fail" --> GitRepo
-    PM -. "Risk / Status" .-> Human
-    GitRepo -- "8. Merge (HITL)" --> SRE
-    SRE -- "9. Deploy" --> Production
-    Production -- "Feedback" --> Learning
-    Learning -. "Context" .-> Planner
-    GitRepo -. "Audit" .-> Audit
-```
 
 ### 3.2 The Three Core Loops
 1.  **Agentic Execution Loop**: The primary engine where features are translated from requirements to code and infrastructure through specialized agents (BA, Planning Agent, Builder, Platform, QA, Security, and PM coordination).
