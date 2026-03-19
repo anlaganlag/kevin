@@ -13,7 +13,7 @@ Invoked manually by a Human Orchestrator via a direct chat interface, an issue t
 
 ## Outputs (to Single Source of Truth)
 - **Structured Artifacts**: Epics, Features, User Stories, Acceptance Criteria (BDD format like Gherkin), or Business Requirement Documents (BRDs).
-- **Git Action**: Commits these structured requirement documents into a designated `/requirements` folder or updates the description of a formal Feature Ticket/Issue in the repository.
+- **Git Action**: Commits requirements to a designated `/requirements` folder and creates/updates **GitHub Project** items (Issues/Epics) with appropriate labels to initiate the lifecycle.
 - **Handoff**: Tags the Planning Agent to begin blueprinting based on the newly merged requirements.
 
 ## Interaction with Other Agents

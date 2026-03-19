@@ -14,7 +14,8 @@ graph TD
 
     %% Nodes
     Human[Human Developers<br/>Orchestrators & Reviewers]:::human
-    GitRepo[(Git Repository<br/>Single Source of Truth)]:::repo
+    GitRepo[(Git Repository<br/>Primary SSOT)]:::repo
+    GHProject[(GitHub Project Board<br/>Management SSOT)]:::repo
     
     subgraph Agentic_Execution_Loop ["Agentic Execution Loop"]
         BA[BA Agent<br/>Requirements Engineer]:::agent
@@ -45,7 +46,9 @@ graph TD
 
     %% Relationships - Intent & Planning
     Human -- "1. Provides Raw Intent" --> BA
+    Human -. "Views Dashboard" .-> GHProject
     BA -- "2. Clarifies & Structures Feature Requests" --> Planner
+    BA -- "Creates Issues/Epics" --> GHProject
     Learning -. "Provides historical context" .-> Planner
     Planner -- "3. Generates Blueprints & task.md" --> GitRepo
     Human -. "HITL 1: Approves Blueprint" .-> GitRepo
@@ -86,6 +89,7 @@ graph TD
     %% Monitoring & Coordination
     GitRepo -. "Monitor status & velocity" .-> PM
     PM -. "Status Dashboard / Alerts" .-> Human
+    PM -. "Syncs & Moves Cards" .-> GHProject
     GovPolicy -. "Budget Alerts" .-> PM
 
     %% Continuous Learning Ingestion

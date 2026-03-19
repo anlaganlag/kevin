@@ -16,7 +16,8 @@ Invoked automatically when a new PR is opened, a task is marked updated in `task
 - **Progress Report**: A high-level summary of "% Complete" and estimated "Time to Release" (TTR).
 - **Risk Alerts**: Notifications when a PR has been idle for too long or when the same test fails across multiple autonomous retry loops.
 - **Handoff Coordination**: Automatically tagging the next agent in the sequence when a prerequisite task is merged.
-- **Git Action**: Updates the "Project Status" comment on the main feature PR.
+- **Git Action**: Owns and maintains the **GitHub Project Dashboard**, autonomously moving cards between columns (e.g., *Todo* -> *In Progress* -> *Done*) based on real-time agent activity.
+- **Project Status**: Updates the "Project Status" comment on the main feature PR with a link to the GitHub Project board.
 
 ## Interaction with Other Agents
 - **Planning Agent**: Consumes the `task.md` created by the Planner to begin tracking.
