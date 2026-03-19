@@ -2,6 +2,10 @@
 
 The following diagram illustrates the flow and interactions within the Agentic Software Development Lifecycle. It highlights the Git repository as the Single Source of Truth (SSOT), the specialized execution agents, the continuous learning loop, and the independent oversight of the Governance Layer.
 
+The architecture is intentionally closed-loop. Execution agents can propose changes, verification and governance agents independently evaluate those changes, and only approved repository state becomes trusted system state. Supporting dashboards such as a GitHub Project board are useful coordination views, but they do not replace the repository as the control plane.
+
+Within this architecture, the RL environment is best understood as a controlled exploration and replay layer. It is not a production control authority. Instead, it gives QA and SRE functions a safe place to explore system states, evaluate candidate actions, and preserve high-value trajectories for future learning.
+
 ```mermaid
 graph TD
     %% Styling
@@ -15,7 +19,7 @@ graph TD
     %% Nodes
     Human[Human Developers<br/>Orchestrators & Reviewers]:::human
     GitRepo[(Git Repository<br/>Primary SSOT)]:::repo
-    GHProject[(GitHub Project Board<br/>Management SSOT)]:::repo
+    GHProject[(GitHub Project Board<br/>Repository-Derived View)]:::repo
     
     subgraph Agentic_Execution_Loop ["Agentic Execution Loop"]
         BA[BA Agent<br/>Requirements Engineer]:::agent
@@ -23,12 +27,13 @@ graph TD
         Builder[Builder Agents<br/>The Software Engineers]:::agent
         Platform[Platform Agent<br/>The Infrastructure Engineer]:::agent
         QA[QA Agent<br/>The Testers]:::agent
-        Security[Red Team Agent<br/>Security]:::agent
+        Security[Security (Red Team) Agent]:::agent
         PM[PM Agent<br/>The Coordinator]:::agent
     end
     
     subgraph Knowledge_Layer ["Continuous Learning Loop"]
         Learning[(Learning Agent<br/>Knowledge Base)]:::learn
+        RLEnv[(RL Environment<br/>Exploration & Replay)]:::learn
     end
     
     subgraph Governance_Layer ["Governance & Auditing Layer (The Overseer)"]
@@ -63,6 +68,7 @@ graph TD
     
     GitRepo -- "6. Triggers Dynamic Testing" --> QA
     GitRepo -- "6. Triggers SAST/DAST" --> Security
+    QA -. "Explores state/action paths" .-> RLEnv
     QA -- "7. Submits Results/Fails PR" --> GitRepo
     Security -- "7. Submits Sec Review/Fails PR" --> GitRepo
     
@@ -73,7 +79,9 @@ graph TD
     QA -. "Logs Actions" .-> Audit
     Security -. "Logs Actions" .-> Audit
     
-    GitRepo -- "Validates PR constraints (Coverage, Budgets)" --> GovPolicy
+    Production -. "Health / Cost Signals" .-> GovMetrics
+    GitRepo -- "Validates PR constraints (Coverage, Budgets, Contracts)" --> GovPolicy
+    GovMetrics -. "Runtime Evidence" .-> GovPolicy
     GovPolicy -- "Enforces Hard Gates" --> GitRepo
 
     %% Relationships - Deployment
@@ -81,6 +89,7 @@ graph TD
     GitRepo -- "8. Main Branch Update" --> SRE
     SRE -- "9. Canary Deploy / Rollback" --> Production
     Production -- "Production Metrics" --> SRE
+    SRE -. "Replays incidents / recovery policies" .-> RLEnv
     
     %% Post Deploy
     GitRepo -- "Successful Deploy" --> Doc
@@ -89,11 +98,21 @@ graph TD
     %% Monitoring & Coordination
     GitRepo -. "Monitor status & velocity" .-> PM
     PM -. "Status Dashboard / Alerts" .-> Human
-    PM -. "Syncs & Moves Cards" .-> GHProject
+    PM -. "Updates Derived Coordination View" .-> GHProject
     GovPolicy -. "Budget Alerts" .-> PM
 
     %% Continuous Learning Ingestion
     SRE -- "Feedback on failures" --> Learning
     QA -- "Failed edge cases" --> Learning
     Security -- "Discovered Vulnerabilities" --> Learning
+    RLEnv -- "Trajectories / replay lessons" --> Learning
 ```
+
+## Architecture Notes
+
+- The repository remains the only authoritative system state; `GHProject` is shown as a coordination aid derived from repository activity.
+- The `Security (Red Team) Agent` is modeled as an independent challenger to proposed changes, not as part of the build path.
+- The Governance Layer consumes both repository evidence and runtime signals so promotion decisions are based on proof rather than agent intent.
+- The Learning Agent closes the loop by feeding historical failures, vulnerabilities, and remediation patterns back into future planning and execution.
+- The RL environment supports two main use cases: QA exploration of deep or unusual state transitions, and SRE replay of incidents to evaluate alternate recovery strategies in a safe sandbox.
+- RL-derived trajectories are learning artifacts, not production authority. They inform future tests, postmortems, and planning, but they do not bypass governance or human approval.

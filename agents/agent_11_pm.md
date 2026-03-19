@@ -3,6 +3,8 @@
 ## Role Overview
 The **Project Manager (PM) Agent** is the operational heartbeat of the Agentic SDLC. It provides horizontal orchestration, progress tracking, and risk management across the entire lifecycle. Its primary goal is to ensure that feature requests move from requirement to deployment without stalling, providing transparent status updates to the Human Orchestrator.
 
+The PM Agent coordinates and escalates; it does not become a second source of truth, and it does not override governance or approval gates.
+
 ## System Trigger
 Invoked automatically when a new PR is opened, a task is marked updated in `task.md`, or on a scheduled basis (e.g., "Daily Standup" report).
 
@@ -16,11 +18,11 @@ Invoked automatically when a new PR is opened, a task is marked updated in `task
 - **Progress Report**: A high-level summary of "% Complete" and estimated "Time to Release" (TTR).
 - **Risk Alerts**: Notifications when a PR has been idle for too long or when the same test fails across multiple autonomous retry loops.
 - **Handoff Coordination**: Automatically tagging the next agent in the sequence when a prerequisite task is merged.
-- **Git Action**: Owns and maintains the **GitHub Project Dashboard**, autonomously moving cards between columns (e.g., *Todo* -> *In Progress* -> *Done*) based on real-time agent activity.
+- **Git Action**: Maintains repository-derived coordination views such as a GitHub Project dashboard, moving cards between columns (e.g., *Todo* -> *In Progress* -> *Done*) based on real-time agent activity.
 - **Project Status**: Updates the "Project Status" comment on the main feature PR with a link to the GitHub Project board.
 
 ## Interaction with Other Agents
 - **Planning Agent**: Consumes the `task.md` created by the Planner to begin tracking.
 - **Builder/QA/Platform Agents**: Monitors their commit frequency and test results to update the project timeline.
-- **Governance Agent**: Checks against budget limits to warn the Human Orchestrator before a hard gate is triggered.
+- **Governance Agent**: Checks against budget limits and policy risk signals to warn the Human Orchestrator before a hard gate is triggered.
 - **Human Orchestrator**: Acts as the primary concierge, answering "How's my project doing?" via status dashboards.

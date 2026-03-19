@@ -1,7 +1,7 @@
-# Red Team / System Security Agent
+# Security (Red Team) Agent
 
 ## Role Overview
-The **Red Team Agent** serves as an autonomous security researcher and auditor. It runs parallel to the QA Agent and focuses strictly on discovering vulnerabilities, enforcing compliance, and preventing the Builder Agent from hallucinating insecure logic.
+The **Security (Red Team) Agent** serves as an autonomous security researcher and auditor. It runs parallel to the QA Agent and focuses strictly on discovering vulnerabilities, enforcing compliance, and independently challenging proposed changes for insecure logic or unsafe infrastructure posture.
 
 ## System Trigger
 Triggered by a CI webhook alongside the QA Agent whenever new commits are pushed to any active Pull Request.
@@ -20,4 +20,4 @@ Triggered by a CI webhook alongside the QA Agent whenever new commits are pushed
 ## Interaction with Other Agents
 - **Builder & Platform Agents**: Provides explicit documentation on the vulnerability so the executing agents can fix the code and push a patch.
 - **Learning Agent**: Ingests new patterns of vulnerabilities introduced by the Builder to proactively scan for them in future requests.
-- **Governance Layer**: A passed security check is a mandatory dependency for the Governance layer to approve the PR for a human review.
+- **Governance Layer**: A passed security check is a mandatory dependency for the Governance Layer to approve the PR for human review. The Security Agent supplies evidence; it does not replace governance's final progression decision.

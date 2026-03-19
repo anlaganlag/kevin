@@ -2,6 +2,10 @@
 
 The following sequence diagram illustrates the step-by-step lifecycle of a feature request moving through the Agentic SDLC, emphasizing the asynchronous nature of the agents, the GitOps SSOT integrations, Continuous Learning, and the Human-in-the-Loop (HITL) checkpoints.
 
+The workflow is designed around a strict separation of duties: execution agents build, verification agents challenge, governance decides whether the system may progress, and humans retain authority at approval and escalation points.
+
+In this workflow, the RL environment is treated as a controlled exploration and replay mechanism. During QA it helps search difficult state spaces for hidden defects; during incident analysis it helps replay failures and compare alternate recovery strategies before those lessons are fed back into the Learning Agent.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -14,7 +18,7 @@ sequenceDiagram
     participant Builder as Builder Agent
     participant Platform as Platform Agent
     participant QA as QA Agent
-    participant Sec as Security Agent
+    participant Sec as Security (Red Team) Agent
     participant Gov as Governance Layer
     participant PM as PM Agent
     participant SRE as SRE Agent
@@ -34,8 +38,8 @@ sequenceDiagram
     Git-->>Human: Notify: Blueprint PR needs review
     Note over Human, Git: HITL Gate 1: Blueprint Approval
     Human->>Git: Approve & Merge Blueprint PR
-    Git->>PM: Trigger: Project Tracking Started
-    PM->>Human: Dashboard: Project 0% Complete
+    Git->>PM: Trigger: Repository-derived tracking started
+    PM->>Human: Dashboard: Blueprint approved, execution ready
     end
 
     %% Phase 2: Autonomous Execution
@@ -55,7 +59,7 @@ sequenceDiagram
     
     rect rgb(245, 245, 245)
     Note over PM, Git: Operational Oversight
-    Git->>PM: Report: Multiple PRs open
+        Git->>PM: Report: Multiple PRs open
     PM->>PM: Calculate Velocity & Risks
     PM->>Human: Dashboard: Project 45% Complete
     end
@@ -63,6 +67,8 @@ sequenceDiagram
     par CI / Testing Loop
         Git->>QA: Webhook trigger: New code pushed
         QA->>QA: Generate/run dynamic edge-case tests
+        QA->>Learn: Query historical failure patterns
+        Note right of QA: RL environment explores unusual state transitions and action sequences
         QA-->>Git: Report: Pass/Fail
     and Security Audit
         Git->>Sec: Webhook trigger: New code pushed
@@ -83,12 +89,12 @@ sequenceDiagram
     rect rgb(255, 250, 240)
     Note right of Human: Phase 3: Governance & Final Review
     Git->>Gov: Validation Request
-    Gov->>Gov: Check test coverage gates >95%
-    Gov->>Gov: Check compute/token budgets
-    
-    alt Over Compute Budget
+    Gov->>Gov: Check coverage, security, and contract gates
+    Gov->>Gov: Check compute/token budgets and policy evidence
+
+    alt Over Budget or Policy Failure
         Gov-->>Git: Policy Status: FAIL PR
-        Git-->>Human: Notify: Budget Exceeded, intervention required
+        Git-->>Human: Notify: Escalation required
         Human->>Gov: Allocate resources / resolve blockers
     else Metrics Healthy
         Gov-->>Git: Policy Status: PASS
@@ -109,14 +115,24 @@ sequenceDiagram
     alt Deployment Unhealthy
         SRE->>Prod: Autonomously Roll Back
         SRE->>Git: Revert Main branch state
+        Note right of SRE: Replay incident timeline in RL-style sandbox to evaluate alternate recovery actions
         SRE->>Learn: Ingest rollback root cause
         Git-->>Human: Alert on Rollback
     else Deployment Healthy
         SRE->>Prod: Escalate to Full Traffic
         SRE->>Git: Log successful deployment
         Git->>Doc: Trigger Doc Agent
-        Doc->>Doc: Auto-generate Swagger/OpenAPI & Wikis
+        Doc->>Doc: Update changelogs, contracts, and system docs
         Doc->>Git: Commit updated documentation docs
     end
     end
 ```
+
+## Workflow Notes
+
+- Blueprint approval is the first explicit human gate; no implementation should begin until the blueprint PR is reviewed and approved.
+- PM visibility is intentionally repository-derived. It improves coordination, but it does not create a competing source of truth.
+- Governance can fail progression for budget, policy, contract, or evidence reasons. Execution agents may remediate, but they cannot bypass a failed gate.
+- Production outcomes feed both the Learning Agent and future planning, completing the same closed-loop model described in the main design document.
+- In QA, the RL environment is a way to explore state/action trajectories that normal deterministic tests may never hit, especially around edge cases and emergent behavior.
+- In SRE postmortems, the RL environment is a replay and evaluation tool for incident timelines, rollback choices, and recovery strategies. It informs learning, but it does not autonomously authorize production remediation policy.

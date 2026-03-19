@@ -12,7 +12,7 @@ Triggered exclusively by a successful production deployment (a merge to the `mai
 - **Architectural Blueprints**: The original intent documents written by the Planning Agent.
 
 ## Outputs (to Single Source of Truth)
-- **API Documentation**: Auto-updates Swagger, OpenAPI specifications, or GraphQL schemas.
+- **API Documentation**: Auto-updates Swagger, OpenAPI specifications, GraphQL schemas, or other machine-readable contracts.
 - **Architecture Diagrams**: Uses tools like Mermaid.js to update system flow diagrams reflecting the new actual state.
 - **Release Notes / Changelog**: Summarizes the business value and technical changes for stakeholders.
 - **Git Action**: Commits these documentation updates directly into the `main` branch (in a `/docs` folder) or a paired Wiki repository.
