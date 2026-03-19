@@ -12,7 +12,7 @@ Invoked manually by a Human Orchestrator via a direct chat interface, an issue t
 - **Historical Context**: (Via the **Learning Agent**) Past feature requests, requirement gaps, and known pitfalls from previous requirement cycles stored in the knowledge base.
 
 ## Outputs (to Single Source of Truth)
-- **Structured Artifacts**: Formal User Stories, Acceptance Criteria (BDD format like Gherkin), or Business Requirement Documents (BRDs).
+- **Structured Artifacts**: Epics, Features, User Stories, Acceptance Criteria (BDD format like Gherkin), or Business Requirement Documents (BRDs).
 - **Git Action**: Commits these structured requirement documents into a designated `/requirements` folder or updates the description of a formal Feature Ticket/Issue in the repository.
 - **Handoff**: Tags the Planning Agent to begin blueprinting based on the newly merged requirements.
 
