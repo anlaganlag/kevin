@@ -23,6 +23,7 @@ graph TD
         Platform[Platform Agent<br/>The Infrastructure Engineer]:::agent
         QA[QA Agent<br/>The Testers]:::agent
         Security[Red Team Agent<br/>Security]:::agent
+        PM[PM Agent<br/>The Coordinator]:::agent
     end
     
     subgraph Knowledge_Layer ["Continuous Learning Loop"]
@@ -81,6 +82,11 @@ graph TD
     %% Post Deploy
     GitRepo -- "Successful Deploy" --> Doc
     Doc -- "Updates API/Architecture Docs" --> GitRepo
+
+    %% Monitoring & Coordination
+    GitRepo -. "Monitor status & velocity" .-> PM
+    PM -. "Status Dashboard / Alerts" .-> Human
+    GovPolicy -. "Budget Alerts" .-> PM
 
     %% Continuous Learning Ingestion
     SRE -- "Feedback on failures" --> Learning

@@ -16,6 +16,7 @@ sequenceDiagram
     participant QA as QA Agent
     participant Sec as Security Agent
     participant Gov as Governance Layer
+    participant PM as PM Agent
     participant SRE as SRE Agent
     participant Prod as Production Environment
     participant Doc as Doc Agent
@@ -33,6 +34,8 @@ sequenceDiagram
     Git-->>Human: Notify: Blueprint PR needs review
     Note over Human, Git: HITL Gate 1: Blueprint Approval
     Human->>Git: Approve & Merge Blueprint PR
+    Git->>PM: Trigger: Project Tracking Started
+    PM->>Human: Dashboard: Project 0% Complete
     end
 
     %% Phase 2: Autonomous Execution
@@ -48,6 +51,13 @@ sequenceDiagram
         Git->>Platform: Webhook trigger: Arch/IaC shifts detected
         Platform->>Platform: Generate Terraform/K8s manifests
         Platform->>Git: Commit & Open IaC PR
+    end
+    
+    rect rgb(245, 245, 245)
+    Note over PM, Git: Operational Oversight
+    Git->>PM: Report: Multiple PRs open
+    PM->>PM: Calculate Velocity & Risks
+    PM->>Human: Dashboard: Project 45% Complete
     end
     
     par CI / Testing Loop
