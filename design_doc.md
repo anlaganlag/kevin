@@ -1,4 +1,13 @@
-# Agentic Software Development Lifecycle (SDLC) Design Document
+# Agentic Software Development Lifecycle (SDLC) Design Document v2.0
+
+## Document Version History
+
+| Version | Date | Changes | Author |
+|---------|------|---------|--------|
+| 1.0 | 2026-03-15 | Initial version | AgenticSDLC Team |
+| 2.0 | 2026-03-22 | Major refactor: EDA architecture, Infra Layer, Ralph Loop | Architecture Review |
+
+---
 
 ## 1. Introduction & Vision
 
@@ -10,17 +19,24 @@ The **Agentic SDLC** represents a paradigm shift where AI agents are the primary
 ### 1.2 Core Philosophy: AI as Execution, Human as Orchestrator
 The system is built on the belief that code generation, testing, infrastructure management, and documentation should be handled autonomously by specialized agents working in parallel. Humans provide the high-level intent (raw ideas/requirements) and maintain control through strategic "Go/No-Go" gates, ensuring the system remains aligned with business goals and safety standards.
 
-In practice, this means the Agentic SDLC is designed around four reinforcing ideas: the repository as the operational control plane, specialized agents with narrowly scoped duties, independent governance that validates rather than builds, and explicit human checkpoints at the moments where accountability must remain human.
+### 1.3 Architectural Foundations
+The Agentic SDLC is built on five core architectural principles:
+
+1. **Infra Dependency Layer (EEF)**: Similar to PMI's Enterprise Environmental Factors, this layer defines the foundational constraints and capabilities that shape all agent behavior
+2. **Standard Interfaces**: Five canonical interfaces (Issues, Tasks, Commits, Pipelines, Artifacts) provide consistent interaction points
+3. **Event-Driven Architecture (EDA)**: All system activity is driven by events flowing through a Ralph Loop processing framework
+4. **Composable Blueprints**: Blueprints are assembled from reusable blocks rather than monolithic templates
+5. **Zero-Trust Governance**: Independent audit agents and governance layers ensure verification separates from execution
 
 ---
 
 ## 2. Core Design Principles
 
 ### 2.1 GitOps: The Code Repository as Single Source of Truth (SSOT)
-A fundamental tenet is that **the Git repository is the absolute SSOT**. 
-- **No External State**: Requirements, tasks (`task.md`), architecture blueprints, CI/CD configurations, and Infrastructure as Code (IaC) all exist as version-controlled text alongside application code.
-- **Git-Driven Triggers**: All agentic actions are triggered by repository events (Issues, Pull Requests, Commits) and resolved through the standard Git workflow. The state of the `main` branch *is* the state of the system.
-- **Operational Views, Not Competing State**: Dashboards such as a GitHub Project board may help coordinate work, but they are derived views of repository state rather than independent sources of truth.
+A fundamental tenet is that **the Git repository is the absolute SSOT**.
+- **No External State**: Requirements, blueprints, CI/CD configurations, and Infrastructure as Code (IaC) all exist as version-controlled text alongside application code.
+- **Git-Driven Triggers**: All agentic actions are triggered by repository events (Issues, Pull Requests, Commits) and resolved through the standard Git workflow.
+- **Operational Views, Not Competing State**: Dashboards such as a GitHub Project board are derived views of repository state rather than independent sources of truth.
 
 ### 2.2 Zero-Trust AI: Mechanical Proofs & Independent Auditing
 We assume that builder agents may eventually hallucinate or introduce flaws. To mitigate this, the system follows a **Zero-Trust** model:
@@ -32,7 +48,7 @@ We assume that builder agents may eventually hallucinate or introduce flaws. To 
 Unlike human teams restricted by sequential workflows, specialized agents work concurrently on micro-tasks. While one agent implements a feature, others can simultaneously write tests, update documentation, and provision infrastructure, significantly compressing the development lifecycle.
 
 ### 2.4 Modularity: Specialized Agents & Separation of Concerns
-To avoid the failures of monolithic "do-it-all" AI, the Agentic SDLC utilizes a fleet of specialized agents (BA, Planning, Builder, Platform, QA, Security, PM, SRE, Documentation, and Learning). Each agent has a scoped mission, limited tool access, and strict responsibilities, ensuring failures are localized and easier to debug.
+To avoid the failures of monolithic "do-it-all" AI, the Agentic SDLC utilizes a fleet of specialized agents. Each agent has a scoped mission, limited tool access, and strict responsibilities, ensuring failures are localized and easier to debug.
 
 ### 2.5 Accountability: Human-in-the-Loop (HITL) Checkpoints
 Autonomy is balanced by human oversight at critical junctures:
@@ -40,148 +56,1388 @@ Autonomy is balanced by human oversight at critical junctures:
 - **Final Review**: Humans review consolidated reports and approve the merge of Pull Requests into the production branch.
 - **Escalation Management**: Humans intervene when agents encounter blockers or exceed resource budgets.
 
-Together, these principles define the operating model for the rest of the document: agents execute within bounded roles, governance evaluates independently, and humans retain authority at blueprint approval, final release approval, and escalation events.
+---
+
+## 3. Glossary & Core Entities
+
+### 3.1 Blueprint
+**Definition**: An end-to-end executable plan for a value delivery chain, not limited to feature development.
+
+**Blueprint Types**:
+- Feature Development Blueprint: Requirements → Production deployment
+- Bug Fix Blueprint: Bug → Fix → Verification
+- Incident Response Blueprint: Incident → Recovery → Postmortem
+- Data Analysis Blueprint: Production data → Insights → Action
+
+**Composable Design**:
+```yaml
+Blueprint_Instance:
+  name: "User Authentication System"
+  blocks:
+    - block_code_analysis
+    - block_code_review
+    - block_unit_test
+    - block_security_scan
+    - block_qa_validation
+    - block_canary_deploy
+    - block_api_doc
+    - block_monitoring
+
+  config:
+    risk_level: "medium"
+    requires_security_review: true
+    deployment_strategy: "canary"
+```
+
+**Blueprint Block Library**: Reusable, atomic execution blocks that can be combined to form complete Blueprints.
+
+### 3.2 Event
+**Definition**: Internal driving entity of the EDA architecture with type-specific payloads.
+
+**Event Examples**:
+- `IssueCreatedEvent`: New requirement/task/bug created
+- `PipelineCompletedEvent`: CI/CD pipeline finished
+- `IncidentDetectedEvent`: Production anomaly detected
+- `CommitPushedEvent`: Code committed to repository
+
+**Event Structure**:
+```yaml
+Event_Base:
+  event_id: "UUID"
+  event_type: "IssueCreatedEvent | PipelineCompletedEvent | ..."
+  timestamp: "ISO 8601"
+  source: "github | gitlab | jenkins | prometheus | scheduler"
+  correlation_id: "for event chain tracing"
+
+  # Type-specific payload
+  payload:
+    # Varies by event_type
+```
+
+**Key Relationship**: Events are internal to the EDA system. External triggers (like GitHub Issues) may generate Events, but Events and Issues are independent entities.
+
+### 3.3 Issue
+**Definition**: GitHub entity that can represent Requirements, Tasks, or Bugs based on labels.
+
+**Issue Types**:
+```yaml
+GitHub_Issue:
+  as_requirement:
+    labels: ["requirement", "feature"]
+    example: "Add user login functionality"
+
+  as_task:
+    labels: ["task", "enhancement"]
+    example: "Refactor user service API"
+
+  as_bug:
+    labels: ["bug", "defect"]
+    example: "JWT validation fails on login"
+```
+
+**Issue Hierarchy**: Parent-child relationships using GitHub's linking features ("part of" references).
+
+### 3.4 Task
+**Definition**: Independent GitHub Issue that represents atomic work units within a Blueprint.
+
+**Task Properties**:
+- Exists as a separate GitHub Issue (not a checkbox within parent)
+- Linked to parent Issue via "part of" relationship
+- Has its own lifecycle, assignee, and status
+- Each Task corresponds to one or more Blueprint Blocks
+
+**Example**:
+```
+Parent Issue #123: "User Authentication System"
+├── Task Issue #124: "Design authentication API" (part of #123)
+├── Task Issue #125: "Implement login logic" (part of #123)
+└── Task Issue #126: "Write unit tests" (part of #123)
+```
+
+### 3.5 Pipeline
+**Definition**: Independent CI/CD workflow that agents can trigger but do not directly control.
+
+**Pipeline Characteristics**:
+- Defined as code in the repository (GitHub Actions, GitLab CI, Jenkinsfile)
+- Triggered by Git operations (push, PR creation/merge)
+- Generates Pipeline Events that agents respond to
+- Independent of agent execution - agents cannot modify Pipeline definitions at runtime
+
+**Agent-Pipeline Interaction**:
+```
+Agent → git push → triggers Pipeline → Pipeline executes → generates PipelineCompletedEvent → Agent responds
+```
+
+### 3.6 Artifact
+**Definition**: Traceable work product with unified structure and type-specific data.
+
+**Artifact Structure**:
+```yaml
+Artifact:
+  # Common fields
+  artifact_id: "UUID"
+  artifact_type: "code_binary | docker_image | test_report | audit_report | security_scan | blueprint | deployment_manifest | api_doc | changelog"
+  name: "artifact name"
+  description: "description"
+
+  # Metadata
+  created_by: "agent_id | user_id"
+  created_at: "timestamp"
+  pipeline_id: "associated pipeline"
+  version: "1.0.0"
+
+  # Storage
+  storage_location: "s3://... | github_artifacts://..."
+  storage_type: "s3 | github | artifactory | nexus"
+  checksum: "sha256:..."
+  size_bytes: 1024000
+
+  # Type-specific data
+  type_specific_data:
+    # Varies by artifact_type
+```
+
+**Artifact Types**:
+- `code_binary`: Compiled binaries, executables
+- `docker_image`: Container images
+- `test_report`: Test execution results
+- `audit_report`: Security/quality/compliance audits
+- `security_scan`: SAST/DAST scan results
+- `blueprint`: Blueprint documents
+- `deployment_manifest`: K8s manifests, Terraform plans
+- `api_doc`: OpenAPI/Swagger specifications
+- `changelog`: Version change documentation
+
+### 3.7 Agent
+**Definition**: Specialized AI execution unit with defined capabilities, tool access, and constraints.
+
+**Agent Metadata**:
+```yaml
+Agent:
+  # Basic information
+  agent_id: "agent-builder-001"
+  agent_name: "Builder Agent"
+  agent_type: "BA | Planning | Builder | QA | Security | Platform | SRE | PM | Doc | Learning | Governance"
+
+  # Capabilities
+  capabilities:
+    - "code_generation"
+    - "unit_test_writing"
+    # ... extendable as needed
+
+  # Tool access
+  tool_access:
+    - "github_api"
+    - "bash_execution"
+    # ... extendable as needed
+
+  # Constraints
+  constraints:
+    max_tokens_per_task: 100000
+    allowed_repositories: ["*"]
+    rate_limit: "60req/min"
+    # ... extendable as needed
+```
+
+### 3.8 Commit
+**Definition**: Version control record serving dual roles as code delivery载体 and event trigger.
+
+**Commit Roles**:
+- **Code Delivery Carrier**: All agent code changes must be delivered via Commits
+- **Event Trigger**: Commits trigger Pipelines directly and generate CommitEvents for other agents
+
+**Commit Event Structure**:
+```yaml
+CommitPushedEvent:
+  event_type: "CommitPushedEvent"
+  payload:
+    commit_sha: "abc123def456"
+    repository: "owner/repo"
+    branch: "feature/auth"
+    author: "BuilderAgent"
+    files_changed:
+      - path: "src/auth/auth_service.go"
+        change_type: "modified"
+    message: "feat: implement JWT authentication"
+
+    triggers:
+      - pipeline: "ci-checks"      # Direct pipeline trigger
+      - agent_event: true           # Generate event for other agents
+```
 
 ---
 
-## 3. System Architecture
+## 4. System Architecture
 
-### 3.1 Overview
-The Agentic SDLC architecture is designed as a closed-loop system where the Git Repository acts as the central orchestrator and Single Source of Truth. The system is composed of three primary operational loops: an execution loop that turns intent into implementation, a learning loop that feeds historical context back into future work, and a governance layer that independently evaluates whether work is allowed to continue.
+### 4.1 Architectural Overview
 
-![Agentic SDLC System Architecture](architecture.png)
+The Agentic SDLC architecture is organized into five distinct layers:
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    5. Governance & Audit Layer                  │
+│         (Independent verification, policy enforcement)           │
+├─────────────────────────────────────────────────────────────────┤
+│                    4. Agent Orchestration Layer                 │
+│              (Ralph Loop, event processing, coordination)        │
+├─────────────────────────────────────────────────────────────────┤
+│                    3. Event-Driven Architecture (EDA)            │
+│              (Event bus, event routing, pub/sub)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                    2. Standard Interfaces Layer                 │
+│      (Issues, Tasks, Commits, Pipelines, Artifacts)             │
+├─────────────────────────────────────────────────────────────────┤
+│                    1. Infra Dependency Layer (EEF)              │
+│   (Static constraints + Dynamic runtime state)                  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### 3.2 The Three Core Loops
-1.  **Agentic Execution Loop**: The primary engine where features are translated from requirements to code and infrastructure through specialized agents (BA, Planning Agent, Builder, Platform, QA, Security, and PM coordination).
-2.  **Continuous Learning Loop**: A feedback mechanism handled by the **Learning Agent**, which ingests production metrics, QA failures, security findings, and remediation patterns into a knowledge base that informs future planning and implementation.
-3.  **Governance & Auditing Layer (The Overseer)**: An independent, high-level system that monitors resource usage, enforces hard quality and security gates, and maintains an immutable audit trail of all agent actions.
+### 4.2 Layer 1: Infra Dependency Layer (EEF)
 
-The key architectural boundary is that execution agents are allowed to propose changes, but only verification, governance, and human approval determine whether those changes become part of the trusted system state.
+**Purpose**: Similar to PMI's Enterprise Environmental Factors, this layer provides foundational constraints and capabilities that shape all agent behavior. These are the "rules of the game" that agents cannot change.
 
-### 3.3 RL Environment as Exploration and Replay Layer
-Within this architecture, the RL environment should be understood as a controlled learning layer used for exploration, replay, and evaluation rather than as a production decision-maker. Conceptually, it gives agents a sandbox in which they can observe system state, take candidate actions, and receive rewards or penalties based on the outcomes they produce.
+**Structure**: Hybrid implementation combining static configuration with dynamic runtime state.
 
-At a design level, the RL environment has four conceptual parts:
-- **State**: The current application, infrastructure, or incident condition being observed, including relevant logs, metrics, traces, inputs, and intermediate system states.
-- **Action**: A candidate move taken by an agent in the sandbox, such as generating an unusual test sequence, perturbing traffic patterns, replaying a rollback path, or trying a recovery strategy.
-- **Reward / Penalty**: A signal that tells the system whether the action was useful, for example by exposing a hidden defect, improving coverage, restoring service faster, or avoiding a destructive action.
-- **Episode Feedback**: The recorded trajectory of what happened across a sequence of actions so that useful exploration patterns can later be reused and harmful patterns can be avoided.
+#### 4.2.1 Static Constraints (Human-Managed)
+Maintained by architects/SRE teams through version-controlled configuration:
 
-This model is especially valuable in two places. In QA, it enables deeper exploration of complex state spaces that are difficult to cover with hand-authored tests alone. In SRE postmortems, it allows incidents to be replayed and alternative recovery strategies to be evaluated in a safe environment before their lessons are generalized into future operating guidance.
+```yaml
+# infra-constraints.yaml
+version_control:
+  git_repositories: "Repository structure and policies"
+  branch_strategy: "Git flow, trunk-based, etc."
+  pr_policies: "PR review requirements, auto-merge rules"
+
+pipeline_system:
+  ci_platform: "github_actions | gitlab_ci | jenkins"
+  cd_strategy: "canary | blue_green | rolling"
+  pipeline_templates: "Standard pipeline definitions"
+
+configuration_system:
+  config_management: "Environment config approach"
+  secret_management: "Vault, K8s secrets, etc."
+  feature_flags: "Feature flag system"
+
+network_architecture:
+  regions: "Deployment regions"
+  vpc_topology: "Network topology design"
+  service_mesh: "Istio, Linkerd, etc."
+
+  # Access constraints (critical for agent operations)
+  access_constraints:
+    bastion_host: "bastion.example.com"
+    vpn_required: true
+    whitelist_ips: ["10.0.0.0/8"]
+    authentication_methods: "mTLS | SSH keys"
+
+technical_constraints:
+  language_stack: ["Go", "Python", "TypeScript"]
+  framework_versions:
+    go: "1.21+"
+    python: "3.11+"
+    node: "20.x"
+  resource_quotas: "Per-project resource limits"
+  security_policies: "Security scanning requirements"
+```
+
+#### 4.2.2 Dynamic Constraints (Platform Agent-Synced)
+Real-time state synchronized by Platform Agent from actual infrastructure:
+
+```yaml
+dynamic_constraints:
+  resource_quotas:
+    cpu_usage_percent: 75
+    memory_usage_percent: 68
+    storage_available_gb: 450
+
+  deployment_status:
+    environment: "production"
+    healthy_replicas: 3
+    total_replicas: 3
+    last_deployment: "2026-03-22T10:00:00Z"
+
+  network_topology:
+    available_subnets: ["10.1.0.0/16", "10.2.0.0/16"]
+    load_balancers: ["lb-prod-001", "lb-prod-002"]
+
+  pipeline_health:
+    ci_status: "operational"
+    cd_status: "operational"
+    last_failure: null
+```
+
+**Maintenance Responsibility**:
+- **Static Constraints**: Maintained by architects/SRE teams, changed via PR + Review
+- **Dynamic Constraints**: Synchronized by Platform Agent via API calls to cloud providers
+
+### 4.3 Layer 2: Standard Interfaces Layer
+
+**Purpose**: Provide five canonical interfaces that serve as consistent interaction points for all agents and external systems.
+
+#### 4.3.1 Issues
+**Primary Role**: Carrier for requirements, tasks, and defects.
+
+**Responsibilities**:
+- Humans submit requirements as Issues
+- Agents decompose work into Task Issues
+- Progress tracking and visualization
+
+**Agent Interaction**:
+- BA Agent creates structured requirement Issues
+- PM Agent tracks Issue progress
+- All Agents update Issue status as work progresses
+
+#### 4.3.2 Tasks
+**Primary Role**: Atomic execution units within Blueprints, implemented as independent GitHub Issues.
+
+**Responsibilities**:
+- Task decomposition and assignment
+- Task execution tracking
+- Task dependency management
+
+**Agent Interaction**:
+- Planning Agent creates Task Issues
+- Primary Agent assigns Tasks to sub-agents
+- Sub-Agents close Task Issues upon completion
+
+#### 4.3.3 Commits
+**Primary Role**: Code delivery carrier + Event trigger.
+
+**Responsibilities**:
+- Version control for all changes
+- Triggering Pipelines via git operations
+- Generating CommitEvents for other agents
+
+**Agent Interaction**:
+- All code-producing Agents submit Commits
+- System generates CommitPushedEvent
+- Other Agents respond to CommitEvents
+
+#### 4.3.4 Pipelines
+**Primary Role**: Independent CI/CD workflows.
+
+**Responsibilities**:
+- Automated building, testing, deployment
+- Generating Artifacts
+- Producing Pipeline status Events
+
+**Agent Interaction**:
+- Agents trigger Pipelines via Commits/PRs
+- Agents respond to Pipeline Events
+
+#### 4.3.5 Artifacts
+**Primary Role**: Traceable work products.
+
+**Responsibilities**:
+- Store all outputs (code, docs, reports)
+- Provide audit trail
+- Serve as data carrier between Agents
+
+**Agent Interaction**:
+- All Agents generate and store Artifacts
+- Audit Agents read Artifacts for verification
+- Learning Agent reads Artifacts for knowledge extraction
+
+### 4.4 Layer 3: Event-Driven Architecture (EDA)
+
+**Purpose**: Provide asynchronous, decoupled communication between all system components through event streams.
+
+#### 4.4.1 Event Flow Architecture
+
+```
+External Triggers                    EDA System                    Agent Responses
+┌──────────────────┐                ┌─────────────┐               ┌──────────────────┐
+│  GitHub Issues   │──Trigger───→  │  Event Bus  │──Dispatch──→  │  Subscribed      │
+│  Pipeline Status │    Events     │             │    Events     │  Agents          │
+│  Monitoring      │               │             │               │                  │
+│  Scheduled Jobs  │               │             │               │  - Process       │
+└──────────────────┘               └─────────────┘               │  - Generate       │
+                                                                   │  - Publish       │
+                                                                   └──────────────────┘
+```
+
+#### 4.4.2 Event Categories
+
+**Source Events**: Generated from external systems
+- `IssueCreatedEvent`, `IssueUpdatedEvent`, `IssueClosedEvent`
+- `PipelineStartedEvent`, `PipelineCompletedEvent`, `PipelineFailedEvent`
+- `CommitPushedEvent`
+- `IncidentDetectedEvent` (from monitoring)
+
+**Internal Events**: Generated within the EDA system
+- `BlockAssignedEvent`, `BlockCompletedEvent`
+- `BlueprintStartedEvent`, `BlueprintCompletedEvent`
+- `AuditRequestedEvent`, `AuditCompletedEvent`
+
+**Decision Events**: Generated by Governance Layer
+- `GatePassedEvent`, `GateFailedEvent`
+- `EscalationRequiredEvent`
+
+### 4.5 Layer 4: Agent Orchestration Layer
+
+**Purpose**: Implement the Ralph Loop - the universal event processing framework that coordinates all agent activity.
+
+#### 4.5.1 Ralph Loop Overview
+
+The Ralph Loop is a five-step process that handles every Event in the system:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Step 1: Planner Agent → Confirm Primary Agent                  │
+│    └─ Based on Issue Labels + Complex Rules                    │
+├─────────────────────────────────────────────────────────────────┤
+│  Step 2: Primary Agent → Load Rules + Context                  │
+│    ├─ From Infra Dependency Layer (static + dynamic)           │
+│    └─ From Learning Agent (historical patterns)                │
+├─────────────────────────────────────────────────────────────────┤
+│  Step 3: Primary Agent → Coordinate Sub-Agents                 │
+│    ├─ Parse Blueprint Block dependency graph                   │
+│    └─ Publish Events to drive sub-agent execution              │
+├─────────────────────────────────────────────────────────────────┤
+│  Step 4: Confirm Completion + Deliver Output                   │
+│    ├─ Update GitHub Issues                                    │
+│    └─ Generate BlueprintExecutionReport Artifact              │
+├─────────────────────────────────────────────────────────────────┤
+│  Step 5: Audit Agents → Generate Audit Report                  │
+│    └─ Governance Layer → Decision (Pass/Fail)                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 4.5.2 Step 1: Primary Agent Selection
+
+**Selection Logic**: Complex rules based on Issue labels, type, and metadata.
+
+```yaml
+Primary_Agent_Selection_Rules:
+  # Priority: Label-based rules
+  label_priority:
+    - label: "security"
+      primary_agent: "SecurityAgent"
+      reason: "Security requirements led by security specialist"
+
+    - label: "infrastructure"
+      primary_agent: "PlatformAgent"
+      reason: "Infrastructure changes led by platform engineer"
+
+    - label: "incident"
+      primary_agent: "SREAgent"
+      reason: "Incident response led by SRE"
+
+    - label: "performance"
+      primary_agent: "QAAgent"
+      reason: "Performance issues require testing analysis"
+
+  # Default: Issue type-based
+  issue_type_default:
+    requirement:
+      default_primary: "BA_Agent"
+      first_action: "Requirement analysis and structuring"
+
+    task:
+      default_primary: "PlanningAgent"
+      first_action: "Task decomposition and Blueprint generation"
+
+    bug:
+      default_primary: "PlanningAgent"
+      first_action: "Problem analysis and fix design"
+
+  # Complex: Composite rules
+  composite_rules:
+    - if:
+        - issue.type == "requirement"
+        - has_label: "infrastructure"
+        - complexity == "high"
+      then:
+          primary_agent: "PlatformAgent"
+          secondary_agents: ["PlanningAgent", "BA_Agent"]
+          reason: "Complex infrastructure needs platform leadership"
+```
+
+**Example Decision Flow**:
+```
+Input: Issue "User Authentication System"
+├─ type: "requirement"
+├─ labels: ["feature", "auth", "security"]
+└─ complexity: "high"
+
+Planner Agent Reasoning:
+1. Check labels → Has "security" → Candidate: SecurityAgent
+2. Check type → requirement → Default: BA_Agent
+3. Check complexity → high → Needs strong coordination
+4. Synthesis → SecurityAgent as primary, BA_Agent as support
+
+Output:
+├─ primary_agent: "SecurityAgent"
+├─ secondary_agents: ["BA_Agent", "PlanningAgent"]
+└─ orchestration_strategy: "security_first"
+```
+
+#### 4.5.3 Step 2: Load Rules and Context
+
+**Context Sources**: Two primary sources guide agent decision-making.
+
+```yaml
+Context_Loading:
+  # Source 1: Infra Dependency Layer
+  infra_constraints:
+    static:
+      - "Allowed language stacks"
+      - "Framework version requirements"
+      - "Network access methods (bastion, VPN)"
+      - "CI/CD policies"
+
+    dynamic:
+      - "Current resource quota usage"
+      - "Deployment environment status"
+      - "Real-time network topology"
+
+    loading_method: "Hybrid"
+    ├─ Static: Load from YAML config files
+    └─ Dynamic: Sync via Platform Agent API calls
+
+  # Source 2: Learning Agent
+  learning_context:
+    success_patterns:
+      - "Proven Blueprint patterns for similar requirements"
+      - "Validated technology choices"
+      - "Efficient agent collaboration patterns"
+
+    failure_lessons:
+      - "Common failure modes and avoidance strategies"
+      - "Performance bottleneck solutions"
+      - "Security problem areas"
+
+    best_practices:
+      - "Code organization patterns"
+      - "Test coverage requirements"
+      - "Documentation standards"
+
+    loading_method: "Query Learning Agent knowledge base"
+```
+
+**Impact on Primary Agent**:
+```
+Primary Agent (e.g., SecurityAgent)
+    ↓
+Load Infra Dependency Layer
+├─ Static: Python/Go allowed, bastion access required
+└─ Dynamic: Production at 70% resource capacity
+    ↓
+Load Learning Agent context
+├─ Best practice: JWT + mTLS for authentication
+└─ Lesson learned: Avoid hardcoded secrets
+    ↓
+Formulate execution strategy
+```
+
+#### 4.5.4 Step 3: Coordinate Sub-Agents
+
+**Hybrid Coordination Model**: Combines dependency graph execution with event-driven communication.
+
+```yaml
+Hybrid_Coordination:
+  # Part C: Blueprint Block dependency graph
+  blueprint_dependency_graph:
+    blocks:
+      - block_id: "B1"
+        name: "auth_api_design"
+        assigned_to: "PlanningAgent"
+        dependencies: []
+
+      - block_id: "B2"
+        name: "auth_implementation"
+        assigned_to: "BuilderAgent"
+        dependencies: ["B1"]
+
+      - block_id: "B3"
+        name: "auth_tests"
+        assigned_to: "QAAgent"
+        dependencies: ["B2"]
+
+      - block_id: "B4"
+        name: "security_scan"
+        assigned_to: "SecurityAgent"
+        dependencies: ["B2"]
+
+      - block_id: "B5"
+        name: "deployment"
+        assigned_to: "PlatformAgent"
+        dependencies: ["B3", "B4"]
+
+    execution_order: "B1 → B2 → (B3 + B4 parallel) → B5"
+
+  # Part D: Event-driven agent communication
+  event_driven_coordination:
+    primary_agent:
+      - "Publishes BlockB1AssignedEvent → PlanningAgent"
+      - "Listens for BlockB1CompletedEvent"
+
+    sub_agents:
+      PlanningAgent:
+        - "Listens for BlockB1AssignedEvent"
+        - "Executes task"
+        - "Publishes BlockB1CompletedEvent"
+
+      BuilderAgent:
+        - "Listens for BlockB1CompletedEvent (dependency satisfied)"
+        - "Listens for BlockB2AssignedEvent"
+        - "Executes task"
+        - "Publishes BlockB2CompletedEvent"
+```
+
+**Execution Flow Example**:
+```
+Initial: SecurityAgent identified as primary for auth system Blueprint
+
+Step 1: Parse dependency graph
+└─ Identify ready blocks: [B1] (no dependencies)
+
+Step 2: Publish scheduling event
+└─ SecurityAgent publishes: BlockB1AssignedEvent
+    payload: {block_id: "B1", assignee: "PlanningAgent"}
+
+Step 3: PlanningAgent executes autonomously
+└─ Detects BlockB1AssignedEvent
+└─ Executes auth_api_design
+└─ Publishes: BlockB1CompletedEvent
+    payload: {block_id: "B1", artifact: "auth_api_blueprint.yaml"}
+
+Step 4: Primary agent identifies next steps
+└─ SecurityAgent detects BlockB1CompletedEvent
+└─ Checks graph: B2 depends on B1 → B1 done → B2 ready
+└─ Publishes: BlockB2AssignedEvent
+
+Step 5: Parallel blocks
+└─ B2 completes → B3 and B4 dependencies satisfied
+└─ Simultaneously publish BlockB3AssignedEvent and BlockB4AssignedEvent
+└─ QAAgent and SecurityAgent execute in parallel
+└─ Wait for both B3 and B4 to complete → Trigger B5
+```
+
+#### 4.5.5 Step 4: Confirm Completion and Deliver Output
+
+**Dual Output**: Update GitHub Issues + Generate Artifact.
+
+```yaml
+Completion_Delivery:
+  # Part B: Update GitHub Issues
+  issue_updates:
+    parent_issue:
+      action: "Update progress"
+      status: "In Progress → Done"
+      comments:
+        - "✅ auth_api_design (PlanningAgent) - Complete"
+        - "✅ auth_implementation (BuilderAgent) - Complete"
+        - "✅ auth_tests (QAAgent) - Complete"
+        - "✅ security_scan (SecurityAgent) - Complete"
+        - "✅ deployment (PlatformAgent) - Complete"
+      labels:
+        remove: ["in-progress"]
+        add: ["completed"]
+
+    child_issues:
+      action: "Close all Task Issues"
+      status: "Closed"
+      comment: "Task completed via Blueprint execution"
+
+  # Part C: Generate standard Artifact
+  artifact_generation:
+    artifact_type: "blueprint_execution_report"
+
+    content:
+      blueprint:
+        id: "blueprint-auth-system-001"
+        name: "User Authentication System"
+        type: "feature_development"
+
+      execution:
+        started_at: "2026-03-22T10:00:00Z"
+        completed_at: "2026-03-22T14:30:00Z"
+        duration_hours: 4.5
+        status: "success"
+
+      blocks_executed:
+        - block_id: "B1"
+          name: "auth_api_design"
+          agent: "PlanningAgent"
+          status: "completed"
+          artifacts: ["auth_api_blueprint.yaml"]
+        # ... other blocks
+
+      output_artifacts:
+        - artifact_id: "artifact-001"
+          type: "blueprint"
+          name: "auth_api_blueprint.yaml"
+          storage_location: "s3://artifacts/blueprints/..."
+
+        - artifact_id: "artifact-002"
+          type: "code"
+          name: "auth_service.go"
+          storage_location: "github://owner/repo/..."
+
+      metrics:
+        total_blocks: 5
+        completed_blocks: 5
+        failed_blocks: 0
+        total_tokens_used: 45000
+        total_cost_usd: 2.50
+
+    storage:
+      location: "s3://agentic-sdlc/artifacts/blueprint-reports/"
+      format: "JSON + YAML"
+      retention: "Permanent (audit and postmortem)"
+```
+
+#### 4.5.6 Step 5: Audit and Governance Decision
+
+**Two-Phase Audit**: Parallel audit agents generate reports, Governance Layer makes decision.
+
+```yaml
+Audit_and_Governance:
+  # Phase 1: Parallel Audit Agents
+  audit_agents:
+    SecurityAuditAgent:
+      scope: "Security audit"
+      checks:
+        - "SAST scan validation"
+        - "DAST vulnerability check"
+        - "Secret detection"
+        - "Dependency security"
+      output: "SecurityAuditReport Artifact"
+
+    QualityAuditAgent:
+      scope: "Quality audit"
+      checks:
+        - "Test coverage ≥ 95%"
+        - "Code standards compliance"
+        - "Technical debt assessment"
+        - "Code review completeness"
+      output: "QualityAuditReport Artifact"
+
+    ComplianceAuditAgent:
+      scope: "Compliance audit"
+      checks:
+        - "API contract compliance"
+        - "Documentation completeness"
+        - "License compliance"
+        - "Data protection compliance"
+      output: "ComplianceAuditReport Artifact"
+
+    CostAuditAgent:
+      scope: "Cost audit"
+      checks:
+        - "Token usage within budget"
+        - "Compute resource usage reasonable"
+        - "Storage costs as expected"
+      output: "CostAuditReport Artifact"
+
+  # Phase 2: Governance Layer Decision
+  governance_decision:
+    inputs:
+      - BlueprintExecutionReport
+      - SecurityAuditReport
+      - QualityAuditReport
+      - ComplianceAuditReport
+      - CostAuditReport
+
+    gates_check:
+      quality_gate:
+        condition: "test_coverage ≥ 95% AND code_smells ≤ 5"
+        status: "passed"
+
+      security_gate:
+        condition: "critical_findings == 0 AND high_findings == 0"
+        status: "failed"  # Has 1 high severity issue
+
+      compliance_gate:
+        condition: "all_compliance_checks_passed"
+        status: "passed"
+
+      budget_gate:
+        condition: "total_cost_usd ≤ budget_usd"
+        status: "passed"
+
+    final_decision:
+      status: "failed"  # Security gate failed
+      reason: "1 high severity security vulnerability present"
+      action: "Block merge to main, require fix"
+
+      # If all passed:
+      # status: "passed"
+      # action: "Allow Human Gate 2 (final review)"
+```
+
+### 4.6 Layer 5: Governance & Audit Layer
+
+**Purpose**: Independent verification layer that ensures system integrity through separation of concerns.
+
+#### 4.6.1 Audit Agents (Fact-Finders)
+
+**Role**: Generate factual audit reports without decision-making authority.
+
+**Audit Agent Types**:
+- **SecurityAuditAgent**: Security-focused verification
+- **QualityAuditAgent**: Quality metrics verification
+- **ComplianceAuditAgent**: Policy compliance verification
+- **CostAuditAgent**: Budget and resource usage verification
+
+**Key Principle**: Audit agents report facts, not decisions. They identify issues but don't block progression.
+
+#### 4.6.2 Governance Layer (Decision-Makers)
+
+**Role**: Make pass/fail decisions based on audit reports and defined gates.
+
+**Governance Responsibilities**:
+- Enforce hard gates (quality, security, budget, process)
+- Make progression decisions
+- Trigger escalation when needed
+- Maintain immutable audit trail
+
+**Key Principle**: Governance doesn't create changes. It evaluates evidence and decides whether to allow progression.
+
+#### 4.6.3 Separation of Concerns
+
+```
+Execution Agents     →  Create changes
+Audit Agents         →  Report on changes (facts)
+Governance Layer     →  Decide on changes (decisions)
+Humans               →  Resolve ambiguity (judgment)
+```
 
 ---
 
-## 4. Specialized Agent Profiles
+## 5. Specialized Agent Profiles
 
-### 4.1 Requirement & Strategy
--   **Business Analyst (BA) Agent**: Translates unstructured human intent into structured features, user stories (BDD/Gherkin), and high-level requirements.
--   **Project Manager (PM) Agent**: Monitors project velocity, tracks work status through repository-derived dashboards such as a GitHub Project board, and alerts human orchestrators to risks, delays, or stalled execution. The PM Agent coordinates; it does not override governance or approval gates.
+### 5.1 Agent Registry
 
-### 4.2 Architecture & Blueprinting
--   **Planning Agent (The Architect)**: Ingests requirements and system constraints to generate detailed technical blueprints and `task.md` checklists. It defines API contracts and ensures architectural consistency.
+| Agent | Type | Primary Responsibility | Key Capabilities |
+|-------|------|----------------------|------------------|
+| **BA Agent** | Strategy | Requirement analysis and structuring | Intent clarification, User story creation, BRD generation |
+| **Planning Agent** | Architecture | Blueprint design and task decomposition | Technical blueprint, API contracts, Task breakdown |
+| **Builder Agent** | Implementation | Code generation and unit tests | Feature implementation, Local test writing, Code commits |
+| **Platform Agent** | Infrastructure | IaC management and infra sync | Terraform/K8s, Dynamic constraint sync, Environment provisioning |
+| **QA Agent** | Verification | Testing and quality assurance | Test generation, RL-style exploration, Coverage analysis |
+| **Security Agent** | Security | Security auditing and vulnerability management | SAST/DAST, Security review, Vulnerability assessment |
+| **SRE Agent** | Operations | Deployment and incident response | Canary deployment, Rollback, Incident replay |
+| **PM Agent** | Coordination | Progress tracking and visibility | Velocity monitoring, Risk flagging, Dashboard updates |
+| **Doc Agent** | Documentation | Documentation generation | API docs, Changelogs, Diagram updates |
+| **Learning Agent** | Knowledge | Historical context and patterns | Success patterns, Failure lessons, Best practices |
+| **Governance Agent** | Governance | Gate enforcement and decisions | Policy checks, Gate decisions, Escalation triggers |
 
-### 4.3 Implementation & Infrastructure
--   **Builder Agents (The Engineers)**: Execute isolated tasks from the blueprint by writing functional code and local tests.
--   **Platform Agent (The Infrastructure Engineer)**: Manages Infrastructure as Code (IaC) (Terraform, K8s) and ensures the environment evolves alongside the application.
+### 5.2 Agent Capabilities Matrix
 
-### 4.4 Verification & Security
--   **QA Agent (The Testers)**: Performs adversarial testing, including dynamic test generation, regression testing, and RL-driven exploration of state changes. In this context, the RL environment acts as a test sandbox where state transitions, edge-case sequences, and invariant violations can be explored systematically. Reward signals are tied to outcomes such as bug discovery, coverage improvement, or the exposure of unexpected behavior that conventional unit and integration suites may miss.
--   **Security (Red Team) Agent**: Conducts continuous security audits (SAST/DAST), identifies vulnerabilities, and enforces security policies through independent review of proposed changes.
+```yaml
+Agent_Capabilities:
+  BA_Agent:
+    capabilities:
+      - "requirement_analysis"
+      - "user_story_writing"
+      - "brd_generation"
+      - "stakeholder_interview_simulation"
+    tool_access:
+      - "github_api (Issues)"
+      - "documentation_tools"
+    constraints:
+      max_tokens_per_requirement: 5000
 
-### 4.5 Operations & Documentation
--   **SRE Agent (The Operator)**: Handles canary deployments, monitors production health, and autonomously performs rollbacks if anomalies are detected. For incident analysis, the SRE function can also rely on an RL-style replay environment that models failure progression, recovery options, and rollback paths so postmortems produce reusable operational guidance rather than static incident summaries.
--   **Documentation Agent (The Technical Writer)**: Auto-generates changelogs, updates Swagger/OpenAPI and other machine-readable docs, and maintains system diagrams after successful deployments.
+  Planning_Agent:
+    capabilities:
+      - "blueprint_design"
+      - "task_decomposition"
+      - "api_contract_design"
+      - "architecture_consistency_check"
+    tool_access:
+      - "github_api (Issues, Projects)"
+      - "learning_agent_query"
+    constraints:
+      max_blueprint_complexity: "high"
 
-### 4.6 Knowledge Layer
--   **Learning Agent**: Acts as the project's long-term memory, providing historical context, prior failure patterns, successful remediation strategies, and operational lessons to reduce repeat mistakes across planning, implementation, and incident response. It also stores the useful outputs of RL-style exploration, such as discovered failure trajectories, high-value test sequences, and effective incident-response policies.
+  Builder_Agent:
+    capabilities:
+      - "code_generation"
+      - "unit_test_writing"
+      - "git_commit_operations"
+      - "code_review_responses"
+    tool_access:
+      - "github_api (Commits, PRs)"
+      - "bash_execution"
+      - "compiler_toolchain"
+    constraints:
+      max_tokens_per_file: 10000
+      allowed_languages: ["Go", "Python", "TypeScript"]
 
----
-
-## 5. Operational Workflow
-
-The Agentic SDLC follows a structured, multi-phase workflow that maximizes machine autonomy while maintaining human oversight. Each phase is intentionally designed so that repository state drives agent behavior, verification happens independently of implementation, and escalation paths are explicit rather than implicit.
-
-### 5.1 Phase 1: Requirements to Approved Blueprint (HITL Point 1)
-1.  **Intent Submission**: A human orchestrator submits a raw idea or a vague requirement via a Git Issue.
-2.  **Requirement Structuring**: The **BA Agent** clarifies the intent and structures it into formal requirements (e.g., BRD/User Stories).
-3.  **Architecture Blueprinting**: The **Planning Agent** queries the **Learning Agent** for relevant historical context and generates a technical blueprint, constraints, contracts, and `task.md`.
-4.  **Planning Visibility**: The **PM Agent** tracks blueprint progress and flags unresolved dependencies or cross-team risks without becoming a separate source of project truth.
-5.  **Human Gate 1**: The Planning Agent opens a PR for the blueprint. Implementation is blocked until a human reviews and approves the blueprint.
-
-### 5.2 Phase 2: Autonomous Execution (Parallel)
-Once the blueprint is approved:
-1.  **Parallel Tasks**: The **Builder Agent** begins implementation, while the **Platform Agent** provisions or updates the necessary infrastructure (IaC) in parallel where required.
-2.  **Continuous Validation**: As soon as code is pushed to a PR, the **QA Agent** and **Security (Red Team) Agent** trigger dynamic tests and vulnerability scans in parallel.
-3.  **RL-Driven Test Exploration**: Within isolated test environments, the QA function can use RL-style exploration to traverse uncommon state transitions, sequence edge cases, and search for failure paths that static assertions or deterministic scripts would be unlikely to cover exhaustively.
-4.  **Context-Aware Fixing**: Failure artifacts, test logs, and known fix patterns can be fed back through the **Learning Agent** so remediation is informed by prior incidents rather than starting from scratch each time.
-5.  **Exploration Retention**: High-value trajectories discovered in the RL environment, such as reproducible bug-triggering action sequences, are retained as future regression assets rather than being treated as one-off test findings.
-6.  **Iterative Fixing**: If validation fails, the relevant agents receive the failure context and autonomously push fixes to the PR branch until the hard gates are satisfied or escalation is required.
-7.  **Execution Oversight**: The **PM Agent** monitors throughput, identifies stalled tasks or noisy failure loops, and alerts humans when execution drift suggests a planning or coordination problem rather than a normal implementation failure.
-
-### 5.3 Phase 3: Governance Gates & Final Human Review (HITL Point 2)
-1.  **Policy Check**: The **Governance Layer** verifies that all hard gates are met (e.g., minimum test coverage, cleared security scan, contract conformance, and budget compliance).
-2.  **Independent Decision Point**: If a hard gate fails, the Governance Layer blocks progression and records the reason. Execution agents may continue remediation on the PR branch, but they cannot bypass the policy failure.
-3.  **Escalation Path**: If the system exceeds token or compute budgets, enters a fix loop without convergence, or encounters an unresolvable policy conflict, it escalates to a human orchestrator for intervention.
-4.  **Human Gate 2**: Once all automated checks are green, a human orchestrator performs a final review of the consolidated PR and merges it into the `main` branch.
-
-### 5.4 Phase 4: Agentic Deployment & Post-Mortem Learning
-1.  **Canary Deployment**: The **SRE Agent** orchestrates a canary deployment to production.
-2.  **Self-Healing**: If health metrics degrade, the SRE Agent autonomously rolls back the deployment.
-3.  **Incident Replay & Policy Evaluation**: For significant incidents, an RL-style postmortem environment can replay the observed failure progression using production evidence such as logs, metrics, traces, and deployment metadata. The goal is not to relive the outage for its own sake, but to evaluate alternate recovery actions, escalation timing, and rollback decisions in a safe replay context.
-4.  **Knowledge Ingestion**: The root cause of any failure or success, along with the remediation path taken and the strongest replay-derived lessons, is ingested by the **Learning Agent** to improve future planning and execution cycles.
-5.  **Documentation Update**: Upon successful deployment, the **Documentation Agent** updates system documentation, changelogs, and machine-readable contracts where appropriate.
-6.  **Feedback Closure**: Production outcomes become inputs to both the **Learning Agent** and future blueprinting, completing the closed-loop model described in the architecture section.
-
----
-
-## 6. Governance & The Trust Model
-
-To solve the "trust problem" inherent in AI-driven systems, the Agentic SDLC implements a multi-layered governance model. This layer does not author product changes; it validates evidence, enforces policy, and preserves traceability so trust is earned through verification rather than assumed from agent intent.
-
-### 6.1 Immutable Audit Logging (The "Black Box")
-Every interaction — including LLM prompts, tool outputs, policy decisions, and inter-agent communication — is logged immutably. This allows for complete traceability and post-mortem debugging of why an agent made a specific decision, why a gate passed or failed, and where accountability should sit after an incident.
-
-### 6.2 Automated Policy Enforcement (Hard Gates)
-The Governance Layer enforces non-negotiable rules that cannot be bypassed by execution agents:
--   **Quality Gates**: Code coverage must meet the minimum threshold (e.g., 95%).
--   **Security Gates**: No high-severity vulnerabilities can exist in the PR.
--   **Contract Gates**: Code must strictly adhere to the API contracts defined in the approved blueprint.
--   **Process Gates**: Required evidence, approvals, and audit artifacts must exist before promotion between phases.
-
-### 6.3 Resource & Budget Guardrails
-To prevent runaway loops or excessive costs, the system enforces:
--   **Token Budgets**: Each task/PR has a maximum dollar limit for LLM API usage.
--   **Compute Budgets**: Limits on execution time for CI/CD and testing processes.
--   **Human Escalation**: If a budget is exceeded or an automated remediation loop fails to converge, the agent is halted and a human must manually intervene to allocate more resources or resolve the underlying logic failure.
--   **Bounded RL Exploration**: RL environments used for QA or incident replay must also run within explicit compute, data-retention, and safety boundaries so exploratory behavior does not become an uncontrolled cost or risk surface.
-
-### 6.4 Governance Boundaries & Escalation
-The governance model is intentionally narrow and strict:
--   **Execution Agents Propose**: Builder, Platform, and Documentation agents can generate changes, but they do not decide trust.
--   **Verification Agents Challenge**: QA and Security agents independently test, attack, and critique proposed changes.
--   **Governance Decides Progression**: The Governance Layer determines whether the evidence is sufficient for the system to proceed.
--   **Humans Resolve Ambiguity**: When evidence is conflicting, budgets are exceeded, or policy intent must be reinterpreted, humans remain the final authority.
-
-The same boundary applies to RL-driven testing and postmortem environments. They are used to discover, replay, and evaluate candidate behaviors, but they do not directly authorize production changes, override governance policy, or replace human judgment during incident response.
+  # ... (similar structure for other agents)
+```
 
 ---
 
-## 7. Future Roadmap
+## 6. Operational Workflow
 
-The Agentic SDLC is a foundation for even more advanced autonomous development. Future areas of exploration include:
+### 6.1 End-to-End Workflow Overview
 
-### 7.1 Scaling to Multi-Repo Environments
-Advancing the **Platform Agent** and **PM Agent** to handle complex, cross-repository dependencies and microservices architectures autonomously.
+The Agentic SDLC follows a structured workflow through the Ralph Loop:
 
-### 7.2 Advanced Self-Healing & Root-Cause Analysis
-Enhancing the **SRE Agent** with more sophisticated diagnostic capabilities, allowing it to not only roll back but also pinpoint the exact block of code causing a production anomaly and trigger an automatic fix cycle.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Human submits requirement (GitHub Issue)                       │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop Step 1: Planner Agent → BA Agent as primary         │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop Step 2: BA Agent loads context                      │
+│  ├─ Infra Layer: Language constraints, access methods           │
+│  └─ Learning Agent: Similar requirement patterns                │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop Step 3: BA Agent structures requirement             │
+│  └─ Creates structured requirement Issue + User stories         │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop Step 4: Deliver output                              │
+│  ├─ Update GitHub Issue with structured requirement             │
+│  └─ Generate RequirementArtifact                                │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Human Gate 1: Review and approve structured requirement        │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop (New Cycle): Blueprint Design                       │
+│  Step 1: Planner Agent → Planning Agent as primary              │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+         [Similar Ralph Loop execution for Blueprint design...]
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Human Gate 1: Approve Blueprint before implementation          │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop (New Cycle): Implementation                         │
+│  Step 1: Planner Agent → Builder/Platform/QA as primary         │
+│  Step 3: Coordinate via Blueprint Blocks                        │
+│  Step 4: Generate BlueprintExecutionReport Artifact             │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  Ralph Loop Step 5: Audit + Governance                          │
+│  ├─ Parallel Audit Agents generate reports                      │
+│  └─ Governance Layer checks gates, makes decision               │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+                    ┌────┴────┐
+                    │ Pass?   │
+                    └────┬────┘
+                   Yes/   \No
+                    /      \
+          ┌─────────┴       └─────────┐
+          ↓                           ↓
+┌──────────────────────┐    ┌──────────────────────┐
+│ Human Gate 2: Review │    │ Fix loop / Escalate  │
+│ & merge to main      │    └──────────────────────┘
+└──────────────────────┘
+          ↓
+┌──────────────────────┐
+│ SRE Agent: Deploy    │
+│ + Monitor            │
+└──────────────────────┘
+```
 
-### 7.3 Inter-Agent Negotiation Protocols
-Developing standardized protocols for agents to "negotiate" resource allocation, API contract changes, and task prioritization without requiring constant human mediation.
+### 6.2 Blueprint Type Workflows
 
-### 7.4 Multi-LLM Orchestration
-Moving beyond a single LLM provider to a dynamic "model router" that selects the most cost-effective and capable model for each specific task (e.g., using a smaller model for documentation and a larger model for complex architectural planning).
+#### 6.2.1 Feature Development Blueprint
+
+**Trigger**: Requirement Issue created
+
+**Ralph Loop Execution**:
+1. **BA Agent** (primary): Structure requirement
+2. **Planning Agent** (primary): Design Blueprint
+3. **Builder Agent** (primary): Implement feature
+4. **QA Agent** + **Security Agent** (parallel): Verify
+5. **Platform Agent** (primary): Deploy
+6. **Governance**: Gates check at each phase
+
+**Human Gates**:
+- Gate 1: Approve structured requirement
+- Gate 2: Approve Blueprint
+- Gate 3: Final review before merge
+
+#### 6.2.2 Bug Fix Blueprint
+
+**Trigger**: Bug Issue created
+
+**Ralph Loop Execution**:
+1. **Planning Agent** (primary): Analyze and design fix
+2. **Builder Agent** (primary): Implement fix
+3. **QA Agent** (primary): Verify fix
+4. **Security Agent** (if needed): Security review
+
+**Human Gates**:
+- Gate 1: Approve fix approach (optional, based on severity)
+- Gate 2: Final review for critical bugs
+
+#### 6.2.3 Incident Response Blueprint
+
+**Trigger**: IncidentDetectedEvent from monitoring
+
+**Ralph Loop Execution**:
+1. **SRE Agent** (primary): Initial response and assessment
+2. **Planning Agent** (if needed): Design fix
+3. **Builder Agent** (if needed): Implement fix
+4. **SRE Agent** (primary): Deploy fix or rollback
+
+**Human Gates**:
+- Gate 1: Major incident decision (escalation threshold)
+- Gate 2: Post-incident review approval
+
+#### 6.2.4 Data Analysis Blueprint
+
+**Trigger**: Analysis request Issue
+
+**Ralph Loop Execution**:
+1. **BA Agent** (primary): Clarify analysis questions
+2. **Learning Agent** (primary): Query historical data
+3. **Doc Agent** (primary): Generate analysis report
+
+**Human Gates**:
+- Gate 1: Approve analysis approach
+- Gate 2: Review and approve findings
+
+### 6.3 RL Environment Integration
+
+**Purpose**: Provide controlled exploration and replay capabilities for QA testing and SRE incident postmortems.
+
+#### 6.3.1 QA Test Exploration
+
+**Scenario**: Explore edge cases in complex state spaces
+
+```yaml
+QA_RL_Environment:
+  state:
+    - "Application state (DB, cache, session)"
+    - "API endpoints and their current states"
+    - "User sessions and authentication tokens"
+
+  actions:
+    - "Generate unusual request sequences"
+    - "Perturb traffic patterns"
+    - "Inject delays or errors"
+
+  rewards:
+    - "Bug discovery: +100"
+    - "Coverage improvement: +10"
+    - "Unexpected behavior exposure: +50"
+    - "Test timeout: -10"
+
+  episode_feedback:
+    - "Record test trajectory"
+    - "Identify failure patterns"
+    - "Store high-value sequences for regression"
+```
+
+**Bounded Execution**:
+- Compute budget limits
+- Time constraints
+- Safety boundaries (no production impact)
+
+#### 6.3.2 SRE Incident Replay
+
+**Scenario**: Evaluate alternative recovery strategies
+
+```yaml
+SRE_RL_Replay_Environment:
+  state:
+    - "Production logs, metrics, traces"
+    - "Deployment metadata"
+    - "Failure progression timeline"
+
+  actions:
+    - "Try alternative rollback paths"
+    - "Test different escalation timings"
+    - "Evaluate recovery strategies"
+
+  rewards:
+    - "Faster recovery: +100"
+    - "Smaller user impact: +50"
+    - "Better communication: +20"
+
+  episode_feedback:
+    - "Recovery trajectory analysis"
+    - "Effective response patterns"
+    - "Operational guidance updates"
+```
+
+**Bounded Execution**:
+- Replay environment isolated from production
+- Time-limited exploration
+- Safety review before applying lessons
 
 ---
-*End of Design Document*
+
+## 7. Governance & The Trust Model
+
+### 7.1 Immutable Audit Logging (The "Black Box")
+
+Every interaction is logged immutably for complete traceability:
+
+```yaml
+Audit_Log_Entry:
+  timestamp: "ISO 8601"
+  agent_id: "agent identifier"
+  action: "action taken"
+
+  inputs:
+    llm_prompts: "prompt content"
+    tool_calls: "API/tool invocations"
+    context_data: "context used"
+
+  outputs:
+    llm_responses: "model responses"
+    tool_results: "tool execution results"
+    artifacts_created: "generated artifacts"
+
+  governance:
+    policy_checks: "gates evaluated"
+    decision: "governance decision"
+    audit_trail: "correlation IDs"
+```
+
+**Audit Log Uses**:
+- Postmortem debugging
+- Accountability attribution
+- Policy refinement
+- Learning Agent input
+
+### 7.2 Hard Gates (Non-Negotiable)
+
+**Quality Gates**:
+- Test coverage ≥ 95%
+- Code smell threshold
+- Technical debt limits
+
+**Security Gates**:
+- No critical vulnerabilities
+- No high-severity vulnerabilities
+- Dependency scan compliance
+
+**Contract Gates**:
+- API contract compliance
+- Schema compatibility
+- Interface consistency
+
+**Process Gates**:
+- Required approvals obtained
+- Audit artifacts present
+- Documentation complete
+
+**Budget Gates**:
+- Token usage ≤ budget
+- Compute time ≤ limit
+- Storage costs ≤ threshold
+
+### 7.3 Governance Decision Flow
+
+```
+Blueprint Execution Complete
+    ↓
+Parallel Audit Agents Generate Reports
+    ↓
+Governance Layer Aggregates Reports
+    ↓
+Evaluate All Gates
+    ↓
+┌───────────┐
+│ All Pass? │
+└─────┬─────┘
+     / \
+   Yes   No
+    /     \
+   ↓       ↓
+Allow    Block
+Progress  Progress
+   |       |
+   ↓       ↓
+Notify   Require Fix
+Human +  / Escalate
+Review
+```
+
+### 7.4 Escalation Paths
+
+**Automatic Escalation Triggers**:
+- Budget exceeded
+- Fix loop non-convergence
+- Policy conflict unresolvable
+- Critical system failure
+
+**Escalation Process**:
+1. System halts automated execution
+2. Generates EscalationRequiredEvent
+3. Creates Issue for human intervention
+4. Provides context and recommendations
+5. Waits for human resolution
+
+---
+
+## 8. Implementation Considerations
+
+### 8.1 Technology Stack
+
+**Event Bus**:
+- Options: Kafka, RabbitMQ, AWS EventBridge, GitHub Events API
+- Recommendation: Start with GitHub Events API, scale to dedicated event bus
+
+**Agent Runtime**:
+- Options: Claude Code Teams, LangGraph, AutoGen, custom framework
+- Recommendation: Claude Code Teams for orchestration, specialized agents for execution
+
+**Storage**:
+- Artifacts: S3, GCS, or GitHub Releases
+- Audit Logs: Immutable storage (S3 with WORM, database with append-only)
+- Knowledge Base: Vector database (Chroma, Pinecone) + Document store
+
+**Pipeline System**:
+- CI: GitHub Actions, GitLab CI, Jenkins
+- CD: Flux (GitOps), ArgoCD, custom deployment controller
+
+### 8.2 Deployment Phases
+
+**Phase 1: MVP (Minimum Viable Platform)**
+- Single repository support
+- Core agents: BA, Planning, Builder, QA
+- Basic governance: Quality gates only
+- Manual HITL gates
+
+**Phase 2: Enhanced Coverage**
+- Multi-repository support
+- Additional agents: Security, Platform, Doc
+- Full governance: All gates
+- Automated escalation
+
+**Phase 3: Advanced Features**
+- RL environment integration
+- Multi-LLM orchestration
+- Advanced negotiation protocols
+- Full autonomous operations
+
+### 8.3 Success Metrics
+
+**Velocity Metrics**:
+- Time from requirement to production
+- Blueprint execution success rate
+- Agent utilization rate
+
+**Quality Metrics**:
+- Test coverage percentage
+- Defect escape rate
+- Security vulnerability count
+
+**Efficiency Metrics**:
+- Token usage per feature
+- Compute resource utilization
+- Human intervention frequency
+
+**Learning Metrics**:
+- Repeat mistake reduction
+- Pattern reuse rate
+- Knowledge base growth
+
+---
+
+## 9. Appendix
+
+### 9.1 Blueprint Block Library Reference
+
+**Development Blocks**:
+- `block_code_analysis`: Static code analysis
+- `block_unit_test`: Unit test generation
+- `block_integration_test`: Integration test creation
+- `block_code_review`: Automated code review
+
+**Verification Blocks**:
+- `block_security_scan`: SAST/DAST scanning
+- `block_qa_validation`: QA testing
+- `block_contract_check`: API contract verification
+
+**Deployment Blocks**:
+- `block_build`: Build artifact creation
+- `block_canary_deploy`: Canary deployment
+- `block_rollback`: Rollback procedure
+
+**Documentation Blocks**:
+- `block_api_doc`: API documentation
+- `block_changelog`: Change log generation
+- `block_diagram_update`: Architecture diagram updates
+
+**Operations Blocks**:
+- `block_monitoring`: Monitoring configuration
+- `block_incident_response`: Incident handling
+- `block_postmortem`: Post-incident analysis
+
+### 9.2 Event Type Reference
+
+**Issue Events**:
+- `IssueCreatedEvent`
+- `IssueUpdatedEvent`
+- `IssueClosedEvent`
+
+**Pipeline Events**:
+- `PipelineStartedEvent`
+- `PipelineCompletedEvent`
+- `PipelineFailedEvent`
+
+**Blueprint Events**:
+- `BlueprintCreatedEvent`
+- `BlueprintStartedEvent`
+- `BlueprintCompletedEvent`
+
+**Block Events**:
+- `BlockAssignedEvent`
+- `BlockStartedEvent`
+- `BlockCompletedEvent`
+- `BlockFailedEvent`
+
+**Audit Events**:
+- `AuditRequestedEvent`
+- `AuditCompletedEvent`
+
+**Governance Events**:
+- `GatePassedEvent`
+- `GateFailedEvent`
+- `EscalationRequiredEvent`
+
+### 9.3 Glossary Quick Reference
+
+| Term | Definition |
+|------|------------|
+| **Blueprint** | End-to-end executable plan composed of reusable blocks |
+| **Event** | Internal EDA message with type-specific payload |
+| **Issue** | GitHub entity representing requirement/task/bug |
+| **Task** | Atomic work unit as independent GitHub Issue |
+| **Pipeline** | Independent CI/CD workflow |
+| **Artifact** | Traceable work product with unified structure |
+| **Agent** | Specialized AI execution unit |
+| **Commit** | Version control record and event trigger |
+| **Ralph Loop** | 5-step event processing framework |
+| **EEF** | Enterprise Environmental Factors (Infra Dependency Layer) |
+| **HITL** | Human-in-the-Loop checkpoint |
+
+---
+
+*End of Design Document v2.0*
+
+**Next Steps**:
+1. Review and approve this document
+2. Create implementation roadmap
+3. Define MVP feature set
+4. Begin Phase 1 development
+
+**Document Status**: Draft for Review
+**Last Updated**: 2026-03-22
+**Review Target**: 2026-03-29
