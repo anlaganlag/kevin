@@ -19,6 +19,8 @@ The **Agentic SDLC** represents a paradigm shift where AI agents are the primary
 ### 1.2 Core Philosophy: AI as Execution, Human as Orchestrator
 The system is built on the belief that code generation, testing, infrastructure management, and documentation should be handled autonomously by specialized agents working in parallel. Humans provide the high-level intent (raw ideas/requirements) and maintain control through strategic "Go/No-Go" gates, ensuring the system remains aligned with business goals and safety standards.
 
+In practice, this means the Agentic SDLC is designed around four reinforcing ideas: the repository as the operational control plane, specialized agents with narrowly scoped duties, independent governance that validates rather than builds, and explicit human checkpoints at the moments where accountability must remain human.
+
 ### 1.3 Architectural Foundations
 The Agentic SDLC is built on five core architectural principles:
 
@@ -271,7 +273,11 @@ CommitPushedEvent:
 
 ### 4.1 Architectural Overview
 
-The Agentic SDLC architecture is organized into five distinct layers:
+The Agentic SDLC architecture is organized into five distinct layers. To provide comprehensive understanding, we present two architectural views:
+
+#### View 1: Layered Architecture (Process Perspective)
+
+This view emphasizes the **sequential flow** of the Ralph Loop and how Events propagate through the system:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -291,6 +297,78 @@ The Agentic SDLC architecture is organized into five distinct layers:
 │   (Static constraints + Dynamic runtime state)                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Use this view to understand**:
+- How Events flow from bottom to top through the system
+- The sequential execution order of the Ralph Loop (5 steps)
+- Clear separation of concerns across layers
+- Input/output relationships between layers
+
+#### View 2: Cross-Cutting Architecture (Monitoring Perspective)
+
+This view emphasizes the ** pervasive monitoring** and governance capabilities that span all layers:
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │     Governance & Audit Layer          │
+                    │  (Cross-Cutting Oversight)            │
+                    └──────────────┬────────────────────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        │                          │                          │
+        ↓                          ↓                          ↓
+┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐
+│ 5. Agent          │    │ 4. Event-Driven   │    │ 3. Standard       │
+│    Orchestration   │    │    Architecture   │    │    Interfaces     │
+│    Layer           │    │    (EDA)          │    │    Layer          │
+│                   │    │                   │    │                   │
+│ ┌───────────────┐ │    │ ┌───────────────┐ │    │ ┌───────────────┐ │
+│ │ Real-time     │ │    │ │ Event         │ │    │ │ Interface     │ │
+│ │ Gate Checks  │◄┼────┼─┤ Validation    │◄┼────┼─┤ Compliance   │ │
+│ └───────────────┘ │    │ └───────────────┘ │    │ └───────────────┘ │
+└───────────────────┘    └───────────────────┘    └───────────────────┘
+        │                          │                          │
+        └──────────────────────────┼──────────────────────────┘
+                                   ↓
+                    ┌─────────────────────────────────────────┐
+                    │  2. Infra Dependency Layer (EEF)       │
+                    │  ┌─────────────────────────────────┐   │
+                    │  │ Static + Dynamic Constraints     │   │
+                    │  │ Gate Enforcement               │◄──┼───┐
+                    │  └─────────────────────────────────┘   │   │
+                    └─────────────────────────────────────────┘   │
+                                                                    │
+                    ┌─────────────────────────────────────────┐   │
+                    │    Governance Monitoring Points:        │   │
+                    │    ✓ Real-time agent execution          │◄──┴───┘
+                    │    ✓ Event validation & routing         │
+                    │    ✓ Interface compliance checks        │
+                    │    ✓ Infrastructure constraint enforcement│
+                    │    ✓ Final gate enforcement (Ralph Step 5)│
+                    └─────────────────────────────────────────┘
+```
+
+**Use this view to understand**:
+- How Governance provides **continuous oversight** across all layers
+- The multiple **monitoring points** where gates are enforced
+- The **cross-cutting nature** of audit and policy enforcement
+- How real-time validation happens throughout the system, not just at the end
+
+#### Key Architectural Insight
+
+**The dual nature of Governance & Audit**:
+
+While depicted as Layer 5 in the **Layered Architecture View** for clarity of sequential flow, the Governance & Audit Layer actually operates as a **cross-cutting concern** that provides oversight at multiple points:
+
+- **Real-time monitoring**: During agent execution (Layer 4)
+- **Event validation**: In the EDA system (Layer 3)
+- **Interface compliance**: For standard interfaces (Layer 2)
+- **Infrastructure enforcement**: Of Infra Layer constraints (Layer 1)
+- **Final gates**: At end of Ralph Loop (Layer 5 as depicted)
+
+This dual representation ensures both:
+1. **Process clarity** (Layered View): Clear understanding of Ralph Loop flow
+2. **Governance reality** (Cross-Cutting View): Accurate representation of pervasive oversight
 
 ### 4.2 Layer 1: Infra Dependency Layer (EEF)
 
@@ -871,7 +949,30 @@ Audit_and_Governance:
 
 **Purpose**: Independent verification layer that ensures system integrity through separation of concerns.
 
-#### 4.6.1 Audit Agents (Fact-Finders)
+**Architectural Note**: While this layer is depicted as "Layer 5" in the **Layered Architecture View** (to show the sequential flow of Ralph Loop Step 5), it actually operates as a **cross-cutting concern** that provides oversight throughout the system. See the **Cross-Cutting Architecture View** in Section 4.1 for a complete picture of how Governance monitors across all layers.
+
+#### 4.6.1 Cross-Cutting Governance Model
+
+The Governance & Audit Layer operates at multiple points in the system, not just at the end:
+
+**Real-Time Monitoring Points**:
+- **Agent Execution** (Layer 4): Real-time gate checks during Ralph Loop execution
+- **Event Validation** (Layer 3): Event routing validation and policy checks
+- **Interface Compliance** (Layer 2): Standard interface compliance verification
+- **Infrastructure Enforcement** (Layer 1): Static and dynamic constraint enforcement
+- **Final Gates** (Layer 5): End-to-end gate enforcement in Ralph Loop Step 5
+
+**Why Cross-Cutting Matters**:
+- **Early Detection**: Issues are caught early, not just at the end
+- **Continuous Compliance**: Policies are enforced throughout, not just at gate reviews
+- **Pervasive Oversight**: Governance has visibility into all system activities
+- **Dynamic Response**: Can trigger immediate action when violations are detected
+
+**Dual Representation Benefits**:
+1. **Layered View**: Shows the sequential flow and final decision point (Ralph Loop Step 5)
+2. **Cross-Cutting View**: Shows the continuous monitoring and enforcement across all layers
+
+#### 4.6.2 Audit Agents (Fact-Finders)
 
 **Role**: Generate factual audit reports without decision-making authority.
 
