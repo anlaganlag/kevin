@@ -1,0 +1,349 @@
+# 质量门禁约束
+# 定义 CI/CD 流水线中的质量门禁要求
+
+constraints:
+  quality_gates:
+    # 测试覆盖率
+    test_coverage:
+      minimum: 95
+      threshold: "hard_gate"  # hard_gate | soft_gate | advisory
+      per_module: false
+      exclude_patterns:
+        - "*/mocks/*"
+        - "*/generated/*"
+        - "*/test/*"
+        - "*/vendor/*"
+
+      coverage_type:
+        - "statement"
+        - "branch"
+        - "function"
+
+      new_code_coverage:
+        minimum: 100  # 新代码必须 100% 覆盖
+        threshold: "hard_gate"
+
+    # 代码质量
+    code_quality:
+      # 复杂度
+      max_complexity: 10
+      max_function_length: 50
+      max_file_length: 500
+      max_nesting_depth: 4
+
+      # 代码异味
+      code_smells:
+        max_total: 5
+        critical: 0
+        major: 2
+        minor: 5
+
+      # 重复代码
+      duplication:
+        max_duplication_percentage: 3
+        threshold: "soft_gate"
+
+      # 技术债务
+      technical_debt:
+        max_ratio: 0.05  # 5%
+        max_new_debt: "1 hour"
+        threshold: "advisory"
+
+    # 安全扫描
+    security_scan:
+      sast:
+        required: true
+        tools: ["semgrep", "sonarqube"]
+        fail_threshold: "high"
+        block_on_critical: true
+        block_on_high: true
+
+      dast:
+        required: true
+        tools: ["owasp_zap"]
+        fail_threshold: "medium"
+        scan_frequency: "on_pr"
+
+      dependency_scan:
+        required: true
+        tools: ["snyk", "dependabot", "trivy"]
+        fail_threshold: "high"
+        auto_fix_minor: true
+        manual_fix_major: true
+
+      secrets_scan:
+        required: true
+        tools: ["gitleaks", "trivy"]
+        fail_threshold: "critical"
+        scan_history: true
+
+      container_scan:
+        required: true
+        tools: ["trivy"]
+        fail_threshold: "high"
+        scan_base_images: true
+
+    # 漏洞阈值
+    vulnerabilities:
+      critical: 0
+      high: 0
+      medium: 3
+      low: 10
+      threshold: "hard_gate"
+
+      false_positives:
+        require_documentation: true
+        require_approval: "security_lead"
+
+    # 性能测试
+    performance:
+      response_time:
+        p50: 100   # ms
+        p95: 200   # ms
+        p99: 500   # ms
+        threshold: "soft_gate"
+
+      throughput:
+        min_rps: 1000  # requests per second
+        threshold: "advisory"
+
+      resource_usage:
+        max_memory_mb: 512
+        max_cpu_percent: 80
+        threshold: "soft_gate"
+
+      memory_leak:
+        check: true
+        threshold: "hard_gate"
+
+    # 集成测试
+    integration_tests:
+      required: true
+      min_pass_rate: 100  # 必须全部通过
+      threshold: "hard_gate"
+
+      test_environments:
+        - name: "staging"
+          required: true
+        - name: "pre-prod"
+          required: false
+
+    # E2E 测试
+    e2e_tests:
+      required: true
+      min_pass_rate: 100
+      critical_paths_only: true
+      threshold: "hard_gate"
+
+      test_scenarios:
+        - "user_registration"
+        - "user_login"
+        - "checkout_process"
+
+    # 文档
+    documentation:
+      api_docs_required: true
+      readme_required: true
+      changelog_required: true
+      architecture_doc_required: false
+
+      doc_standards:
+        api_docs: "OpenAPI 3.0"
+        readme_sections:
+          - "Installation"
+          - "Usage"
+          - "Examples"
+          - "Contributing"
+
+    # 代码审查
+    code_review:
+      required: true
+      min_reviewers: 2
+      min_approval_ratio: 0.67  # 2/3 必须批准
+
+      reviewer_types:
+        - "tech_lead"
+        - "domain_expert"
+        - "security_reviewer"  # 对于敏感代码
+
+      review_checks:
+        - "design_review"
+        - "security_review"
+        - "performance_review"
+        - "testing_review"
+
+    # 构建质量
+    build_quality:
+      max_build_duration: "30min"
+      max_build_size_mb: 500
+      threshold: "soft_gate"
+
+      build_artifacts:
+        required:
+          - "docker_image"
+          - "test_report"
+          - "coverage_report"
+          - "security_scan_report"
+
+    # 依赖质量
+    dependency_quality:
+      allow_deprecated: false
+      allow_unmaintained: false
+      min_maintenance_months: 6
+      threshold: "hard_gate"
+
+      license_check:
+        allowed_licenses:
+          - "MIT"
+          - "Apache-2.0"
+          - "BSD-3-Clause"
+        threshold: "hard_gate"
+
+    # 环境一致性
+    environment_consistency:
+      require_same_versions: true
+      config_drift_check: true
+      threshold: "soft_gate"
+
+      environments:
+        - name: "development"
+          required_checks: ["build", "unit_tests"]
+
+        - name: "staging"
+          required_checks: ["build", "all_tests", "security_scan"]
+
+        - name: "production"
+          required_checks: ["all_checks", "manual_approval"]
+
+  # 门禁执行策略
+  enforcement:
+    level: "strict"  # strict | moderate | lenient
+
+    pre_commit:
+      - "formatting_check"
+      - "linting_quick"
+      - "secrets_scan"
+
+    pre_push:
+      - "unit_tests"
+      - "coverage_check"
+      - "linting_full"
+
+    pre_merge:
+      - "all_checks"
+      - "code_review"
+      - "security_review"
+
+    pre_deploy:
+      - "integration_tests"
+      - "e2e_tests"
+      - "performance_tests"
+
+    blocking_policy:
+      block_on_failure: true
+      allow_override: false
+      require_approval_for_override: "tech_lead"
+
+    notification:
+      on_failure: true
+      on_recovery: true
+      channels: ["slack", "email"]
+
+  # 质量趋势
+  quality_trends:
+    track_metrics: true
+    retention_days: 90
+    alert_on_degradation: true
+
+    degradation_threshold:
+      coverage: -2  # 覆盖率下降 2%
+      vulnerabilities: +1  # 新增 1 个高危漏洞
+      build_time: +10  # 构建时间增加 10%
+
+  # 例外管理
+  exceptions:
+    temporary_exceptions:
+      allow: true
+      max_duration_days: 30
+      require_documentation: true
+      require_approval: "quality_lead"
+
+    permanent_exceptions:
+      allow: false
+      require_architectural_approval: true
+      require_migration_plan: true
+
+  # 质量报告
+  reporting:
+    generate_reports: true
+    formats:
+      - "html"
+      - "json"
+      - "xml"
+
+    report_content:
+      - "summary"
+      - "test_results"
+      - "coverage"
+      - "security_scan"
+      - "performance"
+      - "trends"
+
+    retention:
+      days: 90
+      storage: "s3://quality-reports/"
+
+  # 持续改进
+  continuous_improvement:
+    review_gates: "quarterly"
+    update_thresholds: "quarterly"
+    team_training: "monthly"
+
+    improvement_tracking:
+      track_false_positives: true
+      track_exception_requests: true
+      track_blocker_reasons: true
+
+  # 工具配置
+  tools:
+    code_quality:
+      sonarqube:
+        enabled: true
+        server: "https://sonarqube.example.com"
+        quality_profile: "strict"
+        quality_gate: "strict"
+
+    testing:
+      junit:
+        enabled: true
+        version: "5.x"
+
+      coverage:
+        tool: "go-test"
+        format: "html"
+
+    security:
+      snyk:
+        enabled: true
+        severity: "high"
+
+      dependabot:
+        enabled: true
+        auto_fix: "minor"
+
+    performance:
+      jmeter:
+        enabled: true
+        scenarios: "standard_load"
+
+  # 合规性
+  compliance:
+    standards:
+      - "ISO27001"
+      - "SOC2"
+      - "GDPR"
+
+    audit_trail:
+      enabled: true
+      retention_days: 365
+      immutable: true

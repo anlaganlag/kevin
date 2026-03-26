@@ -1,0 +1,301 @@
+# OWASP Top 10 安全规则
+# 基于 OWASP Top 10 2021
+
+rules:
+  security:
+    owasp_top_10:
+      # A01:2021 – Broken Access Control
+      access_control:
+        enforce_authentication: true
+        authorize_all_requests: true
+        limit_admin_access: true
+        check_user_ownership: true
+        no_hardcoded_admin: true
+
+        validation:
+          check: "every_api_endpoint"
+          tools: ["static_analysis", "runtime_checks"]
+          severity: "critical"
+
+      # A02:2021 – Cryptographic Failures
+      cryptography:
+        encrypt_sensitive_data: true
+        use_strong_encryption: "AES-256-GCM"
+        no_hardcoded_secrets: true
+        tls_required: true
+        min_tls_version: "1.3"
+        no_weak_ciphers: true
+
+        secrets_detection:
+          patterns:
+            - pattern: "password\\s*=\\s*['\"].+['\"]"
+              severity: "critical"
+            - pattern: "api_key\\s*=\\s*['\"].+['\"]"
+              severity: "critical"
+            - pattern: "secret\\s*=\\s*['\"].+['\"]"
+              severity: "critical"
+            - pattern: "token\\s*=\\s*['\"].+['\"]"
+              severity: "warning"
+
+        key_management:
+          use_vault: true
+          no_secrets_in_code: true
+          rotate_keys: true
+          key_rotation_days: 90
+
+      # A03:2021 – Injection
+      injection:
+        use_parameterized_queries: true
+        validate_input: true
+        escape_output: true
+        no_sql_concatenation: true
+        no_command_injection: true
+
+        sql_injection:
+          check: "all_database_queries"
+          patterns:
+            - pattern: "SELECT.*FROM.*WHERE.*\\+.*'"
+              severity: "critical"
+              description: "检测到 SQL 字符串拼接"
+            - pattern: "exec\\(.*user_input.*\\)"
+              severity: "critical"
+              description: "检测到命令注入风险"
+
+        input_validation:
+          sanitize_all_input: true
+          whitelist_approach: true
+          max_input_length: true
+          type_validation: true
+
+      # A04:2021 – Insecure Design
+      secure_design:
+        threat_modeling: true
+        security_review: true
+        principle_of_least_privilege: true
+        defense_in_depth: true
+        secure_by_default: true
+
+      # A05:2021 – Security Misconfiguration
+      secure_configuration:
+        no_default_credentials: true
+        disable_debug_mode: true
+        secure_headers: true
+        cors_restriction: true
+        no_leaking_stack_traces: true
+
+        headers:
+          required:
+            - name: "Strict-Transport-Security"
+              value: "max-age=31536000; includeSubDomains"
+            - name: "X-Content-Type-Options"
+              value: "nosniff"
+            - name: "X-Frame-Options"
+              value: "DENY"
+            - name: "Content-Security-Policy"
+              value: "default-src 'self'"
+            - name: "X-XSS-Protection"
+              value: "1; mode=block"
+
+        cors:
+          allowed_origins: "whitelist_only"
+          no_wildcard_origins: true
+          credentials_mode: "same-origin"
+
+      # A06:2021 – Vulnerable and Outdated Components
+      dependency_management:
+        scan_dependencies: true
+        update_dependencies: true
+        no_vulnerable_versions: true
+        license_check: true
+
+        vulnerability_scan:
+          tools: ["snyk", "dependabot", "trivy"]
+          fail_on_severity: "high"
+          auto_update_minor: true
+          manual_update_major: true
+
+        known_vulnerabilities:
+          check_database: "https://osv.dev"
+          check_frequency: "daily"
+
+      # A07:2021 – Identification and Authentication Failures
+      authentication:
+        password_policy:
+          min_length: 12
+          require_special_char: true
+          require_number: true
+          require_uppercase: true
+          require_lowercase: true
+          no_common_passwords: true
+          no_user_info_in_password: true
+
+        session_management:
+          timeout: 1800  # 30 分钟
+          secure_cookies: true
+          httponly_cookies: true
+          samesite_cookies: "strict"
+          regenerate_on_login: true
+          regenerate_on_privilege_escalation: true
+
+        authentication_attempts:
+          max_attempts: 5
+          lockout_duration: 900  # 15 分钟
+          progressive_delay: true
+
+        multi_factor_auth:
+          required_for_admin: true
+          required_for_api: true
+          totp_enabled: true
+
+      # A08:2021 – Software and Data Integrity Failures
+      integrity:
+        verify_signatures: true
+        checksum_validation: true
+        immutable_logs: true
+        tamper_detection: true
+
+        code_signing:
+          sign_releases: true
+          verify_dependencies: true
+          secure_supply_chain: true
+
+      # A09:2021 – Security Logging and Monitoring Failures
+      logging:
+        log_auth_events: true
+        log_failures: true
+        log_admin_actions: true
+        log_data_access: true
+        audit_trail: true
+
+        log_fields:
+          required:
+            - "timestamp"
+            - "user_id"
+            - "action"
+            - "result"
+            - "ip_address"
+          forbidden:
+            - "password"
+            - "credit_card"
+            - "ssn"
+
+        monitoring:
+          alert_on_suspicious: true
+          alert_on_failures: true
+          alert_on_anomalies: true
+
+      # A10:2021 – Server-Side Request Forgery (SSRF)
+      ssrf_protection:
+        validate_urls: true
+        block_private_ips: true
+        network_segmentation: true
+        allowlist_only: true
+
+        url_validation:
+          check_local: true
+          check_private: true
+          check_link_local: true
+          check_loopback: true
+
+        blocked_ranges:
+          - "127.0.0.0/8"
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+          - "169.254.0.0/16"
+          - "::1/128"
+          - "fe80::/10"
+
+  enforcement:
+    level: "strict"  # strict | moderate | advisory
+    block_violations: true
+    auto_fix: false
+    require_approval_for_exceptions: true
+
+  # 安全扫描工具配置
+  tools:
+    sast:
+      enabled: true
+      tools:
+        - name: "semgrep"
+          ruleset: "owasp-top-10"
+        - name: "sonarqube"
+          profile: "sonar-security"
+        - name: "codeql"
+          queries: "security-extended"
+
+    dast:
+      enabled: true
+      tools:
+        - name: "owasp_zap"
+          scan_mode: "spider"
+        - name: "burp_suite"
+          scan_level: "normal"
+
+    dependency_scan:
+      enabled: true
+      tools:
+        - name: "snyk"
+          severity: "high"
+        - name: "dependabot"
+          auto_fix: "minor"
+        - name: "trivy"
+          scan_secrets: true
+
+    secrets_scan:
+      enabled: true
+      tools:
+        - name: "gitleaks"
+          scan_history: true
+        - name: "trivy"
+          scan_secrets: true
+
+  # 安全门禁
+  gates:
+    pre_commit:
+      - "secrets_scan"
+      - "sast_quick_scan"
+
+    pre_push:
+      - "secrets_scan"
+      - "sast_full_scan"
+      - "dependency_scan"
+
+    pre_merge:
+      - "all_security_checks"
+      - "dast_scan"
+      - "manual_security_review"
+
+  # 例外管理
+  exceptions:
+    process:
+      require_documentation: true
+      require_approval: "security_lead"
+      temporary_only: true
+      max_duration_days: 30
+      auto_expire: true
+
+    documentation_required:
+      - "risk_assessment"
+      - "mitigation_plan"
+      - "expiration_date"
+      - "approval_signoff"
+
+  # 培训和意识
+  training:
+    required_for:
+      - "developers"
+      - "architects"
+      - "devops"
+      - "qa_engineers"
+
+    frequency:
+      initial_training: "onboarding"
+      refresher_training: "quarterly"
+      update_training: "on_policy_change"
+
+    topics:
+      - "owasp_top_10"
+      - "secure_coding"
+      - "threat_modeling"
+      - "incident_response"

@@ -1,0 +1,131 @@
+# 快速配置概要
+# 优先保证速度
+
+profile:
+  name: "fast_profile"
+  description: "快速迭代配置概要，优先保证速度"
+  extends: "default_profile"
+
+  # 覆盖规则配置
+  rules_overrides:
+    testing:
+      # 只要求基本的测试
+      - ".agentic/rules/testing/unit_tests.yaml"
+
+    security:
+      # 基本安全扫描
+      scan_frequency: "daily"
+
+  # 覆盖约束配置
+  constraints_overrides:
+    quality_gates:
+      test_coverage:
+        minimum: 80  # 降低覆盖率要求
+        threshold: "soft_gate"  # 改为软门禁
+
+      security_scan:
+        fail_threshold: "critical"  # 只阻止 critical 级别
+        medium_as_warning: true
+
+      code_quality:
+        max_complexity: 15  # 放宽复杂度限制
+        threshold: "advisory"
+
+  # 配置概要设置
+  settings:
+    quality_vs_speed: "speed_first"
+    quality_weight: 0.3
+    speed_weight: 0.7
+
+    security_level: "basic"
+    security_strictness: 0.5
+
+    testing_depth: "minimal"
+    test_coverage_requirement: 80
+    integration_tests_required: false
+    e2e_tests_required: false
+
+    documentation_level: "minimal"
+    api_docs_required: false
+    readme_required: true
+
+    code_review_required: true
+    min_reviewers: 1
+    security_review_required: false
+
+    automation_level: "very_high"
+    auto_fix_style: true
+    auto_dependency_update: "patch"
+    auto_merge_on_success: false
+
+  # 门禁配置（更宽松）
+  gates:
+    pre_commit:
+      - "formatting"
+      - "secrets_scan"
+
+    pre_push:
+      - "unit_tests"
+      - "coverage_basic"
+
+    pre_merge:
+      - "unit_tests"
+      - "basic_lint"
+      - "secrets_scan"
+      - "code_review"
+
+    pre_deploy:
+      - "smoke_tests"  # 只要求冒烟测试
+      - "manual_approval"
+
+  # 质量指标（更宽松）
+  quality_metrics:
+    test_coverage:
+      target: 80
+      warning: 70
+      error: 60
+
+    code_quality:
+      max_complexity: 15
+      max_code_smells: 10
+      max_duplication: 5
+
+    security:
+      max_vulnerabilities:
+        critical: 0
+        high: 1
+        medium: 5
+        low: 20
+
+    performance:
+      max_build_time: "60min"
+      max_test_time: "30min"
+
+  # 审查要求（更宽松）
+  review_requirements:
+    min_reviewers: 1
+    require_expert_review: false
+    require_security_review: false
+    require_performance_review: false
+
+    reviewer_types:
+      - "any_developer"
+
+    approval_criteria:
+      all_reviewers_must_approve: false
+      require_resolution_of_blockers_only: true
+
+  # 安全要求（基本）
+  security_requirements:
+    penetration_testing:
+      required: false
+
+    threat_modeling:
+      required: false
+
+    security_training:
+      required: true
+      frequency: "annually"
+
+    compliance:
+      - "basic_security_policy"

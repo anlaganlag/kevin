@@ -1,0 +1,152 @@
+# 严格配置概要
+# 优先保证质量和安全
+
+profile:
+  name: "strict_profile"
+  description: "严格配置概要，优先保证质量和安全"
+  extends: "default_profile"
+
+  # 覆盖规则配置
+  rules_overrides:
+    security:
+      # 使用更严格的安全规则
+      enforcement_level: "very_strict"
+      block_all_vulnerabilities: true
+
+    testing:
+      # 额外的测试要求
+      - ".agentic/rules/testing/integration_tests.yaml"
+      - ".agentic/rules/testing/e2e_tests.yaml"
+
+  # 覆盖约束配置
+  constraints_overrides:
+    quality_gates:
+      test_coverage:
+        minimum: 98  # 覆盖默认的 95
+        threshold: "hard_gate"
+
+      security_scan:
+        fail_threshold: "medium"  # 覆盖默认的 "high"
+        block_on_medium: true
+
+      performance:
+        max_response_time_p95: 100  # 更严格的性能要求
+        threshold: "hard_gate"
+
+  # 配置概要设置
+  settings:
+    quality_vs_speed: "quality_first"
+    quality_weight: 0.9
+    speed_weight: 0.1
+
+    security_level: "strict"
+    security_strictness: 0.95
+
+    testing_depth: "comprehensive"
+    test_coverage_requirement: 98
+    integration_tests_required: true
+    e2e_tests_required: true
+
+    documentation_level: "comprehensive"
+    api_docs_required: true
+    architecture_doc_required: true
+    troubleshooting_guide_required: true
+
+    code_review_required: true
+    min_reviewers: 3
+    security_review_required: true
+    performance_review_required: true
+
+    automation_level: "moderate"
+    auto_fix_style: true
+    manual_review_for_security: true
+
+  # 门禁配置（更严格）
+  gates:
+    pre_commit:
+      - "formatting"
+      - "quick_lint"
+      - "secrets_scan"
+      - "unit_tests_quick"
+
+    pre_push:
+      - "unit_tests_full"
+      - "integration_tests"
+      - "coverage"
+      - "full_lint"
+      - "security_scan_quick"
+
+    pre_merge:
+      - "all_tests"
+      - "security_scan_full"
+      - "dependency_scan"
+      - "code_review"
+      - "security_review"
+      - "performance_review"
+
+    pre_deploy:
+      - "integration_tests"
+      - "e2e_tests"
+      - "performance_tests"
+      - "security_penetration_test"
+      - "manual_approval"
+
+  # 质量指标（更严格）
+  quality_metrics:
+    test_coverage:
+      target: 98
+      warning: 95
+      error: 90
+
+    code_quality:
+      max_complexity: 8  # 更严格的复杂度限制
+      max_code_smells: 2
+      max_duplication: 1
+
+    security:
+      max_vulnerabilities:
+        critical: 0
+        high: 0
+        medium: 0  # 更严格的漏洞限制
+        low: 5
+
+    performance:
+      max_build_time: "20min"
+      max_test_time: "10min"
+      max_response_time_p99: 300  # ms
+
+  # 审查要求（更严格）
+  review_requirements:
+    min_reviewers: 3
+    require_expert_review: true
+    require_security_review: true
+    require_performance_review: true
+
+    reviewer_types:
+      - "tech_lead"
+      - "security_expert"
+      - "domain_expert"
+
+    approval_criteria:
+      all_reviewers_must_approve: true
+      require_resolution_of_all_comments: true
+
+  # 安全要求（更严格）
+  security_requirements:
+    penetration_testing:
+      required: true
+      frequency: "on_release"
+
+    threat_modeling:
+      required: true
+      update_frequency: "quarterly"
+
+    security_training:
+      required: true
+      frequency: "quarterly"
+
+    compliance:
+      - "SOC2"
+      - "ISO27001"
+      - "GDPR"
+      - "HIPAA"  # 如果适用
