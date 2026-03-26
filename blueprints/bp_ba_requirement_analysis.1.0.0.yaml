@@ -397,10 +397,12 @@ blueprint:
             - block_id: "B8"
               name: "export_and_publish"
               assigned_to: "BA_Agent"
-              dependencies: ["B5", "B6", "B7"]
+              dependencies: ["B5", "B6"]
+              optional_dependencies: ["B7"]
+              skip_resolves_dependency: true
               skills: ["artifact_generation", "event_publishing"]
               implementation: "export_service.py + event publisher"
-              output: "Structured artifacts committed to repo + RequirementApprovedEvent published"
+              output: "Structured artifacts committed to repo (event published after audit in step_5)"
               estimated_duration: "5m"
 
           execution_order: "B1 → B2 → B3 → B4(HITL) → B5 → (B6 + B7 conditional parallel) → B8"
@@ -434,20 +436,9 @@ blueprint:
                 remove: ["in-progress"]
                 add: ["completed", "ready-for-hitl-gate-0"]
 
-          - type: "event"
-            event_type: "RequirementApprovedEvent"
-            description: "Published to trigger PlanningAgent (bp_architecture_blueprint_design)"
-            payload:
-              issue_id: "{issue_id}"
-              epic_id: "{epic_id}"
-              project_id: "{project_id}"
-              brd_location: "requirements/brd_{issue_id}.md"
-              user_stories_location: "requirements/user_stories_{issue_id}.md"
-              prd_location: "requirements/prd_{issue_id}.md"
-              features_location: "requirements/features_{issue_id}.json"
-              interview_transcript_location: "requirements/interview_{issue_id}.md"
-              feature_count: "{feature_count}"
-              analysis_quality_score: "{quality_score}"
+          # NOTE: RequirementApprovedEvent is NOT published here.
+          # It is published in step_5 AFTER audit gates pass.
+          # This prevents downstream PlanningAgent from receiving unaudited requirements.
 
           - type: "artifact"
             artifact_type: "requirement_analysis_report"
@@ -512,6 +503,32 @@ blueprint:
             status: "passed | failed"
             reason: "Decision rationale"
             action: "Publish RequirementApprovedEvent to PlanningAgent | Block and request rework"
+
+          # Event published ONLY after all gates pass
+          on_passed:
+            - type: "event"
+              event_type: "RequirementApprovedEvent"
+              description: "Published to trigger PlanningAgent (bp_architecture_blueprint_design)"
+              payload:
+                issue_id: "{issue_id}"
+                epic_id: "{epic_id}"
+                project_id: "{project_id}"
+                brd_location: "requirements/brd_{issue_id}.md"
+                user_stories_location: "requirements/user_stories_{issue_id}.md"
+                prd_location: "requirements/prd_{issue_id}.md"
+                features_location: "requirements/features_{issue_id}.json"
+                interview_transcript_location: "requirements/interview_{issue_id}.md"
+                feature_count: "{feature_count}"
+                analysis_quality_score: "{quality_score}"
+
+          on_failed:
+            - type: "event"
+              event_type: "RequirementRejectedEvent"
+              description: "Audit failed — rework required before downstream handoff"
+              payload:
+                issue_id: "{issue_id}"
+                failure_reasons: "{gate_failure_details}"
+                action: "Re-run interview for incomplete features or escalate to human"
 
   # ================================================================
   # 7. Completion Criteria and Output
@@ -843,6 +860,10 @@ blueprint:
         condition: "feature_completeness < 95% after interview"
         action: "Re-run interview for incomplete features; max 2 retry cycles"
 
+      - trigger: "downstream_rejection"
+        condition: "PlanningAgent publishes RequirementRejectedEvent"
+        action: "Re-open interview (B4) for rejected features; re-generate PRD (B5); max 1 rework cycle then escalate to human"
+
     escalation_process:
       step_1: "System pauses automated execution"
       step_2: "Generate EscalationRequiredEvent"
@@ -875,6 +896,20 @@ blueprint:
       max_retries: 3
       retry_delay: "5m"
       backoff_multiplier: 2
+
+    # Checkpoint/Resume: prevents data loss across HITL waits and system restarts
+    checkpoint:
+      enabled: true
+      persist_after_blocks: ["B2", "B3", "B4"]
+      storage: "db"  # ba-toolkit analysis_sessions table
+      resume_from_last_checkpoint: true
+      note: "Critical for B4 interview (up to 48h). Without checkpoints, a system restart loses B1-B3 results."
+
+    # Idempotency: prevents duplicate analyses for the same issue
+    idempotency:
+      key: "{issue_id}"
+      behavior: "resume_or_skip"
+      description: "If a blueprint execution already exists for this issue_id, resume from last checkpoint or skip if completed"
 
     notifications:
       on_start: true
