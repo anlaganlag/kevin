@@ -1,0 +1,1132 @@
+# Blueprint 示例: 用户认证系统开发
+# 基于 blueprint_template.yaml
+# 这是一个完整的功能开发 Blueprint 示例
+
+blueprint:
+  # ================================================================
+  # 1. 基本信息
+  # ================================================================
+  metadata:
+    # Blueprint ID 遵循语义化命名规范
+    blueprint_id: "bp_auth_feature_jwt_authentication.1.0.0"
+    blueprint_name: "用户认证系统开发"
+    blueprint_type: "feature"
+    version: "1.0.0"
+    created_at: "2026-03-26T10:00:00Z"
+    created_by: "BA_Agent"
+    tags:
+      - "feature"
+      - "auth"
+      - "security"
+      - "high-priority"
+
+  # ================================================================
+  # 2. 输入定义
+  # ================================================================
+  input:
+    # 触发器定义
+    trigger:
+      event_type: "IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "GH-123"
+        issue_type: "requirement"
+        labels: ["feature", "auth", "security"]
+        priority: "high"
+        title: "实现基于 JWT 的用户认证系统"
+        description: |
+          需要实现一个完整的用户认证系统，包括：
+          - 用户注册和登录
+          - JWT Token 生成和验证
+          - 密码加密存储
+          - 会话管理
+          - 基于角色的访问控制 (RBAC)
+
+    # 任务类型映射
+    task_mapping:
+      requirement:
+        primary_phase: "analysis"
+        entry_point: "BA_Agent"
+
+    # 输入上下文
+    context:
+      source_documents:
+        - type: "Raw Requirement"
+          location: "github://owner/repo/issues/123"
+          required: true
+
+        - type: "Business Context"
+          location: "docs/business/auth_requirements.md"
+          required: true
+
+      data_sources:
+        - "Git Repository (main branch)"
+        - "Learning Agent Knowledge Base"
+        - "Infrastructure State (Platform Agent)"
+
+  # ================================================================
+  # 3. 执行 Agent 配置
+  # ================================================================
+  execution:
+    # Primary Agent 选择
+    primary_agent:
+      agent_type: "BA_Agent"
+      selection_logic:
+        # 基于 Issue 标签和类型
+        reasoning: |
+          1. Issue type = "requirement" → 默认 BA_Agent
+          2. Labels include "security" → 考虑 SecurityAgent
+          3. 复杂度高，需要需求分析优先
+          → 决定: BA_Agent 作为 primary，SecurityAgent 作为支持
+
+      responsibilities:
+        - "需求澄清和结构化"
+        - "用户故事编写"
+        - "协调后续架构设计"
+
+    # Sub-Agents 协调
+    sub_agents:
+      # 第一阶段: 需求分析
+      - agent_type: "BA_Agent"
+        phase: "analysis"
+        responsibilities:
+          - "需求澄清和结构化"
+          - "生成 BRD 和用户故事"
+          - "识别安全要求"
+        coordination: "sequential"
+
+      # 第二阶段: 架构设计
+      - agent_type: "PlanningAgent"
+        phase: "design"
+        responsibilities:
+          - "系统架构设计"
+          - "API 合约定义"
+          - "任务分解"
+        coordination: "event_driven"
+        dependencies: ["analysis_complete"]
+
+      # 第三阶段: 并行执行
+      - agent_type: "BuilderAgent"
+        phase: "implementation"
+        responsibilities:
+          - "实现认证 API"
+          - "编写单元测试"
+          - "代码提交"
+        coordination: "event_driven"
+        dependencies: ["design_complete"]
+
+      - agent_type: "PlatformAgent"
+        phase: "infrastructure"
+        responsibilities:
+          - "生成 IaC 配置"
+          - "配置密钥管理"
+          - "设置网络策略"
+        coordination: "parallel_with_builder"
+        dependencies: ["design_complete"]
+
+      # 第四阶段: 验证（并行）
+      - agent_type: "QAAgent"
+        phase: "verification"
+        responsibilities:
+          - "集成测试"
+          - "边界测试"
+          - "性能测试"
+        coordination: "parallel_with_security"
+        dependencies: ["implementation_complete", "infrastructure_complete"]
+
+      - agent_type: "SecurityAgent"
+        phase: "security"
+        responsibilities:
+          - "安全扫描"
+          - "漏洞评估"
+          - "OWASP Top 10 检查"
+        coordination: "parallel_with_qa"
+        dependencies: ["implementation_complete"]
+
+      # 第五阶段: 部署
+      - agent_type: "SREAgent"
+        phase: "deployment"
+        responsibilities:
+          - "金丝雀部署"
+          - "监控配置"
+          - "回滚准备"
+        coordination: "sequential"
+        dependencies: ["verification_complete"]
+
+  # ================================================================
+  # 4. 技能和工具配置
+  # ================================================================
+  capabilities:
+    # Agent 技能集
+    agent_skills:
+      BA_Agent:
+        - "requirement_analysis"
+        - "user_story_writing"
+        - "brd_generation"
+        - "security_requirement_identification"
+
+      PlanningAgent:
+        - "blueprint_design"
+        - "task_decomposition"
+        - "api_contract_design"
+        - "security_architecture_design"
+
+      BuilderAgent:
+        - "code_generation"
+        - "jwt_implementation"
+        - "password_hashing"
+        - "unit_test_writing"
+
+      QAAgent:
+        - "test_generation"
+        - "authentication_testing"
+        - "boundary_testing"
+        - "performance_testing"
+
+      SecurityAgent:
+        - "sast_analysis"
+        - "dast_analysis"
+        - "owasp_top_10_check"
+        - "vulnerability_assessment"
+
+      PlatformAgent:
+        - "terraform_generation"
+        - "k8s_secret_management"
+        - "network_policy_configuration"
+        - "vault_integration"
+
+    # 工具访问权限
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+
+      - tool: "bash_execution"
+        permissions:
+          - "command_execution"
+          - "file_operations"
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "pattern_matching"
+
+      - tool: "platform_agent_api"
+        permissions:
+          - "infra_state:read"
+          - "resource_quotas:read"
+          - "secret_management:write"
+
+  # ================================================================
+  # 5. 任务执行流程
+  # ================================================================
+  workflow:
+    # Ralph Loop 5步执行流程
+    ralph_loop:
+      # Step 1: 确认 Primary Agent
+      step_1:
+        action: "PlannerAgent → BA_Agent as Primary"
+        input:
+          issue_type: "requirement"
+          labels: ["feature", "auth", "security"]
+          priority: "high"
+        output: "BA_Agent assigned as Primary"
+        reasoning: |
+          - Issue type = requirement → Default: BA_Agent
+          - Has security label → Involve SecurityAgent
+          → BA_Agent as primary, SecurityAgent as secondary
+
+      # Step 2: 加载规则和上下文
+      step_2:
+        action: "BA_Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer (Static)"
+            content:
+              language_stack: ["Go", "TypeScript"]
+              framework_versions:
+                go: "1.21+"
+                node: "20.x"
+              security_policies: "OWASP Top 10 compliance"
+              access_constraints:
+                vpn_required: false
+                authentication_methods: "mTLS for service-to-service"
+
+          - source: "Infra Dependency Layer (Dynamic)"
+            content:
+              resource_quotas:
+                cpu_usage_percent: 45
+                memory_usage_percent: 52
+              deployment_status:
+                environment: "staging"
+                healthy_replicas: 3
+
+          - source: "Learning Agent"
+            content:
+              success_patterns:
+                - "JWT + mTLS for authentication"
+                - "bcrypt for password hashing"
+              failure_lessons:
+                - "Avoid hardcoded secrets"
+                - "Never store plain text passwords"
+              security_best_practices:
+                - "Use HTTPS only"
+                - "Implement rate limiting"
+                - "Log authentication attempts"
+
+        output: "Execution strategy formulated"
+
+      # Step 3: 协调 Sub-Agents
+      step_3:
+        action: "BA_Agent → Coordinate Sub-Agents"
+        coordination_model: "hybrid"
+        dependency_graph:
+          blocks:
+            # 阶段 1: 需求分析
+            - block_id: "B1"
+              name: "requirement_analysis"
+              assigned_to: "BA_Agent"
+              dependencies: []
+              skills: ["requirement_analysis", "user_story_writing"]
+              output: "Structured BRD and User Stories"
+
+            # 阶段 2: 架构设计
+            - block_id: "B2"
+              name: "architecture_design"
+              assigned_to: "PlanningAgent"
+              dependencies: ["B1"]
+              skills: ["blueprint_design", "api_contract_design"]
+              output: "Technical Blueprint and API Specs"
+
+            # 阶段 3a: 实现
+            - block_id: "B3"
+              name: "auth_implementation"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B2"]
+              skills: ["code_generation", "jwt_implementation"]
+              output: "Authentication Service Code"
+
+            # 阶段 3b: 基础设施（与实现并行）
+            - block_id: "B4"
+              name: "infrastructure_setup"
+              assigned_to: "PlatformAgent"
+              dependencies: ["B2"]
+              skills: ["terraform_generation", "vault_integration"]
+              output: "IaC Configuration and Secrets"
+
+            # 阶段 4a: QA 测试
+            - block_id: "B5"
+              name: "qa_testing"
+              assigned_to: "QAAgent"
+              dependencies: ["B3", "B4"]
+              skills: ["test_generation", "authentication_testing"]
+              output: "Test Report and Coverage"
+
+            # 阶段 4b: 安全扫描（与 QA 并行）
+            - block_id: "B6"
+              name: "security_scanning"
+              assigned_to: "SecurityAgent"
+              dependencies: ["B3", "B4"]
+              skills: ["sast_analysis", "owasp_top_10_check"]
+              output: "Security Scan Report"
+
+            # 阶段 5: 部署
+            - block_id: "B7"
+              name: "deployment"
+              assigned_to: "SREAgent"
+              dependencies: ["B5", "B6"]
+              skills: ["canary_deployment", "monitoring_setup"]
+              output: "Deployment Manifest and Monitoring Config"
+
+          execution_order: "B1 → B2 → (B3 + B4 parallel) → (B5 + B6 parallel) → B7"
+
+      # Step 4: 确认完成并交付输出
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-123"
+              status: "In Progress → Done"
+              comments:
+                - "✅ requirement_analysis (BA_Agent) - Complete"
+                - "✅ architecture_design (PlanningAgent) - Complete"
+                - "✅ auth_implementation (BuilderAgent) - Complete"
+                - "✅ infrastructure_setup (PlatformAgent) - Complete"
+                - "✅ qa_testing (QAAgent) - Complete"
+                - "✅ security_scanning (SecurityAgent) - Complete"
+                - "✅ deployment (SREAgent) - Complete"
+              labels:
+                remove: ["in-progress"]
+                add: ["completed", "ready-for-merge"]
+
+          - type: "artifact"
+            artifact_type: "blueprint_execution_report"
+            content:
+              blueprint_id: "bp_auth_feature_jwt_authentication.1.0.0"
+              blueprint_name: "用户认证系统开发"
+              execution_start: "2026-03-26T10:00:00Z"
+              execution_end: "2026-03-26T16:30:00Z"
+              duration_hours: 6.5
+              status: "success"
+
+              blocks_executed:
+                - block_id: "B1"
+                  name: "requirement_analysis"
+                  agent: "BA_Agent"
+                  status: "completed"
+                  duration_minutes: 45
+                  artifacts: ["brd_auth_system.md", "user_stories.md"]
+
+                - block_id: "B2"
+                  name: "architecture_design"
+                  agent: "PlanningAgent"
+                  status: "completed"
+                  duration_minutes: 90
+                  artifacts: ["auth_blueprint.yaml", "api_contract_openapi.yaml"]
+
+                - block_id: "B3"
+                  name: "auth_implementation"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 180
+                  artifacts: ["auth_service.go", "jwt_handler.go", "password_utils.go"]
+
+                - block_id: "B4"
+                  name: "infrastructure_setup"
+                  agent: "PlatformAgent"
+                  status: "completed"
+                  duration_minutes: 60
+                  artifacts: ["terraform_auth.tf", "k8s_auth_deployment.yaml"]
+
+                - block_id: "B5"
+                  name: "qa_testing"
+                  agent: "QAAgent"
+                  status: "completed"
+                  duration_minutes: 120
+                  artifacts: ["test_report.xml", "coverage_report.html"]
+
+                - block_id: "B6"
+                  name: "security_scanning"
+                  agent: "SecurityAgent"
+                  status: "completed"
+                  duration_minutes: 45
+                  artifacts: ["security_scan_report.sarif"]
+
+                - block_id: "B7"
+                  name: "deployment"
+                  agent: "SREAgent"
+                  status: "completed"
+                  duration_minutes: 30
+                  artifacts: ["canary_deployment.yaml", "monitoring_dashboard.json"]
+
+              output_artifacts:
+                - artifact_id: "artifact-001"
+                  type: "brd"
+                  name: "Auth System BRD"
+                  storage_location: "github://owner/repo/docs/brd_auth_system.md"
+
+                - artifact_id: "artifact-002"
+                  type: "blueprint"
+                  name: "Auth Blueprint"
+                  storage_location: "github://owner/repo/docs/auth_blueprint.yaml"
+
+                - artifact_id: "artifact-003"
+                  type: "code"
+                  name: "Auth Service Code"
+                  storage_location: "github://owner/repo/src/auth/"
+
+                - artifact_id: "artifact-004"
+                  type: "test_report"
+                  name: "Test Report"
+                  storage_location: "s3://artifacts/test-reports/auth_system_20260326.xml"
+
+                - artifact_id: "artifact-005"
+                  type: "security_scan"
+                  name: "Security Scan Report"
+                  storage_location: "s3://artifacts/security-scans/auth_system_20260326.sarif"
+
+              metrics:
+                total_blocks: 7
+                completed_blocks: 7
+                failed_blocks: 0
+                total_tokens_used: 85000
+                total_cost_usd: 4.25
+                test_coverage_percentage: 96.5
+                security_vulnerabilities:
+                  critical: 0
+                  high: 0
+                  medium: 1
+                  low: 3
+
+      # Step 5: 审计和治理决策
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "安全审计"
+            checks:
+              - "SAST 扫描验证": "passed"
+              - "DAST 漏洞检查": "passed"
+              - "密钥检测": "passed"
+              - "依赖安全": "passed"
+              - "OWASP Top 10": "passed"
+            output: "SecurityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "QualityAuditAgent"
+            scope: "质量审计"
+            checks:
+              - "测试覆盖率": "96.5% ≥ 95% = passed"
+              - "代码标准合规": "passed"
+              - "技术债务评估": "low"
+              - "代码审查完整性": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "合规审计"
+            checks:
+              - "API 合约合规": "passed"
+              - "文档完整性": "passed"
+              - "许可证合规": "passed"
+              - "数据保护合规": "passed"
+            output: "ComplianceAuditReport Artifact"
+            status: "passed"
+
+          - agent: "CostAuditAgent"
+            scope: "成本审计"
+            checks:
+              - "Token 使用": "85000 ≤ 100000 = passed"
+              - "计算资源": "reasonable"
+              - "存储成本": "as expected"
+            output: "CostAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          inputs:
+            - "BlueprintExecutionReport"
+            - "SecurityAuditReport"
+            - "QualityAuditReport"
+            - "ComplianceAuditReport"
+            - "CostAuditReport"
+
+          gates_check:
+            quality_gate:
+              condition: "test_coverage ≥ 95% AND code_smells ≤ 5"
+              actual: "test_coverage = 96.5%, code_smells = 2"
+              status: "passed"
+
+            security_gate:
+              condition: "critical_findings == 0 AND high_findings == 0"
+              actual: "critical = 0, high = 0"
+              status: "passed"
+
+            compliance_gate:
+              condition: "all_compliance_checks_passed"
+              actual: "all checks passed"
+              status: "passed"
+
+            budget_gate:
+              condition: "total_cost_usd ≤ budget_usd"
+              actual: "$4.25 ≤ $10.00"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            reason: "所有 gates 通过，Blueprint 执行成功"
+            action: "允许进入 HITL Gate 2（最终审查）"
+
+  # ================================================================
+  # 6. 约束和依赖
+  # ================================================================
+  constraints:
+    # 基础设施依赖层 (EEF)
+    infra_dependency_layer:
+      static_constraints:
+        version_control:
+          git_repositories: "owner/repo"
+          branch_strategy: "trunk-based"
+          pr_policies: "Require 2 approvals, all checks must pass"
+
+        pipeline_system:
+          ci_platform: "github_actions"
+          cd_strategy: "canary"
+          pipeline_templates: ".github/workflows/standard.yml"
+
+        configuration_system:
+          config_management: "Environment variables + Config files"
+          secret_management: "HashiCorp Vault"
+          feature_flags: "LaunchDarkly"
+
+        network_architecture:
+          regions: ["us-east-1", "us-west-2"]
+          vpc_topology: "Multi-AZ VPC"
+          service_mesh: "AWS App Mesh"
+
+        access_constraints:
+          bastion_host: "bastion.company.com"
+          vpn_required: false
+          authentication_methods: "mTLS for service-to-service"
+
+        technical_constraints:
+          language_stack: ["Go 1.21+", "TypeScript 5.0+", "Python 3.11+"]
+          framework_versions:
+            go: "1.21+"
+            node: "20.x"
+            python: "3.11+"
+          resource_quotas:
+            max_cpu_cores: 16
+            max_memory_gb: 32
+          security_policies: "OWASP Top 10, SOC2 compliance"
+
+      dynamic_constraints:
+        resource_quotas:
+          cpu_usage_percent: 45
+          memory_usage_percent: 52
+          storage_available_gb: 450
+
+        deployment_status:
+          environment: "staging"
+          healthy_replicas: 3
+          total_replicas: 3
+          last_deployment: "2026-03-25T15:00:00Z"
+
+        pipeline_health:
+          ci_status: "operational"
+          cd_status: "operational"
+          last_failure: null
+
+    # 业务规则依赖
+    business_rules:
+      # 安全规则
+      security_rules:
+        source: "docs/security_policy.md"
+        rules:
+          - "使用 HTTPS only"
+          - "密码必须使用 bcrypt 加密（cost factor ≥ 12）"
+          - "JWT Token 必须签名并设置过期时间"
+          - "实施速率限制（rate limiting）"
+          - "记录所有认证尝试"
+          - "永不存储明文密码"
+
+      # 命名规范
+      naming_rules:
+        source: "docs/naming_conventions.md"
+        conventions:
+          go_files: "snake_case"
+          go_functions: "PascalCase (exported), camelCase (private)"
+          go_variables: "camelCase"
+          go_constants: "PascalCase"
+          go_interfaces: "PascalCase ending with 'er'"
+
+      # 代码风格
+      code_style:
+        source: ".golangci.yml"
+        linters: ["golangci-lint"]
+        formatters: ["gofmt", "goimports"]
+        rules:
+          - "Max line length: 120"
+          - "Max function complexity: 10"
+          - "Max function lines: 50"
+
+    # 依赖管理
+    dependencies:
+      internal:
+        - "shared/utils"
+        - "shared/logger"
+        - "shared/config"
+
+      external:
+        - name: "github.com/golang-jwt/jwt/v5"
+          version: "v5.2.0"
+          purpose: "JWT token generation and validation"
+
+        - name: "golang.org/x/crypto/bcrypt"
+          version: "latest"
+          purpose: "Password hashing"
+
+        - name: "github.com/gin-gonic/gin"
+          version: "v1.9.1"
+          purpose: "HTTP framework"
+
+      dependency_resolution:
+        strategy: "version_locking"
+        conflict_resolution: "fail"
+
+  # ================================================================
+  # 7. 完成条件和输出
+  # ================================================================
+  completion:
+    # 验收条件
+    acceptance_criteria:
+      functional:
+        - "用户可以注册新账户"
+        - "用户可以使用邮箱和密码登录"
+        - "系统生成并验证 JWT Token"
+        - "Token 过期后需要重新认证"
+        - "支持基于角色的访问控制 (RBAC)"
+        - "密码重置功能正常工作"
+
+      non_functional:
+        - "测试覆盖率 ≥ 95%"
+        - "API 响应时间 < 200ms (p95)"
+        - "支持 1000+ 并发用户"
+        - "无关键和高危安全漏洞"
+        - "符合 OWASP Top 10 标准"
+        - "所有认证尝试都有审计日志"
+
+      process:
+        - "代码审查完成并批准"
+        - "安全扫描通过"
+        - "集成测试通过"
+        - "文档更新完成"
+        - "部署到 staging 环境"
+        - "金丝雀部署成功"
+
+    # 输出制品
+    artifacts:
+      # 代码制品
+      code_artifacts:
+        - artifact_type: "source_code"
+          name: "认证服务代码"
+          storage_location: "github://owner/repo/src/auth/"
+          files:
+            - "auth_service.go"
+            - "jwt_handler.go"
+            - "password_utils.go"
+            - "middleware.go"
+            - "models.go"
+          format: "Go source code"
+
+        - artifact_type: "unit_tests"
+          name: "单元测试"
+          storage_location: "github://owner/repo/src/auth/"
+          files:
+            - "auth_service_test.go"
+            - "jwt_handler_test.go"
+            - "password_utils_test.go"
+          format: "Go test code"
+
+        - artifact_type: "integration_tests"
+          name: "集成测试"
+          storage_location: "github://owner/repo/tests/integration/auth/"
+          files:
+            - "auth_flow_test.go"
+            - "api_integration_test.go"
+          format: "Go test code"
+
+      # 文档制品
+      documentation_artifacts:
+        - artifact_type: "brd"
+          name: "业务需求文档"
+          storage_location: "github://owner/repo/docs/brd_auth_system.md"
+          format: "Markdown"
+
+        - artifact_type: "api_doc"
+          name: "API 文档"
+          storage_location: "github://owner/repo/docs/api/auth_openapi.yaml"
+          format: "OpenAPI 3.0"
+
+        - artifact_type: "architecture_diagram"
+          name: "架构图"
+          storage_location: "github://owner/repo/docs/diagrams/auth_architecture.mmd"
+          format: "Mermaid"
+
+        - artifact_type: "changelog"
+          name: "变更日志"
+          storage_location: "github://owner/repo/CHANGELOG.md"
+          format: "Markdown"
+
+      # 报告制品
+      report_artifacts:
+        - artifact_type: "blueprint_execution_report"
+          name: "Blueprint 执行报告"
+          storage_location: "s3://artifacts/blueprint-reports/bp_auth_feature_jwt_authentication.1.0.0.json"
+          format: "JSON"
+
+        - artifact_type: "test_report"
+          name: "测试报告"
+          storage_location: "s3://artifacts/test-reports/auth_system_20260326.xml"
+          format: "JUnit XML"
+
+        - artifact_type: "coverage_report"
+          name: "覆盖率报告"
+          storage_location: "s3://artifacts/coverage-reports/auth_system_20260326.html"
+          format: "HTML"
+
+        - artifact_type: "security_scan"
+          name: "安全扫描报告"
+          storage_location: "s3://artifacts/security-scans/auth_system_20260326.sarif"
+          format: "SARIF"
+
+      # 部署制品
+      deployment_artifacts:
+        - artifact_type: "docker_image"
+          name: "认证服务容器镜像"
+          storage_location: "ecr://company-docker-repo/auth-service:v1.0.0"
+          format: "OCI"
+
+        - artifact_type: "deployment_manifest"
+          name: "Kubernetes 部署清单"
+          storage_location: "github://owner/repo/k8s/auth/deployment.yaml"
+          format: "YAML"
+
+        - artifact_type: "terraform_config"
+          name: "基础设施配置"
+          storage_location: "github://owner/repo/terraform/auth/"
+          format: "HCL"
+
+        - artifact_type: "monitoring_config"
+          name: "监控配置"
+          storage_location: "github://owner/repo/monitoring/auth_dashboard.json"
+          format: "JSON"
+
+    # 任务状态更新
+    status_updates:
+      github_issues:
+        parent_issue:
+          issue_id: "GH-123"
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          comments:
+            - "✅ requirement_analysis (BA_Agent) - Complete (45min)"
+            - "✅ architecture_design (PlanningAgent) - Complete (90min)"
+            - "✅ auth_implementation (BuilderAgent) - Complete (180min)"
+            - "✅ infrastructure_setup (PlatformAgent) - Complete (60min)"
+            - "✅ qa_testing (QAAgent) - Complete (120min)"
+            - "✅ security_scanning (SecurityAgent) - Complete (45min)"
+            - "✅ deployment (SREAgent) - Complete (30min)"
+            - ""
+            - "📊 **Summary:**"
+            - "- Total duration: 6.5 hours"
+            - "- Test coverage: 96.5%"
+            - "- Security: 0 critical, 0 high findings"
+            - "- All gates passed"
+            - "- Ready for HITL Gate 2 review"
+          labels:
+            remove: ["in-progress", "blocked"]
+            add: ["completed", "ready-for-merge", "all-checks-passed"]
+
+        child_issues:
+          - issue_id: "GH-124"
+            action: "Close"
+            status: "Closed"
+            comment: "Requirement analysis completed via Blueprint"
+
+          - issue_id: "GH-125"
+            action: "Close"
+            status: "Closed"
+            comment: "Architecture design completed via Blueprint"
+
+          - issue_id: "GH-126"
+            action: "Close"
+            status: "Closed"
+            comment: "Implementation completed via Blueprint"
+
+      git_operations:
+        pull_requests:
+          - pr_id: "PR-45"
+            action: "Update PR description"
+            content: |
+              # 用户认证系统实现
+
+              ## 概述
+              本 PR 实现了完整的用户认证系统，包括注册、登录、JWT Token 管理和 RBAC。
+
+              ## 变更内容
+              - 新增认证服务 (src/auth/)
+              - API 文档更新 (docs/api/auth_openapi.yaml)
+              - IaC 配置 (terraform/auth/, k8s/auth/)
+              - 集成测试 (tests/integration/auth/)
+              - 监控配置 (monitoring/auth_dashboard.json)
+
+              ## 测试
+              - 单元测试: 120 tests, 96.5% coverage
+              - 集成测试: 25 tests, all passed
+              - 安全扫描: 0 critical, 0 high findings
+
+              ## 文档
+              - BRD: docs/brd_auth_system.md
+              - API 文档: docs/api/auth_openapi.yaml
+              - 架构图: docs/diagrams/auth_architecture.mmd
+
+              ## Blueprint
+              - Blueprint ID: bp_auth_feature_jwt_authentication.1.0.0
+              - 执行报告: s3://artifacts/blueprint-reports/bp_auth_feature_jwt_authentication.1.0.0.json
+
+          - action: "Add labels"
+            pr_id: "PR-45"
+            labels: ["ready-for-review", "all-checks-passed", "security-approved"]
+
+          - action: "Request reviewers"
+            pr_id: "PR-45"
+            reviewers: ["tech-lead", "security-lead", "sre-lead"]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: |
+              ✅ Blueprint 执行完成: 用户认证系统
+
+              **Blueprint ID**: bp_auth_feature_jwt_authentication.1.0.0
+              **Status**: Success
+              **Duration**: 6.5 hours
+              **Test Coverage**: 96.5%
+              **Security**: 0 critical, 0 high findings
+
+              **PR**: #45
+              **Review**: https://github.com/owner/repo/pull/45
+
+          - channel: "email"
+            recipients: ["stakeholders@company.com", "tech-lead@company.com"]
+            subject: "[Completed] 用户认证系统 - Ready for Review"
+            body: |
+              用户认证系统 Blueprint 执行完成，等待最终审查。
+
+              Details:
+              - Blueprint: bp_auth_feature_jwt_authentication.1.0.0
+              - PR: #45
+              - Status: All gates passed
+              - Next step: HITL Gate 2 review
+
+  # ================================================================
+  # 8. 度量指标
+  # ================================================================
+  metrics:
+    # 速度指标
+    velocity_metrics:
+      - metric_name: "requirement_to_production_time"
+        description: "从需求到生产的时间"
+        unit: "hours"
+        target: "≤ 48"
+        actual: 6.5
+        status: "excellent"
+
+      - metric_name: "blueprint_execution_success_rate"
+        description: "Blueprint 执行成功率"
+        unit: "percentage"
+        target: "≥ 95%"
+        actual: 100
+        status: "excellent"
+
+      - metric_name: "agent_utilization_rate"
+        description: "Agent 利用率"
+        unit: "percentage"
+        target: "≥ 80%"
+        actual: 87
+        status: "good"
+
+    # 质量指标
+    quality_metrics:
+      - metric_name: "test_coverage_percentage"
+        description: "测试覆盖率"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+        actual: 96.5
+        status: "passed"
+
+      - metric_name: "defect_escape_rate"
+        description: "缺陷逃逸率"
+        unit: "defects_per_kloc"
+        target: "≤ 0.5"
+        actual: 0.2
+        status: "good"
+
+      - metric_name: "security_vulnerability_count"
+        description: "安全漏洞数量"
+        unit: "count"
+        target: "critical=0, high=0"
+        threshold: "hard_gate"
+        actual:
+          critical: 0
+          high: 0
+          medium: 1
+          low: 3
+        status: "passed"
+
+      - metric_name: "code_review_findings"
+        description: "代码审查发现的问题"
+        unit: "count"
+        target: "≤ 5"
+        actual: 2
+        status: "good"
+
+    # 效率指标
+    efficiency_metrics:
+      - metric_name: "token_usage_per_feature"
+        description: "每个功能的 Token 使用量"
+        unit: "tokens"
+        target: "≤ 50000"
+        threshold: "budget_gate"
+        actual: 85000
+        status: "within_budget"
+        note: "Higher than target due to complexity"
+
+      - metric_name: "compute_resource_utilization"
+        description: "计算资源利用率"
+        unit: "percentage"
+        target: "≥ 70%"
+        actual: 78
+        status: "good"
+
+      - metric_name: "human_intervention_frequency"
+        description: "人工干预频率"
+        unit: "interventions_per_blueprint"
+        target: "≤ 2"
+        actual: 0
+        status: "excellent"
+
+      - metric_name: "iteration_count"
+        description: "迭代次数（修复循环）"
+        unit: "count"
+        target: "≤ 3"
+        actual: 0
+        status: "excellent"
+        note: "No iterations needed"
+
+    # 学习指标
+    learning_metrics:
+      - metric_name: "repeat_mistake_reduction"
+        description: "重复错误减少率"
+        unit: "percentage"
+        target: "≥ 80%"
+        actual: 100
+        status: "excellent"
+        note: "No repeat mistakes"
+
+      - metric_name: "pattern_reuse_rate"
+        description: "模式重用率"
+        unit: "percentage"
+        target: "≥ 60%"
+        actual: 75
+        status: "good"
+        note: "Reused JWT + bcrypt pattern from Learning Agent"
+
+      - metric_name: "knowledge_base_growth"
+        description: "知识库增长"
+        unit: "entries_per_blueprint"
+        target: "≥ 5"
+        actual: 8
+        status: "excellent"
+        note: "Added 8 new patterns to knowledge base"
+
+      - metric_name: "automated_resolution_rate"
+        description: "自动化解决率"
+        unit: "percentage"
+        target: "≥ 85%"
+        actual: 100
+        status: "excellent"
+
+    # 汇总报告
+    summary:
+      total_execution_time: "6.5 hours"
+      total_cost_usd: 4.25
+      total_blocks_executed: 7
+      total_blocks_failed: 0
+      overall_status: "completed"
+      hitl_gate: "ready_for_gate_2"
+
+  # ================================================================
+  # 9. 风险和应急处理
+  # ================================================================
+  risk_management:
+    # 风险识别
+    risks:
+      - risk_id: "R001"
+        risk_type: "technical"
+        description: "JWT 实现的安全漏洞"
+        probability: "low"
+        impact: "critical"
+        mitigation: "使用成熟的 jwt-go 库，遵循最佳实践"
+        status: "mitigated"
+
+      - risk_id: "R002"
+        risk_type: "security"
+        description: "密码存储不安全"
+        probability: "low"
+        impact: "critical"
+        mitigation: "强制使用 bcrypt 加密，cost factor ≥ 12"
+        status: "mitigated"
+
+      - risk_id: "R003"
+        risk_type: "performance"
+        description: "高并发下的性能问题"
+        probability: "medium"
+        impact: "high"
+        mitigation: "实施连接池、缓存、速率限制"
+        status: "monitored"
+
+    # 应急处理（未触发）
+    escalation_triggers:
+      - trigger: "budget_exceeded"
+        condition: "total_cost_usd > budget_usd"
+        threshold: "$10.00"
+        actual: "$4.25"
+        status: "not_triggered"
+
+      - trigger: "fix_loop_non_convergence"
+        condition: "iteration_count > 3 AND issues_remaining > 0"
+        actual: "iteration_count = 0"
+        status: "not_triggered"
+
+      - trigger: "security_gate_failure"
+        condition: "critical_findings > 0 OR high_findings > 0"
+        actual: "critical = 0, high = 0"
+        status: "not_triggered"
+
+      - trigger: "agent_timeout"
+        condition: "execution_time > timeout_limit"
+        threshold: "24 hours"
+        actual: "6.5 hours"
+        status: "not_triggered"
+
+  # ================================================================
+  # 10. 配置和参数
+  # ================================================================
+  config:
+    # 风险级别
+    risk_level: "medium"
+
+    # 是否需要安全审查
+    requires_security_review: true
+    security_review_completed: true
+
+    # 部署策略
+    deployment_strategy: "canary"
+    canary_percentage: 10
+    rollout_duration_minutes: 30
+
+    # 并行度
+    parallelism:
+      max_parallel_blocks: 3
+      max_parallel_agents: 2
+      actual_parallelism: 2
+
+    # 超时设置
+    timeouts:
+      block_timeout: "2h"
+      blueprint_timeout: "24h"
+      agent_timeout: "30m"
+      actual_execution_time: "6.5h"
+
+    # 重试策略
+    retry:
+      max_retries: 3
+      retry_delay: "5m"
+      backoff_multiplier: 2
+      actual_retries: 0
+
+    # 通知配置
+    notifications:
+      on_start: true
+      on_complete: true
+      on_failure: false
+      channels: ["slack", "email"]
+      notifications_sent: 2
+
+# ================================================================
+# Blueprint 示例结束
+# ================================================================

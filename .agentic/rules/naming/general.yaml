@@ -1,0 +1,57 @@
+# 通用命名规范
+# 此文件定义了通用的命名规范，适用于所有语言和类型
+
+rules:
+  naming_conventions:
+    # 文件命名
+    files:
+      convention: "snake_case"
+      max_length: 100
+      forbidden_chars: [" ", "@", "#", "$"]
+      test_suffix: "_test"
+      examples:
+        - "user_service.go"        # ✅ 正确
+        - "UserService.go"         # ❌ 错误（PascalCase）
+        - "user-service.go"        # ❌ 错误（使用连字符）
+        - "user_service_test.go"   # ✅ 正确（测试文件）
+
+    # 目录命名
+    directories:
+      convention: "snake_case"
+      max_depth: 5
+      examples:
+        - "src/auth/"              # ✅ 正确
+        - "src/AuthService/"       # ❌ 错误
+        - "src/auth-service/"      # ❌ 错误
+
+    # 环境变量命名
+    environment_variables:
+      convention: "SCREAMING_SNAKE_CASE"
+      prefix: "APP_"
+      examples:
+        - "APP_PORT"               # ✅ 正确
+        - "APP_DATABASE_URL"      # ✅ 正确
+        - "app_port"               # ❌ 错误
+
+    # Git 分支命名
+    git_branches:
+      convention: "kebab-case"
+      forbidden_prefixes: ["origin/", "remotes/"]
+      examples:
+        - "feature/user-auth"      # ✅ 正确
+        - "bugfix/login-error"     # ✅ 正确
+        - "origin/feature/user"    # ❌ 错误（包含 origin/）
+        - "feature/userAuth"       # ❌ 错误（大写字母）
+
+  validation:
+    on_create: true
+    on_update: false
+    severity: "warning"
+    auto_fix: false
+
+  exceptions:
+    # 允许的例外情况
+    allowed:
+      - reason: "第三方库要求"
+        examples: ["package.json", "go.mod"]
+        approval: "tech_lead"

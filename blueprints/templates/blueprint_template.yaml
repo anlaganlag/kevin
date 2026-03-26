@@ -1,0 +1,878 @@
+# Blueprint Template
+# 基于 AgenticSDLC 架构 v2.0
+# 此模板定义了事件触发的端到端执行计划
+
+blueprint:
+  # ================================================================
+  # 1. 基本信息
+  # ================================================================
+  metadata:
+    # Blueprint ID 命名格式: bp_{domain}_{type}_{name}.{version}
+    # 详细命名规范请参考: blueprints/BP_ID_NAMING_CONVENTION.md
+    blueprint_id: "bp_{domain}_{type}_{name}.{version}"
+    # 示例:
+    # - bp_auth_feature_jwt_authentication.1.0.0
+    # - bp_frontend_bugfix_login_button.1.0.0
+    # - bp_backend_refactor_user_service.1.0.0
+    # - bp_incident_database_outage.1.0.0
+    blueprint_name: "模板名称"
+    blueprint_type: "feature | bugfix | incident | refactor | infra | perf | security | test | docs | config | hotfix | experimental | deps_update"
+    version: "1.0.0"
+    created_at: "YYYY-MM-DDTHH:MM:SSZ"
+    created_by: "agent_id | user_id"
+    tags:
+      - "feature"
+      - "auth"
+      - "high-priority"
+
+  # ================================================================
+  # 2. 配置加载声明
+  # ================================================================
+  configuration:
+    # Profile 引用（快速应用预设配置）
+    profile:
+      name: "default_profile"  # strict_profile | fast_profile | custom_profile
+      description: "引用 .agentic/profiles/ 中的配置概要"
+      overrides:
+        # 覆盖 Profile 中的特定配置
+        # 示例:
+        # security:
+        #   level: "strict"
+
+    # Rules 加载声明
+    rules:
+      # 方式1: 引用整个规则目录（推荐）
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/security/"
+        - ".agentic/rules/testing/"
+        - ".agentic/rules/workflows/"
+
+      # 方式2: 引用特定规则文件
+      specific:
+        - ".agentic/rules/code_style/linters.yaml"
+        - ".agentic/rules/documentation/api_docs.yaml"
+
+      # 方式3: Blueprint 特定规则（内联定义和覆盖）
+      inline:
+        # 在此定义 Blueprint 特定的规则
+        # 这些规则会覆盖从文件加载的规则
+        # 示例:
+        # custom_rules:
+        #   - name: "jwt_token_expiration"
+        #     rule: "JWT tokens must expire within 1 hour"
+        #     enforcement: "strict"
+        #     validator: "custom_jwt_validator"
+
+    # Constraints 加载声明
+    constraints:
+      # 方式1: 引用整个约束目录（推荐）
+      load_from:
+        - ".agentic/constraints/infra/static/"
+        - ".agentic/constraints/infra/dynamic/"
+        - ".agentic/constraints/devops/ci/"
+        - ".agentic/constraints/devops/cd/"
+        - ".agentic/constraints/business/"
+
+      # 方式2: 引用特定约束文件
+      specific:
+        - ".agentic/constraints/infra/static/technical_stack.yaml"
+        - ".agentic/constraints/devops/ci/quality_gates.yaml"
+
+      # 方式3: Blueprint 特定约束（内联定义和覆盖）
+      inline:
+        # 在此定义 Blueprint 特定的约束
+        # 这些约束会覆盖从文件加载的约束
+        # 示例:
+        # technical_stack:
+        #   go_version: "1.22"  # 覆盖全局的 1.21
+        #
+        # resource_quotas:
+        #   max_cpu: "4"
+        #   max_memory: "8Gi"
+        #   timeout: "30m"
+
+  # ================================================================
+  # 3. 配置合并后的结果
+  # ================================================================
+  # 注意：以下内容由系统在运行时自动合并生成
+  # 展示最终生效的 Rules 和 Constraints
+  # 开发者可以查看此部分了解实际应用的配置
+
+  # rules: (系统自动加载并合并)
+  #   命名规范: (从 .agentic/rules/naming/ 加载)
+  #   安全规则: (从 .agentic/rules/security/ 加载)
+  #   测试规则: (从 .agentic/rules/testing/ 加载)
+  #   工作流规则: (从 .agentic/rules/workflows/ 加载)
+  #   自定义规则: (从 Blueprint inline 加载)
+  #
+  # constraints: (系统自动加载并合并)
+  #   技术栈约束: (从 .agentic/constraints/infra/static/technical_stack.yaml 加载)
+  #   质量门禁: (从 .agentic/constraints/devops/ci/quality_gates.yaml 加载)
+  #   资源配额: (从 .agentic/constraints/infra/dynamic/resource_quotas.yaml 加载)
+  #   业务约束: (从 .agentic/constraints/business/ 加载)
+  #   自定义约束: (从 Blueprint inline 覆盖)
+
+  # ================================================================
+  # 4. 输入定义
+  # ================================================================
+  input:
+    # 触发器定义
+    trigger:
+      event_type: "IssueCreatedEvent | PipelineCompletedEvent | IncidentDetectedEvent | CommitPushedEvent | ManualTrigger"
+      event_source: "github | gitlab | jenkins | prometheus | scheduler"
+      event_schema:
+        # 事件载荷结构
+        example:
+          issue_id: "123"
+          issue_type: "requirement | task | bug"
+          labels: ["feature", "auth", "security"]
+          priority: "high | medium | low"
+          description: "用户需求描述"
+
+    # 任务类型映射
+    task_mapping:
+      requirement:
+        primary_phase: "analysis"
+        entry_point: "BA_Agent"
+      task:
+        primary_phase: "planning"
+        entry_point: "PlanningAgent"
+      bug:
+        primary_phase: "fix"
+        entry_point: "PlanningAgent"
+      incident:
+        primary_phase: "response"
+        entry_point: "SREAgent"
+
+    # 输入上下文
+    context:
+      source_documents:
+        - type: "BRD | User Story | Technical Spec | Bug Report | Incident Log"
+          location: "repository_path | URL"
+          required: true
+
+      data_sources:
+        - "Git Repository (main branch)"
+        - "Learning Agent Knowledge Base"
+        - "Infrastructure State (Platform Agent)"
+        - "Monitoring Metrics (if incident)"
+
+  # ================================================================
+  # 3. 执行 Agent 配置
+  # ================================================================
+  execution:
+    # Primary Agent 选择
+    primary_agent:
+      agent_type: "BA_Agent | PlanningAgent | BuilderAgent | QAAgent | SecurityAgent | PlatformAgent | SREAgent | DocAgent | LearningAgent"
+      selection_logic:
+        # 基于 Issue 标签的优先级规则
+        label_priority:
+          - label: "security"
+            primary_agent: "SecurityAgent"
+          - label: "infrastructure"
+            primary_agent: "PlatformAgent"
+          - label: "incident"
+            primary_agent: "SREAgent"
+
+        # 基于 Issue 类型的默认规则
+        type_default:
+          requirement: "BA_Agent"
+          task: "PlanningAgent"
+          bug: "PlanningAgent"
+
+      responsibilities:
+        - "加载上下文和约束"
+        - "协调 Sub-Agents"
+        - "生成执行报告"
+
+    # Sub-Agents 协调
+    sub_agents:
+      - agent_type: "PlanningAgent"
+        phase: "design"
+        responsibilities:
+          - "架构设计"
+          - "任务分解"
+        coordination: "event_driven"
+
+      - agent_type: "BuilderAgent"
+        phase: "implementation"
+        responsibilities:
+          - "代码生成"
+          - "单元测试"
+        coordination: "event_driven"
+
+      - agent_type: "QAAgent"
+        phase: "verification"
+        responsibilities:
+          - "集成测试"
+          - "边界测试"
+        coordination: "parallel_with_security"
+
+      - agent_type: "SecurityAgent"
+        phase: "verification"
+        responsibilities:
+          - "安全扫描"
+          - "漏洞评估"
+        coordination: "parallel_with_qa"
+
+  # ================================================================
+  # 4. 技能和工具配置
+  # ================================================================
+  capabilities:
+    # Agent 技能集
+    agent_skills:
+      BA_Agent:
+        - "requirement_analysis"
+        - "user_story_writing"
+        - "stakeholder_interview_simulation"
+        - "brd_generation"
+
+      PlanningAgent:
+        - "blueprint_design"
+        - "task_decomposition"
+        - "api_contract_design"
+        - "architecture_consistency_check"
+
+      BuilderAgent:
+        - "code_generation"
+        - "unit_test_writing"
+        - "code_review_response"
+        - "git_operations"
+
+      QAAgent:
+        - "test_generation"
+        - "edge_case_exploration"
+        - "coverage_analysis"
+        - "rl_style_testing"
+
+      SecurityAgent:
+        - "sast_analysis"
+        - "dast_analysis"
+        - "vulnerability_assessment"
+        - "security_policy_check"
+
+      PlatformAgent:
+        - "terraform_generation"
+        - "k8s_manifest_generation"
+        - "infra_sync"
+        - "resource_management"
+
+    # 工具访问权限
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+
+      - tool: "bash_execution"
+        permissions:
+          - "command_execution"
+          - "file_operations"
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "pattern_matching"
+
+      - tool: "platform_agent_api"
+        permissions:
+          - "infra_state:read"
+          - "resource_quotas:read"
+
+  # ================================================================
+  # 5. 任务执行流程
+  # ================================================================
+  workflow:
+    # Ralph Loop 5步执行流程
+    ralph_loop:
+      # Step 1: 确认 Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm Primary Agent"
+        input: "Issue labels + type + metadata"
+        output: "Primary Agent assigned"
+        decision_logic: |
+          IF label == "security" THEN SecurityAgent
+          ELSE IF label == "infrastructure" THEN PlatformAgent
+          ELSE IF type == "requirement" THEN BA_Agent
+          ELSE IF type == "task" THEN PlanningAgent
+
+      # Step 2: 加载规则和上下文
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            type: "static"
+            content:
+              - "语言栈约束"
+              - "框架版本要求"
+              - "网络访问策略"
+              - "CI/CD 策略"
+
+          - source: "Infra Dependency Layer"
+            type: "dynamic"
+            content:
+              - "当前资源配额使用"
+              - "部署环境状态"
+              - "实时网络拓扑"
+
+          - source: "Learning Agent"
+            type: "knowledge"
+            content:
+              - "成功模式"
+              - "失败教训"
+              - "最佳实践"
+
+        output: "Execution strategy formulated"
+
+      # Step 3: 协调 Sub-Agents
+      step_3:
+        action: "Primary Agent → Coordinate Sub-Agents"
+        coordination_model: "hybrid"
+        description: |
+          结合依赖图执行和事件驱动通信：
+          1. 解析 Blueprint Block 依赖图
+          2. 发布事件驱动 Sub-Agent 执行
+          3. Sub-Agents 自主执行并发布完成事件
+          4. 满足依赖时触发下一批 Blocks
+
+        dependency_graph:
+          blocks:
+            - block_id: "B1"
+              name: "requirement_analysis"
+              assigned_to: "BA_Agent"
+              dependencies: []
+
+            - block_id: "B2"
+              name: "architecture_design"
+              assigned_to: "PlanningAgent"
+              dependencies: ["B1"]
+
+            - block_id: "B3"
+              name: "implementation"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B2"]
+
+            - block_id: "B4"
+              name: "testing"
+              assigned_to: "QAAgent"
+              dependencies: ["B3"]
+
+            - block_id: "B5"
+              name: "security_scan"
+              assigned_to: "SecurityAgent"
+              dependencies: ["B3"]
+
+            - block_id: "B6"
+              name: "deployment"
+              assigned_to: "PlatformAgent"
+              dependencies: ["B4", "B5"]
+
+          execution_order: "B1 → B2 → B3 → (B4 + B5 parallel) → B6"
+
+      # Step 4: 确认完成并交付输出
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              status: "In Progress → Done"
+              comments: "各 Block 执行状态"
+              labels:
+                remove: ["in-progress"]
+                add: ["completed"]
+
+          - type: "artifact"
+            artifact_type: "blueprint_execution_report"
+            content:
+              blueprint_id: "blueprint_id"
+              execution_start: "timestamp"
+              execution_end: "timestamp"
+              blocks_executed: []
+              output_artifacts: []
+              metrics: {}
+
+      # Step 5: 审计和治理决策
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "安全审计"
+            checks:
+              - "SAST 扫描验证"
+              - "DAST 漏洞检查"
+              - "密钥检测"
+              - "依赖安全"
+            output: "SecurityAuditReport Artifact"
+
+          - agent: "QualityAuditAgent"
+            scope: "质量审计"
+            checks:
+              - "测试覆盖率 ≥ 95%"
+              - "代码标准合规"
+              - "技术债务评估"
+              - "代码审查完整性"
+            output: "QualityAuditReport Artifact"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "合规审计"
+            checks:
+              - "API 合约合规"
+              - "文档完整性"
+              - "许可证合规"
+              - "数据保护合规"
+            output: "ComplianceAuditReport Artifact"
+
+          - agent: "CostAuditAgent"
+            scope: "成本审计"
+            checks:
+              - "Token 使用在预算内"
+              - "计算资源使用合理"
+              - "存储成本符合预期"
+            output: "CostAuditReport Artifact"
+
+        phase_2_governance_decision:
+          inputs:
+            - "BlueprintExecutionReport"
+            - "SecurityAuditReport"
+            - "QualityAuditReport"
+            - "ComplianceAuditReport"
+            - "CostAuditReport"
+
+          gates_check:
+            quality_gate:
+              condition: "test_coverage ≥ 95% AND code_smells ≤ 5"
+              status: "passed | failed"
+
+            security_gate:
+              condition: "critical_findings == 0 AND high_findings == 0"
+              status: "passed | failed"
+
+            compliance_gate:
+              condition: "all_compliance_checks_passed"
+              status: "passed | failed"
+
+            budget_gate:
+              condition: "total_cost_usd ≤ budget_usd"
+              status: "passed | failed"
+
+          final_decision:
+            status: "passed | failed"
+            reason: "决策原因"
+            action: "允许合并到主分支 | 阻止并要求修复"
+
+  # ================================================================
+  # 6. 约束和依赖（引用说明）
+  # ================================================================
+  # 注意：Constraints 现在通过 configuration.constraints 部分加载
+  # 此部分仅作为结构说明和示例，实际内容从配置文件中读取
+
+  constraints:
+    # 以下内容由系统从配置文件中自动加载：
+    #
+    # 1. 基础设施依赖层 (EEF)
+    #    来源: .agentic/constraints/infra/
+    #
+    #    静态约束 (.agentic/constraints/infra/static/):
+    #    - version_control.yaml: 版本控制策略
+    #    - pipeline_system.yaml: CI/CD 系统配置
+    #    - network_architecture.yaml: 网络拓扑
+    #    - technical_stack.yaml: 技术栈约束
+    #    - access_control.yaml: 访问控制
+    #
+    #    动态约束 (.agentic/constraints/infra/dynamic/):
+    #    - resource_quotas.yaml: 资源配额（由 Platform Agent 同步）
+    #    - deployment_status.yaml: 部署状态
+    #    - network_topology.yaml: 实时网络拓扑
+    #
+    # 2. DevOps 约束
+    #    来源: .agentic/constraints/devops/
+    #
+    #    - ci/quality_gates.yaml: 质量门禁
+    #    - cd/strategies.yaml: 部署策略
+    #    - cd/environments.yaml: 环境配置
+    #
+    # 3. 业务约束
+    #    来源: .agentic/constraints/business/
+    #
+    #    - api_standards.yaml: API 标准
+    #    - compliance.yaml: 合规要求
+    #    - slos.yaml: 服务等级目标
+    #
+    # 4. Blueprint 特定覆盖
+    #    来源: configuration.constraints.inline
+    #
+    #    示例（在 configuration.constraints.inline 中定义）:
+    #    inline:
+    #      technical_stack:
+    #        go_version: "1.22"  # 覆盖全局的 1.21
+    #
+    #      resource_quotas:
+    #        max_cpu: "4"
+    #        max_memory: "8Gi"
+
+    # 运行时合并后的约束结构（仅供参考，实际由系统加载）:
+    # infra_dependency_layer:
+    #   static_constraints:
+    #     version_control: (从 version_control.yaml 加载)
+    #     pipeline_system: (从 pipeline_system.yaml 加载)
+    #     network_architecture: (从 network_architecture.yaml 加载)
+    #     technical_stack: (从 technical_stack.yaml 加载，然后应用 inline 覆盖)
+    #     access_control: (从 access_control.yaml 加载)
+    #
+    #   dynamic_constraints:
+    #     resource_quotas: (从 resource_quotas.yaml 加载，然后应用 inline 覆盖)
+    #     deployment_status: (从 deployment_status.yaml 加载)
+    #     network_topology: (从 network_topology.yaml 加载)
+    #
+    # devops:
+    #   quality_gates: (从 .agentic/constraints/devops/ci/quality_gates.yaml 加载)
+    #   deployment: (从 .agentic/constraints/devops/cd/ 加载)
+    #
+    # business:
+    #   api_standards: (从 api_standards.yaml 加载)
+    #   compliance: (从 compliance.yaml 加载)
+    #   slos: (从 slos.yaml 加载)
+
+    # 查看实际生效的约束：
+    # 命令: agentic config show --blueprint <blueprint_id>
+    # 或: agentic config trace <constraint_name> --blueprint <blueprint_id>
+
+  # ================================================================
+  # 7. 完成条件和输出
+  # ================================================================
+  completion:
+    # 验收条件
+    acceptance_criteria:
+      functional:
+        - "所有用户故事已实现"
+        - "API 合约已验证"
+        - "集成测试通过"
+
+      non_functional:
+        - "性能指标达标"
+        - "安全扫描无高危"
+        - "测试覆盖率 ≥ 95%"
+
+      process:
+        - "代码审查完成"
+        - "文档更新完成"
+        - "合规检查通过"
+
+    # 输出制品
+    artifacts:
+      # 代码制品
+      code_artifacts:
+        - artifact_type: "source_code"
+          name: "功能实现代码"
+          storage_location: "github://owner/repo/src/"
+          format: "text"
+
+        - artifact_type: "unit_tests"
+          name: "单元测试"
+          storage_location: "github://owner/repo/tests/"
+          format: "text"
+
+        - artifact_type: "integration_tests"
+          name: "集成测试"
+          storage_location: "github://owner/repo/tests/integration/"
+          format: "text"
+
+      # 文档制品
+      documentation_artifacts:
+        - artifact_type: "api_doc"
+          name: "API 文档"
+          storage_location: "docs/api/"
+          format: "OpenAPI 3.0"
+
+        - artifact_type: "changelog"
+          name: "变更日志"
+          storage_location: "CHANGELOG.md"
+          format: "Markdown"
+
+        - artifact_type: "architecture_diagram"
+          name: "架构图"
+          storage_location: "docs/diagrams/"
+          format: "Mermaid"
+
+      # 报告制品
+      report_artifacts:
+        - artifact_type: "blueprint_execution_report"
+          name: "Blueprint 执行报告"
+          storage_location: "s3://artifacts/blueprint-reports/"
+          format: "JSON + YAML"
+
+        - artifact_type: "test_report"
+          name: "测试报告"
+          storage_location: "s3://artifacts/test-reports/"
+          format: "JUnit XML"
+
+        - artifact_type: "security_scan"
+          name: "安全扫描报告"
+          storage_location: "s3://artifacts/security-scans/"
+          format: "SARIF"
+
+        - artifact_type: "audit_report"
+          name: "审计报告"
+          storage_location: "s3://artifacts/audit-reports/"
+          format: "PDF"
+
+      # 部署制品
+      deployment_artifacts:
+        - artifact_type: "docker_image"
+          name: "容器镜像"
+          storage_location: "ecr://docker-repo/image:tag"
+          format: "OCI"
+
+        - artifact_type: "deployment_manifest"
+          name: "部署清单"
+          storage_location: "github://owner/repo/k8s/"
+          format: "YAML"
+
+        - artifact_type: "terraform_config"
+          name: "基础设施配置"
+          storage_location: "github://owner/repo/terraform/"
+          format: "HCL"
+
+    # 任务状态更新
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          comments:
+            - "✅ requirement_analysis (BA_Agent) - Complete"
+            - "✅ architecture_design (PlanningAgent) - Complete"
+            - "✅ implementation (BuilderAgent) - Complete"
+            - "✅ testing (QAAgent) - Complete"
+            - "✅ security_scan (SecurityAgent) - Complete"
+            - "✅ deployment (PlatformAgent) - Complete"
+          labels:
+            remove: ["in-progress", "blocked"]
+            add: ["completed", "ready-for-merge"]
+
+        child_issues:
+          action: "Close all Task Issues"
+          status: "Closed"
+          comment: "Task completed via Blueprint execution"
+
+      git_operations:
+        pull_requests:
+          - action: "Update PR description"
+            content: "执行摘要和制品链接"
+
+          - action: "Add labels"
+            labels: ["ready-for-review", "all-checks-passed"]
+
+          - action: "Request reviewers"
+            reviewers: ["tech-lead", "security-lead"]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: "Blueprint 执行完成通知"
+
+          - channel: "email"
+            recipients: ["stakeholders@example.com"]
+            subject: "Blueprint 执行完成报告"
+
+  # ================================================================
+  # 8. 度量指标
+  # ================================================================
+  metrics:
+    # 速度指标
+    velocity_metrics:
+      - metric_name: "requirement_to_production_time"
+        description: "从需求到生产的时间"
+        unit: "hours"
+        target: "≤ 48"
+        actual: "待测量"
+
+      - metric_name: "blueprint_execution_success_rate"
+        description: "Blueprint 执行成功率"
+        unit: "percentage"
+        target: "≥ 95%"
+        actual: "待测量"
+
+      - metric_name: "agent_utilization_rate"
+        description: "Agent 利用率"
+        unit: "percentage"
+        target: "≥ 80%"
+        actual: "待测量"
+
+    # 质量指标
+    quality_metrics:
+      - metric_name: "test_coverage_percentage"
+        description: "测试覆盖率"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+        actual: "待测量"
+
+      - metric_name: "defect_escape_rate"
+        description: "缺陷逃逸率"
+        unit: "defects_per_kloc"
+        target: "≤ 0.5"
+        actual: "待测量"
+
+      - metric_name: "security_vulnerability_count"
+        description: "安全漏洞数量"
+        unit: "count"
+        target: "critical=0, high=0"
+        threshold: "hard_gate"
+        actual: "待测量"
+
+      - metric_name: "code_review_findings"
+        description: "代码审查发现的问题"
+        unit: "count"
+        target: "≤ 5"
+        actual: "待测量"
+
+    # 效率指标
+    efficiency_metrics:
+      - metric_name: "token_usage_per_feature"
+        description: "每个功能的 Token 使用量"
+        unit: "tokens"
+        target: "≤ 50000"
+        threshold: "budget_gate"
+        actual: "待测量"
+
+      - metric_name: "compute_resource_utilization"
+        description: "计算资源利用率"
+        unit: "percentage"
+        target: "≥ 70%"
+        actual: "待测量"
+
+      - metric_name: "human_intervention_frequency"
+        description: "人工干预频率"
+        unit: "interventions_per_blueprint"
+        target: "≤ 2"
+        actual: "待测量"
+
+      - metric_name: "iteration_count"
+        description: "迭代次数（修复循环）"
+        unit: "count"
+        target: "≤ 3"
+        actual: "待测量"
+
+    # 学习指标
+    learning_metrics:
+      - metric_name: "repeat_mistake_reduction"
+        description: "重复错误减少率"
+        unit: "percentage"
+        target: "≥ 80%"
+        actual: "待测量"
+
+      - metric_name: "pattern_reuse_rate"
+        description: "模式重用率"
+        unit: "percentage"
+        target: "≥ 60%"
+        actual: "待测量"
+
+      - metric_name: "knowledge_base_growth"
+        description: "知识库增长"
+        unit: "entries_per_week"
+        target: "≥ 10"
+        actual: "待测量"
+
+      - metric_name: "automated_resolution_rate"
+        description: "自动化解决率"
+        unit: "percentage"
+        target: "≥ 85%"
+        actual: "待测量"
+
+    # 汇总报告
+    summary:
+      total_execution_time: "待测量"
+      total_cost_usd: "待测量"
+      total_blocks_executed: "待测量"
+      total_blocks_failed: "待测量"
+      overall_status: "pending | in_progress | completed | failed"
+
+  # ================================================================
+  # 9. 风险和应急处理
+  # ================================================================
+  risk_management:
+    # 风险识别
+    risks:
+      - risk_id: "R001"
+        risk_type: "technical"
+        description: "技术栈不熟悉"
+        probability: "medium"
+        impact: "high"
+        mitigation: "查询 Learning Agent 获取相关模式"
+
+      - risk_id: "R002"
+        risk_type: "resource"
+        description: "资源配额不足"
+        probability: "low"
+        impact: "critical"
+        mitigation: "提前检查动态约束，必要时升级"
+
+    # 应急处理
+    escalation_triggers:
+      - trigger: "budget_exceeded"
+        condition: "total_cost_usd > budget_usd"
+        action: "暂停执行，生成 EscalationRequiredEvent"
+
+      - trigger: "fix_loop_non_convergence"
+        condition: "iteration_count > 3 AND issues_remaining > 0"
+        action: "暂停执行，请求人工干预"
+
+      - trigger: "security_gate_failure"
+        condition: "critical_findings > 0 OR high_findings > 0"
+        action: "阻止合并，要求修复"
+
+      - trigger: "agent_timeout"
+        condition: "execution_time > timeout_limit"
+        action: "标记超时，触发重试或升级"
+
+    # 应急流程
+    escalation_process:
+      step_1: "系统暂停自动化执行"
+      step_2: "生成 EscalationRequiredEvent"
+      step_3: "创建 Issue 用于人工干预"
+      step_4: "提供上下文和建议"
+      step_5: "等待人工解决"
+
+  # ================================================================
+  # 10. 配置和参数
+  # ================================================================
+  config:
+    # 风险级别
+    risk_level: "low | medium | high | critical"
+
+    # 是否需要安全审查
+    requires_security_review: true | false
+
+    # 部署策略
+    deployment_strategy: "canary | blue_green | rolling | big_bang"
+
+    # 并行度
+    parallelism:
+      max_parallel_blocks: 5
+      max_parallel_agents: 3
+
+    # 超时设置
+    timeouts:
+      block_timeout: "2h"
+      blueprint_timeout: "24h"
+      agent_timeout: "30m"
+
+    # 重试策略
+    retry:
+      max_retries: 3
+      retry_delay: "5m"
+      backoff_multiplier: 2
+
+    # 通知配置
+    notifications:
+      on_start: true
+      on_complete: true
+      on_failure: true
+      channels: ["slack", "email"]
+
+# ================================================================
+# Blueprint Template 结束
+# ================================================================

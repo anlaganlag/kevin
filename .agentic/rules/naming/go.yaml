@@ -1,0 +1,140 @@
+# Go 语言命名规范
+# 此文件定义了 Go 语言特定的命名规范
+
+extends: "general.yaml"  # 继承通用规范
+
+rules:
+  naming_conventions:
+    # Go 文件命名
+    files:
+      convention: "snake_case"
+      test_suffix: "_test.go"
+      interface_suffix: "er.go"  # 接口文件建议以 er 结尾
+      examples:
+        - "user_service.go"        # ✅ 正确
+        - "user_service_test.go"   # ✅ 正确（测试文件）
+        - "handler.go"             # ✅ 正确（可以是通用名称）
+        - "user_handlerer.go"     # ✅ 正确（接口文件）
+
+    # Go 包命名
+    packages:
+      convention: "lowercase"
+      no_underscores: true
+      max_length: 30
+      examples:
+        - "package auth"            # ✅ 正确
+        - "package userauth"       # ✅ 正确
+        - "package user_auth"      # ❌ 错误（使用下划线）
+        - "package AuthService"     # ❌ 错误（大写字母）
+
+    # Go 常量命名
+    constants:
+      convention: "PascalCase"  # 导出的常量
+      private_convention: "camelCase"  # 未导出的常量
+      max_length: 50
+      examples:
+        - "const MaxRetries = 3"            # ✅ 正确（导出）
+        - "const defaultTimeout = 30"      # ✅ 正确（未导出）
+        - "const MAX_RETRIES = 3"          # ❌ 错误（全大写）
+        - "const max_retries = 3"          # ❌ 错误（snake_case）
+
+    # Go 变量命名
+    variables:
+      exported: "PascalCase"       # 导出的变量
+      private: "camelCase"         # 未导出的变量
+      short_var_allowed: true      # 允许短变量（如 i, r）
+      examples:
+        - "var UserName string"           # ✅ 正确（导出）
+        - "var userName string"           # ✅ 正确（未导出）
+        - "for i := 0; i < 10; i++"      # ✅ 正确（短变量）
+        - "var user_name string"         # ❌ 错误（snake_case）
+
+    # Go 函数命名
+    functions:
+      exported: "PascalCase"       # 导出的函数
+      private: "camelCase"         # 未导出的函数
+      max_length: 50
+      examples:
+        - "func GetUser() {}"              # ✅ 正确（导出）
+        - "func getUser() {}"              # ✅ 正确（未导出）
+        - "func get_user() {}"            # ❌ 错误（snake_case）
+        - "func USER_DATA() {}"           # ❌ 错误（全大写）
+
+    # Go 接口命名
+    interfaces:
+      convention: "PascalCase"
+      suffix: "er"  # 接口名称通常以 er 结尾
+      examples:
+        - "type Reader interface {}"       # ✅ 正确
+        - "type UserService interface {}" # ✅ 正确
+        - "type user_service interface {}" # ❌ 错误（snake_case）
+        - "type UserInterface interface {}" # ⚠️ 不推荐（以 Interface 结尾）
+
+    # Go 结构体命名
+    structs:
+      convention: "PascalCase"
+      suffix: ""  # 不推荐特定后缀
+      examples:
+        - "type User struct {}"           # ✅ 正确
+        - "type UserService struct {}"   # ✅ 正确
+        - "type user struct {}"           # ❌ 错误（snake_case）
+        - "type UserDTO struct {}"        # ✅ 可接受（DTO 是常见缩写）
+
+  validation:
+    on_create: true
+    on_update: true
+    severity: "error"  # Go 命名规范严格，使用 error 级别
+    auto_fix: false
+
+  overrides:
+    # 覆盖通用规范中的特定规则
+    - rule: "files.convention"
+      value: "snake_case"
+      scope: "go_only"
+      reason: "Go 标准库使用 snake_case"
+
+  # Go 特定的命名最佳实践
+  best_practices:
+    acronyms:
+      # 处理缩写词
+      rules:
+        - acronym: "ID"
+          usage: "Id"  # 在 PascalCase 中，ID 变为 Id
+          examples:
+            - "userID"                   # ✅ 正确
+            - "UserId"                   # ✅ 正确（PascalCase）
+            - "userid"                   # ❌ 错误
+
+        - acronym: "URL"
+          usage: "Url"  # 在 PascalCase 中，URL 变为 Url
+          examples:
+            - "siteURL"                  # ✅ 正确
+            - "SiteUrl"                  # ✅ 正确（PascalCase）
+
+        - acronym: "HTTP"
+          usage: "Http"
+          examples:
+            - "httpClient"               # ✅ 正确
+            - "HttpClient"               # ✅ 正确（PascalCase）
+
+    abbreviations:
+      # 允许的常见缩写
+      allowed:
+        - "ctx" for "context"           # ✅ 常见用法
+        - "req" for "request"           # ✅ 常见用法
+        - "resp" for "response"         # ✅ 常见用法
+        - "err" for "error"             # ✅ 常见用法
+        - "msg" for "message"           # ✅ 常见用法
+
+      examples:
+        - "func process(ctx context)"   # ✅ 正确
+        - "func HandleRequest(req)"     # ✅ 正确
+        - "if err != nil"               # ✅ 正确
+
+  # 导入路径命名
+  import_paths:
+    convention: "full_domain_path"
+    examples:
+      - "github.com/username/project"  # ✅ 正确
+      - "gitlab.com/company/project"   # ✅ 正确
+      - "company/project/internal"    # ❌ 错误（缺少域名）

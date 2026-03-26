@@ -1,0 +1,201 @@
+# 默认配置概要
+# 平衡速度和质量的配置组合
+
+profile:
+  name: "default_profile"
+  description: "默认配置概要，平衡速度和质量"
+  extends: null
+
+  # 规则配置
+  rules:
+    # 命名规范
+    naming:
+      - ".agentic/rules/naming/general.yaml"
+      - ".agentic/rules/naming/go.yaml"
+      - ".agentic/rules/naming/typescript.yaml"
+
+    # 安全规则
+    security:
+      - ".agentic/rules/security/owasp_top10.yaml"
+
+    # 测试规则
+    testing:
+      - ".agentic/rules/testing/coverage.yaml"
+      - ".agentic/rules/testing/unit_tests.yaml"
+
+    # 工作流规则
+    workflows:
+      - ".agentic/rules/workflows/git_workflow.yaml"
+      - ".agentic/rules/workflows/pr_workflow.yaml"
+
+  # 约束配置
+  constraints:
+    # 基础设施约束
+    infra:
+      - ".agentic/constraints/infra/static/"
+
+    # DevOps 约束
+    devops:
+      - ".agentic/constraints/devops/ci/"
+      - ".agentic/constraints/devops/cd/"
+
+    # 业务约束
+    business:
+      - ".agentic/constraints/business/"
+
+  # 配置概要设置
+  settings:
+    # 质量vs速度平衡
+    quality_vs_speed: "balanced"
+    quality_weight: 0.7
+    speed_weight: 0.3
+
+    # 安全级别
+    security_level: "moderate"
+    security_strictness: 0.7
+
+    # 测试深度
+    testing_depth: "standard"
+    test_coverage_requirement: 95
+
+    # 文档要求
+    documentation_level: "standard"
+    api_docs_required: true
+    readme_required: true
+
+    # 审查要求
+    code_review_required: true
+    min_reviewers: 2
+
+    # 自动化程度
+    automation_level: "high"
+    auto_fix_style: true
+    auto_dependency_update: "minor"
+
+  # 工具配置
+  tools:
+    enabled:
+      - "linter"
+      - "formatter"
+      - "security_scanner"
+      - "dependency_scanner"
+      - "coverage_reporter"
+
+    linter:
+      strictness: "standard"
+      block_on_error: false
+
+    formatter:
+      auto_format: true
+      format_on_save: true
+
+    security_scanner:
+      fail_on: "high"
+      scan_frequency: "on_pr"
+
+    dependency_scanner:
+      auto_update: "minor"
+      notify_on: "high"
+
+  # 门禁配置
+  gates:
+    pre_commit:
+      - "formatting"
+      - "quick_lint"
+      - "secrets_scan"
+
+    pre_push:
+      - "unit_tests"
+      - "coverage"
+      - "full_lint"
+
+    pre_merge:
+      - "all_tests"
+      - "security_scan"
+      - "dependency_scan"
+      - "code_review"
+
+    pre_deploy:
+      - "integration_tests"
+      - "e2e_tests"
+      - "performance_tests"
+
+  # 通知配置
+  notifications:
+    on_failure: true
+    on_recovery: true
+    on_degradation: true
+
+    channels:
+      - type: "slack"
+        webhook: "https://hooks.slack.com/..."
+        notify_on: ["failure", "recovery"]
+
+      - type: "email"
+        recipients: ["team@example.com"]
+        notify_on: ["failure"]
+
+  # 报告配置
+  reporting:
+    generate_reports: true
+    frequency: "on_pr"
+
+    reports:
+      - "test_summary"
+      - "coverage_report"
+      - "security_scan"
+      - "dependency_report"
+
+    storage: "s3://agentic-reports/"
+
+  # 质量指标
+  quality_metrics:
+    test_coverage:
+      target: 95
+      warning: 90
+      error: 85
+
+    code_quality:
+      max_complexity: 10
+      max_code_smells: 5
+      max_duplication: 3
+
+    security:
+      max_vulnerabilities:
+        critical: 0
+        high: 0
+        medium: 3
+        low: 10
+
+    performance:
+      max_build_time: "30min"
+      max_test_time: "15min"
+
+  # 持续改进
+  improvement:
+    review_frequency: "quarterly"
+    update_frequency: "monthly"
+    training_frequency: "monthly"
+
+    metrics_tracking:
+      - "velocity"
+      - "quality"
+      - "security"
+      - "performance"
+
+  # 合规要求
+  compliance:
+    standards:
+      - "OWASP"
+      - "internal_security_policy"
+
+    audit:
+      enabled: true
+      frequency: "monthly"
+
+  # 例外处理
+  exceptions:
+    allow_temporary: true
+    max_duration_days: 30
+    require_approval: "tech_lead"
+    require_documentation: true

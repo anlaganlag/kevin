@@ -1,0 +1,283 @@
+# 技术栈约束
+# 定义项目允许使用的技术栈版本和配置
+
+constraints:
+  technical_stack:
+    # 允许的编程语言
+    languages:
+      - name: "Go"
+        version: ">= 1.21"
+        primary: true
+        use_cases: ["backend", "microservices", "cli"]
+        end_of_life: "2026-12-31"
+        supported_features:
+          - "goroutines"
+          - "channels"
+          - "interfaces"
+          - "generics"
+
+      - name: "TypeScript"
+        version: ">= 5.0"
+        primary: true
+        use_cases: ["frontend", "backend"]
+        end_of_life: "2025-12-31"
+        supported_features:
+          - "type_safety"
+          - "decorators"
+          - "async_await"
+          - "tsx"
+
+      - name: "Python"
+        version: ">= 3.11"
+        primary: false
+        use_cases: ["scripts", "data_processing", "ml"]
+        end_of_life: "2027-10-24"
+        supported_features:
+          - "type_hints"
+          - "async_await"
+          - "context_managers"
+
+    # 框架版本约束
+    frameworks:
+      backend:
+        - name: "Gin"
+          language: "Go"
+          version: ">= 1.9.0"
+          eol: "2025-12-31"
+
+        - name: "FastAPI"
+          language: "Python"
+          version: ">= 0.100.0"
+          eol: "2026-06-01"
+
+      frontend:
+        - name: "React"
+          language: "TypeScript"
+          version: ">= 18.0.0"
+          eol: "2025-04-30"
+
+        - name: "Vue"
+          language: "TypeScript"
+          version: ">= 3.3.0"
+          eol: "2025-12-31"
+
+    # 数据库约束
+    databases:
+      primary:
+        - name: "PostgreSQL"
+          version: ">= 14.0"
+          eol: "2027-11-12"
+          features:
+            - "jsonb"
+            - "full_text_search"
+            - "transactions"
+
+      cache:
+        - name: "Redis"
+          version: ">= 7.0"
+          eol: "2024-12-31"
+          features:
+            - "pub_sub"
+            - "streams"
+            - "clustering"
+
+      analytics:
+        - name: "ClickHouse"
+          version: ">= 23.0"
+          eol: "2025-12-31"
+
+    # 消息队列约束
+    message_queues:
+      task_queue:
+        - name: "RabbitMQ"
+          version: ">= 3.12"
+          eol: "2026-04-30"
+          features:
+            - "dead_letter_queue"
+            - "delayed_messages"
+
+      event_streaming:
+        - name: "Kafka"
+          version: ">= 3.5"
+          eol: "2025-09-30"
+          features:
+            - "exactly_once_semantics"
+            - "kstreams"
+            - "ksql"
+
+    # 存储约束
+    storage:
+      object_storage:
+        - name: "S3"
+          api_compatible: true
+          features:
+            - "versioning"
+            - "encryption"
+            - "lifecycle_policies"
+
+      file_storage:
+        - name: "EFS"
+          mountable: true
+          features:
+            - "posix_compliance"
+            - "scalable_capacity"
+
+  validation:
+    enforce_version_constraints: true
+    allow_latest: false
+    require_pinned_versions: true
+    check_eol_dates: true
+    warn_before_eol_months: 6
+    block_eol_versions: true
+
+  # 兼容性要求
+  compatibility:
+    go:
+      modules:
+        require_go_mod: true
+        minimal_version: "1.21"
+        dependency_management: "go_mod"
+
+      tools:
+        - name: "golangci-lint"
+          version: ">= 1.50"
+        - name: "go-test"
+          included: true
+
+    typescript:
+      package_manager: "npm"
+      require_lockfile: true
+      dependency_types:
+        - "dependencies"
+        - "devDependencies"
+        - "peerDependencies"
+
+      tools:
+        - name: "eslint"
+          version: ">= 8.0"
+        - name: "prettier"
+          version: ">= 3.0"
+        - name: "typescript"
+          version: ">= 5.0"
+
+    python:
+      package_manager: "poetry"
+      require_lockfile: true
+      virtual_environments: true
+
+      tools:
+        - name: "pylint"
+          version: ">= 3.0"
+        - name: "pytest"
+          version: ">= 7.0"
+        - name: "black"
+          version: ">= 23.0"
+
+  # 安全要求
+  security:
+    scan_dependencies: true
+    block_vulnerable: true
+    allowlist_only: false
+    auto_update_minor: true
+    manual_update_major: true
+
+    vulnerability_threshold:
+      critical: 0
+      high: 0
+      medium: 3
+      low: 10
+
+  # 许可证约束
+  licenses:
+    allowed:
+      - "MIT"
+      - "Apache-2.0"
+      - "BSD-3-Clause"
+      - "BSD-2-Clause"
+      - "ISC"
+
+    forbidden:
+      - "GPL-3.0"
+      - "AGPL-3.0"
+      - "SSPL"
+      - "WTFPL"
+
+    copyleft_allowed: false
+    require_license_file: true
+    scan_transitive_dependencies: true
+
+  # 性能要求
+  performance:
+    go:
+      max_goroutines: 10000
+      max_memory_per_request: "100MiB"
+      gc_percent: 100
+
+    typescript:
+      max_heap_size: "512MiB"
+      max_event_loop_delay: "100ms"
+
+    python:
+      max_memory_per_worker: "512MiB"
+      max_request_time: "30s"
+
+  # 资源限制
+  resources:
+    development:
+      cpu_cores: 4
+      memory_gb: 8
+      disk_gb: 50
+
+    testing:
+      cpu_cores: 4
+      memory_gb: 8
+      disk_gb: 50
+
+    production:
+      cpu_cores: 16
+      memory_gb: 32
+      disk_gb: 500
+
+  # 监控和可观测性
+  observability:
+    required:
+      - "metrics"
+      - "logging"
+      - "tracing"
+
+    metrics:
+      format: "prometheus"
+      port: 9090
+      path: "/metrics"
+
+    logging:
+      format: "json"
+      level: "info"
+      output: "stdout"
+
+    tracing:
+      protocol: "otlp"
+      exporter: "jaeger"
+      sample_rate: 0.1
+
+  # 迁移路径
+  migration_paths:
+    go_1_20_to_1_21:
+      breaking_changes:
+        - "GOPATH mode removed"
+        - "GODEBUG settings changed"
+      migration_guide: "https://go.dev/doc/go1.21"
+
+    react_17_to_18:
+      breaking_changes:
+        - "ReactDOM.render deprecated"
+        - "StrictMode changes"
+      migration_guide: "https://react.dev/blog/2022/03/08/react-18-upgrade-guide"
+
+  # 例外处理
+  exceptions:
+    require_documentation: true
+    require_approval: "tech_lead"
+    temporary_only: true
+    max_duration_days: 90
+    auto_expire: true

@@ -1,0 +1,136 @@
+# Blueprint Block Template
+# Blueprint 由可重用的 Blocks 组成
+# 每个 Block 定义了一个独立的执行单元
+
+block:
+  # ================================================================
+  # 1. 基本信息
+  # ================================================================
+  metadata:
+    # Block ID 命名格式: BLOCK-{domain}-{agent_type}-{action}-{sequence}
+    # 示例: BLOCK-AUTH-PLANNING-ARCHITECTURE-DESIGN-001
+    block_id: "BLOCK-{domain}-{agent_type}-{action}-{sequence}"
+    block_name: "Block 名称"
+    block_type: "development | verification | deployment | documentation | operations"
+    version: "1.0.0"
+    created_by: "agent_id"
+    tags:
+      - "tag1"
+      - "tag2"
+
+  # ================================================================
+  # 2. 执行配置
+  # ================================================================
+  execution:
+    # 负责执行的 Agent
+    assigned_to: "BA_Agent | PlanningAgent | BuilderAgent | QAAgent | SecurityAgent | PlatformAgent | SREAgent | DocAgent | LearningAgent"
+
+    # 执行阶段
+    phase: "analysis | design | implementation | verification | deployment | documentation"
+
+    # 依赖的 Blocks
+    dependencies:
+      - "BLOCK-B1"
+      - "BLOCK-B2"
+
+    # 超时设置
+    timeout: "2h"
+
+  # ================================================================
+  # 3. 输入
+  # ================================================================
+  input:
+    # 来自上一个 Block 的输出
+    from_previous_blocks:
+      - block_id: "BLOCK-B1"
+        artifacts:
+          - "blueprint.yaml"
+          - "api_contract.yaml"
+
+    # 外部输入
+    external_inputs:
+      - source: "github://owner/repo/main"
+        type: "code"
+        description: "当前代码库状态"
+
+      - source: "Learning Agent"
+        type: "knowledge"
+        description: "历史模式和最佳实践"
+
+  # ================================================================
+  # 4. 技能和工具
+  # ================================================================
+  capabilities:
+    required_skills:
+      - "skill1"
+      - "skill2"
+
+    required_tools:
+      - tool: "github_api"
+        actions: ["read", "write"]
+
+      - tool: "bash_execution"
+        actions: ["command_execution"]
+
+  # ================================================================
+  # 5. 执行步骤
+  # ================================================================
+  steps:
+    - step_id: "S1"
+      action: "步骤描述"
+      tool: "tool_name"
+      input: "输入描述"
+      output: "输出描述"
+
+    - step_id: "S2"
+      action: "步骤描述"
+      tool: "tool_name"
+      input: "输入描述"
+      output: "输出描述"
+
+  # ================================================================
+  # 6. 输出
+  # ================================================================
+  output:
+    artifacts:
+      - artifact_type: "blueprint | code | test_report | security_scan | api_doc | deployment_manifest"
+        name: "制品名称"
+        storage_location: "s3://artifacts/..."
+        format: "JSON | YAML | text"
+
+    events:
+      - event_type: "BlockCompletedEvent"
+        payload:
+          block_id: "BLOCK-xxx"
+          status: "completed"
+          artifacts: ["artifact1", "artifact2"]
+
+  # ================================================================
+  # 7. 验收条件
+  # ================================================================
+  acceptance_criteria:
+    - "验收条件1"
+    - "验收条件2"
+
+  # ================================================================
+  # 8. 度量指标
+  # ================================================================
+  metrics:
+    - metric_name: "execution_time"
+      target: "≤ 2h"
+
+    - metric_name: "token_usage"
+      target: "≤ 10000"
+
+  # ================================================================
+  # 9. 错误处理
+  # ================================================================
+  error_handling:
+    on_failure:
+      action: "retry | escalate | abort"
+      max_retries: 3
+      escalation_trigger: "连续失败 3 次"
+
+# ================================================================
+# Block Template 结束
+# ================================================================

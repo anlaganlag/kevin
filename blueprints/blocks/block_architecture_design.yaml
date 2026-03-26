@@ -1,0 +1,285 @@
+# Blueprint Block: 架构设计
+# 由 Planning Agent 执行的架构设计 Block
+
+block:
+  # ================================================================
+  # 1. 基本信息
+  # ================================================================
+  metadata:
+    block_id: "BLOCK-PLANNING-ARCHITECTURE-DESIGN-001"
+    block_name: "认证系统架构设计"
+    block_type: "development"
+    version: "1.0.0"
+    created_by: "PlanningAgent"
+    tags:
+      - "architecture"
+      - "api-design"
+      - "security"
+
+  # ================================================================
+  # 2. 执行配置
+  # ================================================================
+  execution:
+    assigned_to: "PlanningAgent"
+    phase: "design"
+    dependencies:
+      - "BLOCK-BA-REQUIREMENT-ANALYSIS-001"
+    timeout: "2h"
+    priority: "high"
+
+  # ================================================================
+  # 3. 输入
+  # ================================================================
+  input:
+    from_previous_blocks:
+      - block_id: "BLOCK-BA-REQUIREMENT-ANALYSIS-001"
+        artifacts:
+          - "brd_auth_system.md"
+          - "user_stories.md"
+          - "acceptance_criteria.md"
+
+    external_inputs:
+      - source: "github://owner/repo/tree/main/src"
+        type: "code"
+        description: "现有代码库架构"
+
+      - source: "Learning Agent"
+        type: "knowledge"
+        query: "authentication architecture patterns security best practices"
+        description: "历史架构模式和最佳实践"
+
+      - source: "Infra Dependency Layer (Static)"
+        type: "constraints"
+        content:
+          - language_stack: ["Go 1.21+", "TypeScript 5.0+"]
+          - security_policies: "OWASP Top 10 compliance"
+          - network_topology: "Multi-AZ VPC"
+
+  # ================================================================
+  # 4. 技能和工具
+  # ================================================================
+  capabilities:
+    required_skills:
+      - "blueprint_design"
+      - "api_contract_design"
+      - "architecture_consistency_check"
+      - "security_architecture_design"
+      - "task_decomposition"
+
+    required_tools:
+      - tool: "github_api"
+        actions: ["read", "write"]
+        permissions: ["repository:read", "pull_requests:write"]
+
+      - tool: "learning_agent_query"
+        actions: ["knowledge_base:read", "pattern_matching"]
+
+      - tool: "bash_execution"
+        actions: ["command_execution", "file_operations"]
+
+  # ================================================================
+  # 5. 执行步骤
+  # ================================================================
+  steps:
+    - step_id: "S1"
+      action: "分析需求和约束"
+      tool: "learning_agent_query"
+      input:
+        requirements: "from BLOCK-BA-REQUIREMENT-ANALYSIS-001"
+        constraints: "from Infra Dependency Layer"
+      output:
+        understanding: "需求理解和约束分析"
+
+    - step_id: "S2"
+      action: "设计系统架构"
+      tool: "planning_agent_internal"
+      input:
+        requirements: "from S1"
+        patterns: "from Learning Agent"
+      output:
+        architecture: "系统架构设计"
+
+    - step_id: "S3"
+      action: "定义 API 合约"
+      tool: "openapi_generator"
+      input:
+        architecture: "from S2"
+        user_stories: "from BLOCK-BA-REQUIREMENT-ANALYSIS-001"
+      output:
+        api_contract: "OpenAPI 3.0 规范"
+
+    - step_id: "S4"
+      action: "分解任务"
+      tool: "task_decomposer"
+      input:
+        architecture: "from S2"
+        api_contract: "from S3"
+      output:
+        task_breakdown: "分层级任务列表"
+
+    - step_id: "S5"
+      action: "创建 Blueprint PR"
+      tool: "github_api"
+      input:
+        architecture: "from S2"
+        api_contract: "from S3"
+        task_breakdown: "from S4"
+      output:
+        pull_request: "Blueprint PR"
+
+  # ================================================================
+  # 6. 输出
+  # ================================================================
+  output:
+    artifacts:
+      - artifact_type: "blueprint"
+        name: "认证系统技术 Blueprint"
+        storage_location: "github://owner/repo/docs/blueprints/auth_blueprint.yaml"
+        format: "YAML"
+        content:
+          architecture:
+            - "认证服务架构"
+            - "数据模型"
+            - "API 端点"
+            - "安全考虑"
+
+      - artifact_type: "api_doc"
+        name: "API 合约 (OpenAPI)"
+        storage_location: "github://owner/repo/docs/api/auth_openapi.yaml"
+        format: "OpenAPI 3.0"
+        content:
+          endpoints:
+            - "POST /auth/register"
+            - "POST /auth/login"
+            - "POST /auth/logout"
+            - "POST /auth/refresh"
+            - "GET /auth/me"
+
+      - artifact_type: "task_list"
+        name: "任务分解列表"
+        storage_location: "github://owner/repo/docs/tasks/auth_tasks.md"
+        format: "Markdown"
+        content:
+          phases:
+            - phase: "implementation"
+              tasks:
+                - "实现注册 API"
+                - "实现登录 API"
+                - "实现 JWT 管理器"
+                - "实现中间件"
+            - phase: "testing"
+              tasks:
+                - "编写单元测试"
+                - "编写集成测试"
+
+      - artifact_type: "architecture_diagram"
+        name: "架构图"
+        storage_location: "github://owner/repo/docs/diagrams/auth_architecture.mmd"
+        format: "Mermaid"
+        content:
+          components:
+            - "认证服务"
+            - "用户数据库"
+            - "缓存层"
+            - "API 网关"
+
+    events:
+      - event_type: "BlockCompletedEvent"
+        payload:
+          block_id: "BLOCK-PLANNING-ARCHITECTURE-DESIGN-001"
+          status: "completed"
+          artifacts:
+            - "auth_blueprint.yaml"
+            - "auth_openapi.yaml"
+            - "auth_tasks.md"
+            - "auth_architecture.mmd"
+          metrics:
+            execution_time: "90min"
+            token_usage: 15000
+
+      - event_type: "BlueprintCreatedEvent"
+        payload:
+          blueprint_id: "BLUEPRINT-20260326-001"
+          pull_request: "PR-46"
+          status: "awaiting_human_review"
+
+  # ================================================================
+  # 7. 验收条件
+  # ================================================================
+  acceptance_criteria:
+    architectural:
+      - "架构设计符合需求"
+      - "API 端点覆盖所有用户故事"
+      - "数据模型支持所有功能"
+      - "架构遵循现有代码库模式"
+      - "安全考虑完整"
+
+    documentation:
+      - "OpenAPI 规范完整且有效"
+      - "架构图清晰展示组件关系"
+      - "任务分解可执行且独立"
+
+    process:
+      - "Blueprint PR 已创建"
+      - "文档已提交到仓库"
+      - "等待 HITL Gate 1 审查"
+
+  # ================================================================
+  # 8. 度量指标
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "execution_time"
+        target: "≤ 2h"
+        actual: "90min"
+        status: "passed"
+
+      - metric_name: "token_usage"
+        target: "≤ 20000"
+        actual: 15000
+        status: "passed"
+
+    quality:
+      - metric_name: "api_completeness"
+        target: "100% of user stories covered"
+        actual: "100%"
+        status: "passed"
+
+      - metric_name: "architecture_consistency"
+        target: "follows existing patterns"
+        actual: "consistent"
+        status: "passed"
+
+  # ================================================================
+  # 9. 错误处理
+  # ================================================================
+  error_handling:
+    on_failure:
+      action: "escalate"
+      escalation_trigger: "无法在 2 小时内完成架构设计"
+      escalation_to: "Human Orchestrator"
+      context:
+        requirements: "来自 BLOCK-BA-REQUIREMENT-ANALYSIS-001"
+        blockers: "具体的阻塞因素"
+        recommendations: "建议的解决方案"
+
+    retry_strategy:
+      max_retries: 1
+      retry_conditions:
+        - "OpenAPI 生成失败"
+        - "任务分解不完整"
+
+  # ================================================================
+  # 10. 后续步骤
+  # ================================================================
+  next_steps:
+    - block: "BLOCK-BUILDER-AUTH-IMPLEMENTATION-002"
+      trigger_condition: "HITL Gate 1 审查通过"
+
+    - block: "BLOCK-PLATFORM-INFRASTRUCTURE-003"
+      trigger_condition: "HITL Gate 1 审查通过"
+      execution: "parallel with BLOCK-BUILDER-AUTH-IMPLEMENTATION-002"
+
+# ================================================================
+# Block 示例结束
+# ================================================================
