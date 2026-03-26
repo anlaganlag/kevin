@@ -1,0 +1,1352 @@
+# Backend Development Agent Blueprint (TDD-Based)
+# Blueprint for backend development task execution using Test-Driven Development
+# Ralph Loop execution with BuilderAgent (Backend Expert) for implementation
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_backend_coding_tdd_automation.1.0.0"
+    blueprint_name: "Backend Development Automation (TDD-Based)"
+    blueprint_type: "implementation"
+    version: "1.0.0"
+    created_at: "2026-03-26T22:00:00Z"
+    created_by: "BuilderAgent"
+    tags:
+      - "backend"
+      - "development"
+      - "tdd"
+      - "coding"
+      - "testing"
+      - "automation"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    # Profile Reference
+    profile:
+      name: "default_profile"
+      description: "Standard TDD-based development profile"
+
+    # Rules Loading
+    rules:
+      # Load entire rule directories
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/security/"
+        - ".agentic/rules/code_style/"
+        - ".agentic/rules/testing/"
+        - ".agentic/rules/workflows/"
+
+      # Specific rule files
+      specific:
+        - ".agentic/rules/naming/general.yaml"
+        - ".agentic/rules/naming/go.yaml"
+        - ".agentic/rules/security/owasp_top10.yaml"
+        - ".agentic/rules/code_style/linters.yaml"
+        - ".agentic/rules/testing/tdd.yaml"
+        - ".agentic/rules/testing/unit_tests.yaml"
+
+      # TDD-specific inline rules
+      inline:
+        custom_rules:
+          - name: "tdd_mandatory"
+            rule: "All code must be written using Test-Driven Development approach"
+            enforcement: "strict"
+            validator: "tdd_compliance_checker"
+
+          - name: "test_first"
+            rule: "Tests must be written before implementation code"
+            enforcement: "strict"
+            validator: "test_first_validator"
+
+          - name: "test_coverage"
+            rule: "Unit test coverage must be ≥ 95%"
+            enforcement: "strict"
+            validator: "coverage_validator"
+
+          - name: "code_quality"
+            rule: "All code must pass linters and formatters"
+            enforcement: "strict"
+            validator: "code_quality_validator"
+
+          - name: "naming_conventions"
+            rule: "Follow Go naming conventions (snake_case files, PascalCase exports)"
+            enforcement: "strict"
+            validator: "naming_validator"
+
+    # Constraints Loading
+    constraints:
+      # Load entire constraint directories
+      load_from:
+        - ".agentic/constraints/infra/static/"
+        - ".agentic/constraints/business/"
+
+      # Specific constraint files
+      specific:
+        - ".agentic/constraints/infra/static/technical_stack.yaml"
+        - ".agentic/constraints/business/api_standards.yaml"
+
+      # Backend development-specific inline constraints
+      inline:
+        technical_stack:
+          go_version: ">= 1.21"
+          golangci_lint_version: "latest"
+          go_test_version: "builtin"
+
+        development_constraints:
+          max_function_complexity: 10
+          max_function_lines: 50
+          max_file_lines: 500
+          required_test_coverage: 95
+
+        tdd_constraints:
+          test_before_implementation: true
+          minimum_tests_per_function: 2
+          test_file_naming: "xxx_test.go"
+          test_function_naming: "TestXXX or TestXXX_YYY"
+
+        output_constraints:
+          must_compile: true
+          must_pass_tests: true
+          must_pass_linters: true
+          generate_artifacts: true
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    # Trigger Definition
+    trigger:
+      event_type: "IssueAssignedEvent | TaskReadyEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "19"
+        issue_type: "task"
+        labels: ["backend", "development", "coding"]
+        priority: "high"
+        complexity: "low | medium | high"
+        estimated_hours: "4-8"
+        description: "Backend development task using TDD approach"
+
+    # Task Type Mapping
+    task_mapping:
+      backend_development:
+        primary_phase: "implementation"
+        entry_point: "BuilderAgent"
+
+    # Input Context
+    context:
+      source_documents:
+        - type: "GitHub Issue (Development Task)"
+          location: "github://centific-cn/AgenticSDLC/issues/19"
+          required: true
+          description: "Backend development task with proper granularity"
+          contains:
+            - "Task description"
+            - "Acceptance criteria"
+            - "Complexity assessment"
+            - "Effort estimation"
+            - "Related design references"
+
+        - type: "Architecture Design"
+          location: "docs/architecture/architecture_design.md"
+          required: true
+          description: "System architecture and component design"
+
+        - type: "Technical Implementation Plan"
+          location: "docs/technical/implementation_plan.md"
+          required: true
+          description: "Detailed technical implementation approach"
+
+        - type: "API Specifications"
+          location: "docs/api/api_contract_openapi.yaml"
+          required: true
+          description: "API contracts and endpoint definitions"
+
+        - type: "Data Models"
+          location: "docs/data/data_models.md"
+          required: true
+          description: "Database schema and data structures"
+
+        - type: "Requirements Documentation"
+          location: "requirements/brd_*.md"
+          required: true
+          description: "Business requirements and user stories"
+
+        - type: "Existing Codebase"
+          location: "github://centific-cn/AgenticSDLC/tree/main/src"
+          required: true
+          description: "Current implementation for context and patterns"
+
+      data_sources:
+        - "Git Repository (feature branch)"
+        - "Learning Agent (code patterns, best practices)"
+        - "Infrastructure State (dependencies, constraints)"
+        - "Previous implementations (for consistency)"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    # Primary Agent Selection
+    primary_agent:
+      agent_type: "BuilderAgent"
+      selection_logic:
+        reasoning: |
+          1. Issue type = "task" with label "backend" AND "coding" → BuilderAgent
+          2. Task requires code implementation → BuilderAgent core competency
+          3. TDD approach required → BuilderAgent with testing expertise
+          4. Backend development → BuilderAgent (Backend Expert specialization)
+          → Decision: BuilderAgent as Primary Agent (Backend Expert)
+
+      responsibilities:
+        - "Follow TDD methodology (Test First)"
+        - "Write unit tests before implementation"
+        - "Implement backend code"
+        - "Run tests continuously"
+        - "Ensure code quality standards"
+        - "Generate deployable artifacts"
+
+    # Sub-Agents Coordination (TDD Support)
+    sub_agents:
+      # 1. Backend Development Expert (BuilderAgent - Primary)
+      - agent_type: "BuilderAgent"
+        role: "Backend Development Expert"
+        phase: "tdd_implementation"
+        responsibilities:
+          - "Write failing tests first (Red)"
+          - "Implement minimal code to pass tests (Green)"
+          - "Refactor for quality (Refactor)"
+          - "Repeat TDD cycle"
+          - "Ensure test coverage ≥ 95%"
+        coordination: "primary_agent"
+
+      # 2. Code Review Expert (BuilderAgent sub-function)
+      - agent_type: "BuilderAgent"
+        role: "Code Review Validator"
+        phase: "continuous_validation"
+        responsibilities:
+          - "Validate code against patterns"
+          - "Check naming conventions"
+          - "Review test quality"
+          - "Validate implementation completeness"
+        coordination: "continuous_parallel"
+
+      # 3. Security Expert (SecurityAgent)
+      - agent_type: "SecurityAgent"
+        role: "Security Code Reviewer"
+        phase: "security_validation"
+        responsibilities:
+          - "Review code for security issues"
+          - "Validate OWASP Top 10 compliance"
+          - "Check for secrets and credentials"
+          - "Validate input sanitization"
+          - "Review authentication/authorization"
+        coordination: "consultative"
+
+      # 4. QA Expert (QAAgent)
+      - agent_type: "QAAgent"
+        role: "Testing Strategy Advisor"
+        phase: "test_guidance"
+        responsibilities:
+          - "Advise on test coverage"
+          - "Suggest edge cases"
+          - "Validate test scenarios"
+          - "Review test quality"
+        coordination: "consultative"
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    # Agent Skills
+    agent_skills:
+      BuilderAgent:
+        - "tdd_methodology"
+        - "go_programming"
+        - "unit_testing"
+        - "test_driven_development"
+        - "code_refactoring"
+        - "golangci_lint"
+        - "go_test"
+        - "code_generation"
+        - "pattern_matching"
+
+      SecurityAgent:
+        - "static_code_analysis"
+        - "security_review"
+        - "owasp_compliance_check"
+        - "vulnerability_detection"
+
+      QAAgent:
+        - "test_strategy_design"
+        - "test_case_review"
+        - "coverage_analysis"
+        - "edge_case_identification"
+
+    # Tool Access Permissions
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+          - "repository:read"
+          - "code:read"
+
+      - tool: "bash_execution"
+        permissions:
+          - "command_execution"
+          - "file_operations"
+          - "go_commands"
+          - "test_commands"
+
+      - tool: "go_toolchain"
+        permissions:
+          - "go_build"
+          - "go_test"
+          - "go_vet"
+          - "go_fmt"
+          - "go_run"
+
+      - tool: "linter"
+        permissions:
+          - "golangci_lint"
+          - "staticcheck"
+          - "vet"
+
+      - tool: "test_runner"
+        permissions:
+          - "go_test"
+          - "test_coverage"
+          - "benchmark_tests"
+
+      - tool: "code_generator"
+        permissions:
+          - "code_generation"
+          - "test_generation"
+          - "scaffold_generation"
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "code_patterns:query"
+          - "best_practices:query"
+          - "implementation_examples:query"
+
+  # ================================================================
+  # 6. Task Execution Workflow (TDD-based Ralph Loop)
+  # ================================================================
+  workflow:
+    # Ralph Loop 5-Step Execution Process with TDD
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BuilderAgent as Primary"
+        input:
+          issue_type: "task"
+          issue_id: "19"
+          labels: ["backend", "development", "coding"]
+          complexity: "low | medium | high"
+          estimated_hours: "4-8"
+          priority: "high"
+        output: "BuilderAgent assigned as Primary Agent (Backend Expert) for TDD implementation"
+        decision_logic: |
+          IF label == "backend" AND label == "coding" THEN BuilderAgent
+          ELSE IF label == "frontend" AND "coding" THEN BuilderAgent (Frontend)
+          ELSE IF label == "infrastructure" THEN PlatformAgent
+          ELSE PlanningAgent (for architecture)
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer (Static)"
+            content:
+              language_stack: ["Go 1.21+"]
+              framework_versions:
+                go: ">= 1.21"
+              coding_standards:
+                - "Effective Go"
+                - "Go Code Review Comments"
+                - "TDD Best Practices"
+              testing_framework: "Go testing package"
+              linting: "golangci-lint"
+
+          - source: "Task Requirements"
+            content:
+              task_description: "Backend development task description"
+              acceptance_criteria: "List of acceptance criteria"
+              complexity: "low | medium | high"
+              estimated_hours: "4-8"
+              dependencies: ["Required packages and services"]
+
+          - source: "Design Documents"
+            content:
+              architecture_design: "System architecture overview"
+              implementation_plan: "Technical implementation approach"
+              api_specifications: "API contracts and endpoints"
+              data_models: "Database schema and structures"
+
+          - source: "Learning Agent"
+            content:
+              code_patterns:
+                - "Repository pattern"
+                - "Service layer pattern"
+                - "Dependency injection"
+              testing_patterns:
+                - "Table-driven tests"
+                - "Test helpers and fixtures"
+                - "Mock interfaces"
+              best_practices:
+                - "Error handling patterns"
+                - "Logging patterns"
+                - "Configuration management"
+              anti_patterns:
+                - "Avoid global state"
+                - "Avoid tight coupling"
+                - "Avoid god functions"
+
+        output: "TDD implementation strategy formulated with full context and patterns"
+
+      # Step 3: Coordinate Sub-Agents (TDD Cycle Execution)
+      step_3:
+        action: "Primary Agent → Execute TDD Cycles"
+        coordination_model: "tdd_ralph_wiggum_loop"
+        description: |
+          TDD-based implementation using Ralph Wiggum Loop:
+          1. RED: Write failing test
+          2. GREEN: Write minimal code to pass
+          3. REFACTOR: Improve code quality
+          4. Repeat until feature complete
+          5. Continuous validation and review
+
+        dependency_graph:
+          blocks:
+            # Phase 1: Task Analysis and Setup
+            - block_id: "B1"
+              name: "analyze_task_requirements"
+              assigned_to: "BuilderAgent"
+              dependencies: []
+              skills: ["requirement_analysis", "task_breakdown"]
+              output: "Task understanding and implementation plan"
+              tdd_phase: "preparation"
+
+            - block_id: "B2"
+              name: "setup_development_environment"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B1"]
+              skills: ["environment_setup", "dependency_management"]
+              output: "Development environment ready"
+              tdd_phase: "preparation"
+
+            # Phase 2: TDD Implementation Cycles (Ralph Wiggum Loop)
+            - block_id: "B3"
+              name: "tdd_cycle_1_red"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B2"]
+              skills: ["test_writing", "tdd_red"]
+              output: "Failing tests written (Red)"
+              tdd_phase: "RED"
+              tdd_cycle: 1
+
+            - block_id: "B4"
+              name: "tdd_cycle_1_green"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B3"]
+              skills: ["implementation", "tdd_green"]
+              output: "Minimal implementation to pass tests (Green)"
+              tdd_phase: "GREEN"
+              tdd_cycle: 1
+
+            - block_id: "B5"
+              name: "tdd_cycle_1_refactor"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B4"]
+              skills: ["refactoring", "code_quality", "tdd_refactor"]
+              output: "Code refactored for quality (Refactor)"
+              tdd_phase: "REFACTOR"
+              tdd_cycle: 1
+
+            # Repeat TDD cycles for additional functionality
+            - block_id: "B6"
+              name: "tdd_cycle_2_red"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B5"]
+              skills: ["test_writing", "tdd_red"]
+              output: "Additional failing tests (Red)"
+              tdd_phase: "RED"
+              tdd_cycle: 2
+
+            - block_id: "B7"
+              name: "tdd_cycle_2_green"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B6"]
+              skills: ["implementation", "tdd_green"]
+              output: "Additional implementation (Green)"
+              tdd_phase: "GREEN"
+              tdd_cycle: 2
+
+            - block_id: "B8"
+              name: "tdd_cycle_2_refactor"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B7"]
+              skills: ["refactoring", "code_quality", "tdd_refactor"]
+              output: "Additional refactoring (Refactor)"
+              tdd_phase: "REFACTOR"
+              tdd_cycle: 2
+
+            # Continue TDD cycles as needed...
+
+            # Phase 3: Continuous Validation (Parallel with TDD cycles)
+            - block_id: "B9"
+              name: "continuous_code_review"
+              assigned_to: "BuilderAgent (Code Review Validator)"
+              dependencies: ["B5"]  # Start after first cycle
+              skills: ["code_review", "pattern_validation", "naming_check"]
+              output: "Continuous code quality validation"
+              coordination: "continuous"
+              validation_frequency: "after_each_refactor"
+
+            # Phase 4: Security Review
+            - block_id: "B10"
+              name: "security_code_review"
+              assigned_to: "SecurityAgent"
+              dependencies: ["B8"]  # After main implementation
+              skills: ["security_review", "owasp_check", "vulnerability_scan"]
+              output: "Security validation report"
+              coordination: "consultative"
+
+            # Phase 5: QA Test Review
+            - block_id: "B11"
+              name: "test_quality_review"
+              assigned_to: "QAAgent"
+              dependencies: ["B8"]  # After implementation
+              skills: ["test_review", "coverage_validation", "edge_case_check"]
+              output: "Test quality validation"
+              coordination: "consultative"
+
+            # Phase 6: Final Validation and Artifacts
+            - block_id: "B12"
+              name: "final_validation_and_build"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B9", "B10", "B11"]
+              skills: ["final_validation", "building", "artifact_generation"]
+              output: "Validated code and deployable artifacts"
+              validation:
+                - "All tests pass"
+                - "Coverage ≥ 95%"
+                - "Linters pass"
+                - "Code compiles"
+                - "Security approved"
+
+          execution_order: "B1 → B2 → (B3 → B4 → B5) → (B6 → B7 → B8) → ... → B9(continuous) → B10 → B11 → B12"
+
+        # Ralph Wiggum Loop (TDD Cycle Pattern)
+        tdd_cycle_pattern:
+          description: "Red-Green-Refactor cycle repeated for each functionality"
+          red_phase:
+            action: "Write failing test"
+            validation: "Test fails as expected"
+            tools: ["go_test"]
+          green_phase:
+            action: "Write minimal passing code"
+            validation: "Test passes"
+            tools: ["go_test"]
+          refactor_phase:
+            action: "Refactor for quality"
+            validation: "Tests still pass"
+            tools: ["go_test", "golangci_lint"]
+          repetition: "Until all functionality implemented"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-19"
+              status: "In Progress → Done"
+              comments:
+                - "✅ analyze_task_requirements (BuilderAgent) - Complete"
+                - "✅ setup_development_environment (BuilderAgent) - Complete"
+                - "✅ TDD cycles completed (BuilderAgent) - Complete"
+                - "✅ continuous_code_review (BuilderAgent) - Complete"
+                - "✅ security_code_review (SecurityAgent) - Complete"
+                - "✅ test_quality_review (QAAgent) - Complete"
+                - "✅ final_validation_and_build (BuilderAgent) - Complete"
+                - ""
+                - "📊 **Implementation Summary:**"
+                - "- Status: Success"
+                - "- TDD cycles: X"
+                - "- Tests written: Y (all passing)"
+                - "- Test coverage: Z% (≥ 95%)"
+                - - Code quality: All linters pass"
+                - "- Security: Approved"
+                - "- Artifacts: Generated"
+
+              labels:
+                remove: ["in-progress", "pending"]
+                add: ["completed", "implemented", "tested"]
+
+          - type: "artifact"
+            artifact_type: "backend_implementation"
+            content:
+              blueprint_id: "bp_backend_coding_tdd_automation.1.0.0"
+              blueprint_name: "Backend Development Automation (TDD-Based)"
+              execution_start: "2026-03-26T22:00:00Z"
+              execution_end: "2026-03-27T02:00:00Z"
+              duration_hours: 4.0
+              status: "success"
+
+              task_info:
+                issue_id: "GH-19"
+                task_type: "backend_development"
+                complexity: "medium"
+                estimated_hours: "6"
+                actual_hours: 4.0
+
+              tdd_summary:
+                total_tdd_cycles: 5
+                tests_written: 15
+                tests_passing: 15
+                test_failing: 0
+                test_coverage: 97.5
+                code_quality_checks: "all_passing"
+
+              blocks_executed:
+                - block_id: "B1"
+                  name: "analyze_task_requirements"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 15
+                  artifacts: ["task_analysis.md"]
+
+                - block_id: "B2"
+                  name: "setup_development_environment"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 10
+                  artifacts: ["dependencies_installed.json"]
+
+                - block_id: "B3-B5"
+                  name: "TDD Cycle 1 (Red-Green-Refactor)"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 45
+                  artifacts: ["feature1_test.go", "feature1.go"]
+
+                - block_id: "B6-B8"
+                  name: "TDD Cycle 2 (Red-Green-Refactor)"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 45
+                  artifacts: ["feature2_test.go", "feature2.go"]
+
+                # ... more TDD cycles
+
+                - block_id: "B9"
+                  name: "continuous_code_review"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 30
+                  artifacts: ["code_review_report.json"]
+
+                - block_id: "B10"
+                  name: "security_code_review"
+                  agent: "SecurityAgent"
+                  status: "completed"
+                  duration_minutes: 20
+                  artifacts: ["security_review_report.json"]
+
+                - block_id: "B11"
+                  name: "test_quality_review"
+                  agent: "QAAgent"
+                  status: "completed"
+                  duration_minutes: 15
+                  artifacts: ["test_quality_report.json"]
+
+                - block_id: "B12"
+                  name: "final_validation_and_build"
+                  agent: "BuilderAgent"
+                  status: "completed"
+                  duration_minutes: 20
+                  artifacts: ["compiled_binary", "build_artifacts"]
+
+              output_artifacts:
+                - artifact_id: "artifact-code-001"
+                  type: "source_code"
+                  name: "Backend Implementation Source Code"
+                  storage_location: "src/backend/[feature_name]/"
+                  format: "Go source code"
+                  files:
+                    - "[feature_name].go"
+                    - "[feature_name]_test.go"
+                    - "[feature_name]_mock.go"
+                    - "[feature_name]_interface.go"
+
+                - artifact_id: "artifact-code-002"
+                  type: "tests"
+                  name: "Unit Tests (TDD-generated)"
+                  storage_location: "src/backend/[feature_name]_test.go"
+                  format: "Go test code"
+                  test_summary:
+                    total_tests: 15
+                    passing: 15
+                    failing: 0
+                    coverage: 97.5
+
+                - artifact_id: "artifact-code-003"
+                  type: "compiled_binary"
+                  name: "Compiled Binary"
+                  storage_location: "bin/[feature_name]"
+                  format: "Executable binary"
+                  compilation_status: "success"
+
+                - artifact_id: "artifact-code-004"
+                  type: "test_report"
+                  name: "Test Coverage Report"
+                  storage_location: "s3://artifacts/test-reports/backend_[timestamp]_coverage.json"
+                  format: "JSON"
+
+                - artifact_id: "artifact-code-005"
+                  type: "code_review_report"
+                  name: "Code Review Report"
+                  storage_location: "s3://artifacts/reviews/backend_[timestamp]_review.json"
+                  format: "JSON"
+
+                - artifact_id: "artifact-code-006"
+                  type: "security_report"
+                  name: "Security Validation Report"
+                  storage_location: "s3://artifacts/security/backend_[timestamp]_security.json"
+                  format: "JSON"
+
+              metrics:
+                total_blocks: 12
+                completed_blocks: 12
+                failed_blocks: 0
+                total_tokens_used: 65000
+                total_cost_usd: 3.25
+                implementation_success: true
+                tdd_compliance: 100%
+                test_coverage: 97.5
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "安全审计"
+            checks:
+              - "代码安全扫描": "passed"
+              - "OWASP Top 10 合规": "passed"
+              - "Secrets 检测": "passed"
+              - "输入验证": "passed"
+            output: "SecurityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "QualityAuditAgent"
+            scope: "质量审计"
+            checks:
+              - "测试覆盖率": "97.5% ≥ 95% = passed"
+              - "代码标准合规": "passed"
+              - "TDD 遵循度": "100% = passed"
+              - "代码审查完整性": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "合规审计"
+            checks:
+              - "命名规范合规": "passed"
+              - "代码风格合规": "passed"
+              - "文档完整性": "passed"
+            output: "ComplianceAuditReport Artifact"
+            status: "passed"
+
+          - agent: "TestAuditAgent"
+            scope: "测试审计"
+            checks:
+              - "TDD 方法遵循": "passed"
+              - "测试质量": "passed"
+              - "覆盖率达标": "passed"
+              - "边界测试": "passed"
+            output: "TestAuditReport Artifact"
+            status: "passed"
+
+          - agent: "CostAuditAgent"
+            scope: "成本审计"
+            checks:
+              - "Token 使用": "65000 ≤ 80000 = passed"
+              - "执行时间": "4h ≤ 8h = passed"
+            output: "CostAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          inputs:
+            - "Backend Implementation Report"
+            - "SecurityAuditReport"
+            - "QualityAuditReport"
+            - "ComplianceAuditReport"
+            - "TestAuditReport"
+            - "CostAuditReport"
+
+          gates_check:
+            quality_gate:
+              condition: "test_coverage ≥ 95% AND code_quality_checks = pass"
+              actual: "test coverage = 97.5%, all quality checks pass"
+              status: "passed"
+
+            security_gate:
+              condition: "security_validation = pass AND no_vulnerabilities"
+              actual: "security validation passed, no vulnerabilities found"
+              status: "passed"
+
+            tdd_gate:
+              condition: "tdd_compliance = 100% AND tests_first = true"
+              actual: "100% TDD compliant, tests written first"
+              status: "passed"
+
+            compliance_gate:
+              condition: "all_compliance_checks_passed"
+              actual: "all compliance checks passed"
+              status: "passed"
+
+            build_gate:
+              condition: "code_compiles = true AND binary_generated = true"
+              actual: "code compiles successfully, binary generated"
+              status: "passed"
+
+            cost_gate:
+              condition: "total_cost_usd ≤ budget_usd AND time ≤ estimated"
+              actual: "$3.25 ≤ $10.00, 4h ≤ 8h"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            reason: "所有 gates 通过，后端开发成功且TDD合规"
+            action: "代码已实现，测试通过，制品已生成，可用于部署"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    # Acceptance Criteria
+    acceptance_criteria:
+      tdd_compliance:
+        - "TDD 方法论完全遵循"
+        - "测试先于实现编写"
+        - "Red-Green-Refactor 循环执行"
+        - "每个功能都有测试覆盖"
+
+      code_quality:
+        - "代码编译通过"
+        - "所有测试通过"
+        - "测试覆盖率 ≥ 95%"
+        - "所有 linters 通过"
+        - "命名规范遵循"
+        - "代码复杂度在限制内"
+
+      security:
+        - "安全审查通过"
+        - "OWASP Top 10 合规"
+        - "无 secrets 硬编码"
+        - "输入验证完整"
+        - "错误处理适当"
+
+      artifacts:
+        - "源代码已提交"
+        - "测试代码完整"
+        - "二进制文件可编译"
+        - "测试报告生成"
+        - "代码审查报告"
+        - "安全审查报告"
+
+      process:
+        - "TDD 循环完成"
+        - "代码审查完成"
+        - "安全审查通过"
+        - "QA 审查通过"
+        - "最终验证通过"
+
+    # Output Artifacts
+    artifacts:
+      # Code Artifacts
+      code_artifacts:
+        - artifact_type: "source_code"
+          name: "Backend Implementation Source Code"
+          storage_location: "src/backend/[feature_name]/"
+          format: "Go source code"
+          content:
+            files:
+              - "[feature_name].go"
+              - "[feature_name]_interface.go"
+              - "[feature_name]_mock.go"
+              - "[feature_name]_test.go"
+              - "errors.go"
+              - "types.go"
+            code_quality:
+              - "Follows Go conventions"
+              - "Effective Go compliant"
+              - "Well-documented"
+              - "Proper error handling"
+
+        - artifact_type: "unit_tests"
+          name: "Unit Tests (TDD-generated)"
+          storage_location: "src/backend/[feature_name]_test.go"
+          format: "Go test code"
+          content:
+            test_approach: "Table-driven tests"
+            test_coverage: 97.5
+            test_structure:
+              - "Unit tests for each function"
+              - "Edge cases covered"
+              - "Error scenarios tested"
+              - "Mock interfaces for dependencies"
+            test_helpers:
+              - "Test fixtures"
+              - "Mock implementations"
+              - "Test utilities"
+
+        - artifact_type: "integration_tests"
+          name: "Integration Tests"
+          storage_location: "tests/integration/[feature_name]_test.go"
+          format: "Go test code"
+
+      # Build Artifacts
+      build_artifacts:
+        - artifact_type: "compiled_binary"
+          name: "Compiled Binary"
+          storage_location: "bin/[feature_name]"
+          format: "Executable binary"
+          build_info:
+            go_version: "1.21"
+            build_os: "linux"
+            build_arch: "amd64"
+            build_flags: "-ldflags"
+          compilation_status: "success"
+
+        - artifact_type: "docker_image"
+          name: "Docker Image"
+          storage_location: "docker-registry:5000/[feature_name]:v1.0.0"
+          format: "OCI image"
+          docker_info:
+            base_image: "golang:1.21-alpine"
+            image_size: "50MB"
+            digest: "sha256:abc123..."
+
+      # Report Artifacts
+      report_artifacts:
+        - artifact_type: "test_report"
+          name: "Test Coverage Report"
+          storage_location: "s3://artifacts/test-reports/backend_[timestamp]_coverage.json"
+          format: "JSON"
+          content:
+            coverage_percentage: 97.5
+            total_tests: 15
+            passing_tests: 15
+            failing_tests: 0
+            coverage_by_file:
+              - file: "[feature_name].go"
+                coverage: 98.2
+              - file: "types.go"
+                coverage: 96.8
+
+        - artifact_type: "code_review_report"
+          name: "Code Review Report"
+          storage_location: "s3://artifacts/reviews/backend_[timestamp]_review.json"
+          format: "JSON"
+          content:
+            review_summary:
+              overall_score: "excellent"
+              naming_conventions: "compliant"
+              code_complexity: "within_limits"
+              test_quality: "excellent"
+            specific_feedback:
+              - "Positive: Well-structured code"
+              - "Positive: Comprehensive tests"
+              - "Suggestion: Consider extracting helper function"
+
+        - artifact_type: "security_report"
+          name: "Security Validation Report"
+          storage_location: "s3://artifacts/security/backend_[timestamp]_security.json"
+          format: "JSON"
+          content:
+            security_summary:
+              overall_status: "pass"
+              owasp_compliance: "compliant"
+              vulnerabilities_found: 0
+              secrets_detected: 0
+            specific_checks:
+              - "SQL injection protection": "passed"
+              - "XSS protection": "passed"
+              - "Input validation": "passed"
+              - "Error handling": "passed"
+
+        - artifact_type: "tdd_compliance_report"
+          name: "TDD Compliance Report"
+          storage_location: "s3://artifacts/tdd/backend_[timestamp]_compliance.json"
+          format: "JSON"
+          content:
+            tdd_compliance:
+              tests_first: true
+              red_green_refactor: true
+              cycle_count: 5
+              compliance_rate: 100
+            tdd_cycles:
+              - cycle: 1
+                phase: "Red-Green-Refactor"
+                duration: "15min"
+              - cycle: 2
+                phase: "Red-Green-Refactor"
+                duration: "15min"
+
+    # Task Status Update
+    status_updates:
+      github_issues:
+        parent_issue:
+          issue_id: "GH-19"
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          comments:
+            - "✅ Backend development completed using TDD"
+            - "✅ All tests passing (15/15)"
+            - "✅ Test coverage: 97.5%"
+            - "✅ All linters passing"
+            - "✅ Security review approved"
+            - "✅ Code compiled successfully"
+            - "✅ Artifacts generated"
+            - ""
+            - "📊 **Implementation Summary:**"
+            - "- TDD cycles: 5"
+            - "- Tests: 15 written, all passing"
+            - "- Coverage: 97.5%"
+            - "- Quality: Excellent"
+            - "- Security: Approved"
+            - "- Artifacts: Ready for deployment"
+
+          labels:
+            remove: ["in-progress", "pending"]
+            add: ["completed", "implemented", "tested", "ready-for-deployment"]
+
+      git_operations:
+        commits:
+          - action: "Commit implementation"
+            message: |
+              feat: implement [feature_name] using TDD
+
+              - Write failing tests first
+              - Implement minimal passing code
+              - Refactor for quality
+              - Achieve 97.5% test coverage
+
+              Test results: 15/15 passing
+              Coverage: 97.5%
+
+              Closes #19
+
+        pull_requests:
+          - action: "Create implementation PR"
+            content: |
+              # Backend Implementation: [Feature Name]
+
+              ## Summary
+              Backend implementation using Test-Driven Development (TDD) approach.
+
+              ## Implementation
+              - TDD cycles: 5
+              - Tests: 15 written, all passing
+              - Coverage: 97.5%
+              - Code quality: All linters pass
+
+              ## Artifacts
+              - Source code: `src/backend/[feature_name]/`
+              - Tests: `[feature_name]_test.go`
+              - Binary: `bin/[feature_name]`
+              - Docker image: `docker-registry:5000/[feature_name]:v1.0.0`
+
+              ## Reports
+              - Test coverage: [Link]
+              - Code review: [Link]
+              - Security scan: [Link]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: |
+              ✅ Backend Implementation Completed (TDD)
+
+              **Issue**: #19
+              **TDD Cycles**: 5
+              **Tests**: 15/15 passing
+              **Coverage**: 97.5%
+              **Quality**: Excellent
+              **Security**: Approved
+
+              **Artifacts**: Ready for deployment
+
+          - channel: "email"
+            recipients: ["dev-team@centific.com", "qa-team@centific.com"]
+            subject: "[Backend Complete] Feature Implementation Ready"
+            body: |
+              Backend implementation completed using TDD approach.
+
+              Details:
+              - Issue: #19
+              - TDD compliance: 100%
+              - Test coverage: 97.5%
+              - Security: Approved
+              - Artifacts: Generated and ready
+
+              Reports available at:
+              s3://artifacts/backend_[timestamp]/
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    # Execution Metrics
+    execution:
+      - metric_name: "implementation_time"
+        description: "实现时间"
+        unit: "hours"
+        target: "≤ 8h"
+        actual: 4.0
+        status: "excellent"
+
+      - metric_name: "token_usage"
+        description: "Token 使用量"
+        unit: "tokens"
+        target: "≤ 80000"
+        actual: 65000
+        status: "passed"
+
+      - metric_name: "tdd_cycles"
+        description: "TDD 循环数量"
+        unit: "count"
+        target: "varies by complexity"
+        actual: 5
+        status: "passed"
+
+    # Quality Metrics
+    quality:
+      - metric_name: "test_coverage"
+        description: "测试覆盖率"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+        actual: 97.5
+        status: "excellent"
+
+      - metric_name: "test_pass_rate"
+        description: "测试通过率"
+        unit: "percentage"
+        target: "100%"
+        actual: 100
+        status: "passed"
+
+      - metric_name: "code_quality_score"
+        description: "代码质量评分"
+        unit: "score"
+        target: "≥ 8/10"
+        actual: "9/10"
+        status: "excellent"
+
+      - metric_name: "linter_pass_rate"
+        description: "Linter 通过率"
+        unit: "percentage"
+        target: "100%"
+        actual: 100
+        status: "passed"
+
+    # TDD Compliance Metrics
+    tdd_compliance:
+      - metric_name: "tdd_methodology_adherence"
+        description: "TDD 方法论遵循度"
+        unit: "percentage"
+        target: "100%"
+        actual: 100
+        status: "passed"
+
+      - metric_name: "tests_first_compliance"
+        description: "测试优先遵循度"
+        unit: "percentage"
+        target: "100%"
+        actual: 100
+        status: "passed"
+
+      - metric_name: "red_green_refactor_cycles"
+        description: "Red-Green-Refactor 循环完成度"
+        unit: "count"
+        target: "complete"
+        actual: 5
+        status: "passed"
+
+    # Security Metrics
+    security:
+      - metric_name: "security_validation"
+        description: "安全验证"
+        unit: "status"
+        target: "pass"
+        actual: "pass"
+        status: "passed"
+
+      - metric_name: "owasp_compliance"
+        description: "OWASP 合规性"
+        unit: "percentage"
+        target: "100%"
+        actual: 100
+        status: "passed"
+
+    # Summary
+    summary:
+      total_execution_time: "4.0 hours"
+      total_cost_usd: 3.25
+      total_blocks_executed: 12
+      total_blocks_failed: 0
+      overall_status: "completed"
+      tdd_compliant: true
+      ready_for_deployment: true
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    # Risk Identification
+    risks:
+      - risk_id: "R001"
+        risk_type: "technical"
+        description: "TDD approach may take longer initially"
+        probability: "medium"
+        impact: "low"
+        mitigation: "TDD reduces bugs and rework, net time savings"
+        status: "accepted"
+
+      - risk_id: "R002"
+        risk_type: "quality"
+        description: "Test coverage may not reach 95%"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Continuous testing, edge case identification, QA review"
+        status: "mitigated"
+
+      - risk_id: "R003"
+        risk_type: "security"
+        description: "Security vulnerabilities in code"
+        probability: "low"
+        impact: "high"
+        mitigation: "SecurityAgent review, OWASP compliance, SAST scans"
+        status: "mitigated"
+
+      - risk_id: "R004"
+        risk_type: "complexity"
+        description: "Task complexity underestimated"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Progress tracking, early escalation if needed"
+        status: "mitigated"
+
+    # Escalation Triggers
+    escalation_triggers:
+      - trigger: "test_coverage_failure"
+        condition: "test_coverage < 95% AND implementation_complete"
+        action: "Add more tests, identify gaps with QA help"
+
+      - trigger: "implementation_stuck"
+        condition: "tdd_cycle_count > 10 OR no_progress > 1h"
+        action: "Escalate for technical guidance"
+
+      - trigger: "security_issue"
+        condition: "security_validation = fail"
+        action: "Address security issues before proceeding"
+
+      - trigger: "quality_gate_failure"
+        condition: "linter_fail OR test_fail AND cannot_fix_quickly"
+        action: "Request code review and guidance"
+
+    # Escalation Process
+    escalation_process:
+      step_1: "系统检测到触发条件"
+      step_2: "尝试自动解决（如果可能）"
+      step_3: "生成 EscalationRequiredEvent"
+      step_4: "创建 Issue 用于人工干预"
+      step_5: "提供上下文和建议"
+      step_6: "等待人工解决"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    # Risk Level
+    risk_level: "low"
+
+    # TDD Configuration
+    tdd:
+      mandatory: true
+      test_first: true
+      red_green_refactor: true
+      minimum_coverage: 95
+      test_file_suffix: "_test.go"
+      test_function_prefix: "Test"
+
+    # Development Configuration
+    development:
+      go_version: "1.21"
+      go_module: "github.com/centific-cn/AgenticSDLC"
+      use_go_modules: true
+      enable_go_sum: true
+
+    # Testing Configuration
+    testing:
+      framework: "go test"
+      coverage_format: "coverage"
+      coverage_threshold: 95
+      verbose_output: true
+      race_detector: true
+
+    # Code Quality Configuration
+    code_quality:
+      enable_golangci_lint: true
+      enable_go_vet: true
+      enable_staticcheck: true
+      gofmt_on_save: true
+      max_complexity: 10
+      max_line_length: 120
+
+    # Parallelism
+    parallelism:
+      max_parallel_blocks: 2  # Code review parallel with TDD cycles
+      max_parallel_agents: 3
+      actual_parallelism: 2
+
+    # Timeouts
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "8h"
+      tdd_cycle_timeout: "30m"
+      test_timeout: "10m"
+      build_timeout: "15m"
+      actual_execution_time: "4.0h"
+
+    # Retry Strategy
+    retry:
+      max_retries: 3
+      retry_delay: "2m"
+      backoff_multiplier: 2
+      actual_retries: 0
+
+    # Notification Configuration
+    notifications:
+      on_start: true
+      on_complete: true
+      on_failure: true
+      on_tdd_cycle_complete: true
+      channels: ["slack", "email"]
+      notification_urgency: "normal"
+
+# ================================================================
+# Backend Development Agent Blueprint (TDD-Based) End
+# ================================================================
