@@ -1,0 +1,891 @@
+# BA Agent Blueprint
+# Blueprint for BA Agent to analyze requirements from uploaded documents
+# Based on AgenticSDLC v2.0 Architecture
+# ba-toolkit is the concrete implementation of BA_Agent in AgenticSDLC
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_ba_requirement_analysis.1.0.0"
+    blueprint_name: "Business Requirement Analysis Blueprint"
+    blueprint_type: "feature"
+    version: "1.0.0"
+    created_at: "2026-03-26T16:00:00Z"
+    created_by: "BA_Agent"
+    tags:
+      - "requirement-analysis"
+      - "business-analysis"
+      - "feature-extraction"
+      - "interview"
+      - "prd-generation"
+      - "hitl-gate-0"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "default_profile"
+      description: "Balanced quality and speed for requirement analysis"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/security/"
+      specific:
+        - ".agentic/rules/naming/general.yaml"
+        - ".agentic/rules/security/owasp_top10.yaml"
+      inline:
+        custom_rules:
+          - name: "requirement_completeness"
+            rule: "Every extracted feature must have description, acceptance criteria, and priority"
+            enforcement: "strict"
+            validator: "requirement_completeness_validator"
+
+          - name: "interview_convergence"
+            rule: "Interview Q&A must converge within 3 rounds per feature"
+            enforcement: "soft"
+            validator: "interview_convergence_checker"
+
+          - name: "prd_structure"
+            rule: "PRD must follow standard sections: overview, features, non-functional, constraints, risks"
+            enforcement: "strict"
+            validator: "prd_structure_validator"
+
+          - name: "user_story_format"
+            rule: "User stories must follow: As a [role], I want [goal], so that [benefit] with acceptance criteria"
+            enforcement: "strict"
+            validator: "user_story_format_validator"
+
+    constraints:
+      load_from:
+        - ".agentic/constraints/infra/static/"
+        - ".agentic/constraints/business/"
+      specific:
+        - ".agentic/constraints/infra/static/technical_stack.yaml"
+      inline:
+        technical_stack:
+          python_version: ">= 3.11"
+          framework: "FastAPI"
+          orm: "SQLAlchemy"
+          task_queue: "Celery + Redis"
+          llm_provider: "Azure OpenAI (GPT-4o)"
+          llm_framework: "Pydantic AI"
+          doc_parser: "Docling (external microservice)"
+          db_dev: "SQLite"
+          db_prod: "PostgreSQL"
+          frontend: "React 18 + TypeScript + Vite"
+          auth: "JWT (HS256) + Redis token blacklisting"
+
+        resource_quotas:
+          max_analysis_time: "8h"
+          max_tokens_per_analysis: 100000
+          max_document_size_mb: 50
+          max_documents_per_epic: 20
+
+        business_constraints:
+          max_features_per_epic: 50
+          max_interview_rounds: 3
+          supported_export_formats:
+            - "markdown"
+            - "json"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "{issue_id}"
+        issue_type: "requirement"
+        labels: ["requirement", "business-analysis"]
+        priority: "high"
+        description: "Business requirement needing analysis"
+
+    task_mapping:
+      requirement:
+        primary_phase: "analysis"
+        entry_point: "BA_Agent"
+
+    context:
+      source_documents:
+        - type: "Business Requirement Document"
+          location: "Uploaded via ba-toolkit UI or API"
+          required: true
+          description: "Source documents (Word, PDF, images) uploaded by stakeholders"
+          supported_formats:
+            - "docx"
+            - "pdf"
+            - "png"
+            - "jpg"
+            - "txt"
+
+        - type: "Epic Definition"
+          location: "ba-toolkit projects/{project_id}/epics/{epic_id}"
+          required: true
+          description: "Epic scope and context within a project"
+
+      data_sources:
+        - "Git Repository (main branch)"
+        - "ba-toolkit Knowledge Base (vector_service, internal to BA_Agent)"
+        - "Docling Microservice (document parsing)"
+        - "Azure OpenAI (GPT-4o via Pydantic AI agents)"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "BA_Agent"
+      implementation: "ba-toolkit (FastAPI + Pydantic AI agents)"
+      selection_logic:
+        reasoning: |
+          1. Issue type = "requirement" → Default: BA_Agent
+          2. Task is about analyzing business requirements from documents → BA_Agent core competency
+          3. Requires document parsing, feature extraction, stakeholder interview, PRD generation
+          → Decision: BA_Agent as Primary Agent
+
+      responsibilities:
+        - "Parse uploaded documents via Docling microservice"
+        - "Extract features from parsed content using LLM agents"
+        - "Conduct interview Q&A with stakeholders (HITL interaction)"
+        - "Generate PRD and user stories"
+        - "Publish structured artifacts for PlanningAgent consumption"
+
+    sub_agents:
+      - agent_type: "LearningAgent"
+        phase: "context_loading"
+        responsibilities:
+          - "Retrieve historical requirement patterns"
+          - "Provide domain-specific knowledge for feature extraction"
+          - "Suggest interview questions based on past analyses"
+        coordination: "sequential_before_extraction"
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    # Internal agent skills (ba-toolkit agents under backend/app/agents/)
+    agent_skills:
+      BA_Agent:
+        - skill: "document_parsing"
+          implementation: "document_service.py → Docling microservice"
+          description: "Parse uploaded docs (Word, PDF, images) into structured text"
+
+        - skill: "feature_extraction"
+          implementation: "agents/feature_extraction agent"
+          description: "Extract business features from parsed document content"
+
+        - skill: "vision_analysis"
+          implementation: "agents/vision agent"
+          description: "Extract requirements from images and screenshots"
+          conditional: true
+          condition: "uploaded documents contain image files"
+
+        - skill: "stakeholder_interview"
+          implementation: "agents/interview agent"
+          description: "Generate and process interview Q&A to clarify requirements"
+          hitl_interaction: true
+
+        - skill: "prd_generation"
+          implementation: "agents/PRD agent"
+          description: "Generate product requirement document from analyzed features"
+
+        - skill: "user_story_generation"
+          implementation: "agents/story_generation agent"
+          description: "Generate structured user stories with acceptance criteria"
+
+        - skill: "knowledge_retrieval"
+          implementation: "services/vector_service.py"
+          description: "RAG-based knowledge retrieval from embedded document corpus"
+          note: "Internal capability of BA_Agent, not delegated to external LearningAgent"
+
+        - skill: "quality_assurance"
+          implementation: "agents/QA agent"
+          description: "Validate completeness and consistency of generated artifacts"
+
+      LearningAgent:
+        - "pattern_matching"
+        - "historical_context_retrieval"
+        - "best_practice_recommendation"
+
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+
+      - tool: "bash_execution"
+        permissions:
+          - "command_execution"
+          - "file_operations"
+
+      - tool: "docling_api"
+        permissions:
+          - "document:parse"
+          - "document:extract_text"
+          - "document:extract_tables"
+          - "document:extract_images"
+
+      - tool: "azure_openai_api"
+        permissions:
+          - "chat_completion:invoke"
+          - "embedding:generate"
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "pattern_matching"
+
+  # ================================================================
+  # 6. Task Execution Workflow
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BA_Agent as Primary"
+        input:
+          issue_type: "requirement"
+          issue_id: "{issue_id}"
+          labels: ["requirement", "business-analysis"]
+          priority: "high"
+        output: "BA_Agent assigned as Primary Agent"
+        decision_logic: |
+          IF issue_type == "requirement" THEN BA_Agent
+          ELSE IF label == "business-analysis" THEN BA_Agent
+          ELSE PlanningAgent (for tasks)
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "BA_Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer (Static)"
+            content:
+              language_stack: ["Python 3.11+"]
+              framework: "FastAPI"
+              llm_provider: "Azure OpenAI (GPT-4o)"
+              llm_framework: "Pydantic AI"
+              doc_parser: "Docling microservice"
+
+          - source: "Infra Dependency Layer (Dynamic)"
+            content:
+              docling_service_status: "healthy"
+              azure_openai_quota_remaining: "available"
+              celery_worker_count: "active"
+
+          - source: "Learning Agent"
+            content:
+              requirement_patterns:
+                - "Feature extraction from BRD documents"
+                - "Interview-driven requirement refinement"
+                - "Epic-scoped analysis structure"
+              successful_patterns:
+                - "Structured feature → interview → PRD pipeline"
+                - "RAG-enhanced context for accurate extraction"
+              lessons_learned:
+                - "Always validate features with stakeholder interview"
+                - "Image documents need vision agent preprocessing"
+                - "Knowledge base embeddings improve extraction accuracy"
+
+          - source: "Uploaded Documents"
+            content:
+              documents: "User-uploaded files via ba-toolkit UI"
+              epic_context: "Epic definition and scope"
+
+        output: "Execution strategy formulated with full context"
+
+      # Step 3: Coordinate Sub-Agents (Block Execution)
+      step_3:
+        action: "BA_Agent → Coordinate Internal Agents"
+        coordination_model: "sequential_with_parallel_output_and_hitl"
+        description: |
+          BA requirement analysis pipeline:
+          1. Load context from Learning Agent (historical patterns)
+          2. Parse uploaded documents via Docling
+          3. Extract features using LLM agent
+          4. Conduct interview Q&A with stakeholder (HITL interaction)
+          5. Generate PRD from refined features
+          6. Generate user stories + vision analysis (parallel, conditional)
+          7. Export structured artifacts and publish RequirementApprovedEvent
+
+        dependency_graph:
+          blocks:
+            # Phase 1: Context Loading
+            - block_id: "B1"
+              name: "load_context"
+              assigned_to: "BA_Agent + LearningAgent"
+              dependencies: []
+              skills: ["knowledge_retrieval", "pattern_matching"]
+              output: "Historical patterns, domain knowledge, and epic context loaded"
+              estimated_duration: "10m"
+
+            # Phase 2: Document Parsing
+            - block_id: "B2"
+              name: "document_parsing"
+              assigned_to: "BA_Agent"
+              dependencies: ["B1"]
+              skills: ["document_parsing"]
+              implementation: "document_service.py → Docling microservice"
+              output: "Parsed document content (text, tables, images extracted)"
+              estimated_duration: "5m"
+
+            # Phase 3: Feature Extraction
+            - block_id: "B3"
+              name: "feature_extraction"
+              assigned_to: "BA_Agent"
+              dependencies: ["B2"]
+              skills: ["feature_extraction", "knowledge_retrieval"]
+              implementation: "agents/feature_extraction agent + vector_service RAG"
+              output: "Extracted feature list with descriptions and priorities"
+              estimated_duration: "15m"
+
+            # Phase 4: Interview Q&A (HITL)
+            - block_id: "B4"
+              name: "interview_qa"
+              assigned_to: "BA_Agent"
+              dependencies: ["B3"]
+              skills: ["stakeholder_interview"]
+              implementation: "agents/interview agent"
+              hitl_interaction: true
+              hitl_description: |
+                Stakeholder answers interview questions generated by the agent.
+                Agent processes answers, may generate follow-up questions.
+                Converges within max 3 rounds per feature.
+                User interacts via ba-toolkit chat UI.
+              output: "Refined features with stakeholder-validated requirements"
+              estimated_duration: "30m-2h (depends on stakeholder response time)"
+
+            # Phase 5: PRD Generation
+            - block_id: "B5"
+              name: "prd_generation"
+              assigned_to: "BA_Agent"
+              dependencies: ["B4"]
+              skills: ["prd_generation"]
+              implementation: "agents/PRD agent"
+              output: "Product requirement document (PRD)"
+              estimated_duration: "10m"
+
+            # Phase 6: Parallel Output Generation
+            - block_id: "B6"
+              name: "user_story_generation"
+              assigned_to: "BA_Agent"
+              dependencies: ["B5"]
+              skills: ["user_story_generation"]
+              implementation: "agents/story_generation agent"
+              output: "Structured user stories with acceptance criteria"
+              estimated_duration: "10m"
+
+            - block_id: "B7"
+              name: "vision_analysis"
+              assigned_to: "BA_Agent"
+              dependencies: ["B2"]
+              skills: ["vision_analysis"]
+              implementation: "agents/vision agent"
+              conditional: true
+              condition: "uploaded documents contain image files (png, jpg)"
+              output: "Requirements extracted from images/screenshots"
+              estimated_duration: "5m"
+              note: "Runs in parallel with B3-B6 pipeline. Results merged into final artifacts."
+
+            # Phase 7: Export and Publish
+            - block_id: "B8"
+              name: "export_and_publish"
+              assigned_to: "BA_Agent"
+              dependencies: ["B5", "B6", "B7"]
+              skills: ["artifact_generation", "event_publishing"]
+              implementation: "export_service.py + event publisher"
+              output: "Structured artifacts committed to repo + RequirementApprovedEvent published"
+              estimated_duration: "5m"
+
+          execution_order: "B1 → B2 → B3 → B4(HITL) → B5 → (B6 + B7 conditional parallel) → B8"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-{issue_id}"
+              status: "In Progress → Done"
+              comments:
+                - "✅ load_context (BA_Agent + LearningAgent) - Complete"
+                - "✅ document_parsing (BA_Agent → Docling) - Complete"
+                - "✅ feature_extraction (BA_Agent) - Complete"
+                - "✅ interview_qa (BA_Agent ← Stakeholder HITL) - Complete"
+                - "✅ prd_generation (BA_Agent) - Complete"
+                - "✅ user_story_generation (BA_Agent) - Complete"
+                - "✅ vision_analysis (BA_Agent) - Complete (or skipped if no images)"
+                - "✅ export_and_publish (BA_Agent) - Complete"
+                - ""
+                - "📊 **Summary:**"
+                - "- Features extracted: {feature_count}"
+                - "- Interview rounds completed: {interview_rounds}"
+                - "- PRD generated"
+                - "- User stories generated: {story_count}"
+                - "- **RequirementApprovedEvent published → PlanningAgent**"
+                - "- **Ready for HITL Gate 0 review**"
+              labels:
+                remove: ["in-progress"]
+                add: ["completed", "ready-for-hitl-gate-0"]
+
+          - type: "event"
+            event_type: "RequirementApprovedEvent"
+            description: "Published to trigger PlanningAgent (bp_architecture_blueprint_design)"
+            payload:
+              issue_id: "{issue_id}"
+              epic_id: "{epic_id}"
+              project_id: "{project_id}"
+              brd_location: "requirements/brd_{issue_id}.md"
+              user_stories_location: "requirements/user_stories_{issue_id}.md"
+              prd_location: "requirements/prd_{issue_id}.md"
+              features_location: "requirements/features_{issue_id}.json"
+              interview_transcript_location: "requirements/interview_{issue_id}.md"
+              feature_count: "{feature_count}"
+              analysis_quality_score: "{quality_score}"
+
+          - type: "artifact"
+            artifact_type: "requirement_analysis_report"
+            content:
+              blueprint_id: "bp_ba_requirement_analysis.1.0.0"
+              blueprint_name: "Business Requirement Analysis Blueprint"
+              execution_start: "timestamp"
+              execution_end: "timestamp"
+              status: "success"
+
+      # Step 5: Audit and Governance Decision (Pre-HITL Gate 0)
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "Requirement quality audit"
+            checks:
+              - "Feature completeness: all features have description + acceptance criteria + priority"
+              - "PRD structure: all required sections present"
+              - "User story format: As a [role], I want [goal], so that [benefit]"
+              - "Interview coverage: all ambiguous features clarified"
+              - "No duplicate features"
+            output: "QualityAuditReport Artifact"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "Compliance audit"
+            checks:
+              - "Document traceability: every feature traceable to source document"
+              - "Stakeholder sign-off: interview completed for ambiguous requirements"
+              - "Naming convention compliance"
+            output: "ComplianceAuditReport Artifact"
+
+          - agent: "CostAuditAgent"
+            scope: "Cost audit"
+            checks:
+              - "Token usage within budget"
+              - "Execution time within SLA"
+              - "Docling API calls within quota"
+            output: "CostAuditReport Artifact"
+
+        phase_2_governance_decision:
+          inputs:
+            - "RequirementAnalysisReport"
+            - "QualityAuditReport"
+            - "ComplianceAuditReport"
+            - "CostAuditReport"
+
+          gates_check:
+            quality_gate:
+              condition: "feature_completeness >= 95% AND prd_valid AND stories_valid"
+              status: "passed | failed"
+
+            compliance_gate:
+              condition: "all_features_traceable AND interview_completed"
+              status: "passed | failed"
+
+            budget_gate:
+              condition: "total_cost_usd <= budget_usd"
+              status: "passed | failed"
+
+          final_decision:
+            status: "passed | failed"
+            reason: "Decision rationale"
+            action: "Publish RequirementApprovedEvent to PlanningAgent | Block and request rework"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      requirement_quality:
+        - "All features extracted from source documents"
+        - "Each feature has description, acceptance criteria, and priority"
+        - "No ambiguous requirements remain (resolved via interview)"
+        - "Features are deduplicated and properly categorized"
+
+      documentation:
+        - "BRD generated with all required sections"
+        - "PRD generated with overview, features, non-functional requirements"
+        - "User stories follow standard format with acceptance criteria"
+        - "Feature matrix in structured JSON format"
+
+      traceability:
+        - "Every feature traceable to source document"
+        - "Interview transcript captures all clarification decisions"
+        - "All artifacts scoped to epic"
+
+      downstream_readiness:
+        - "RequirementApprovedEvent published with all artifact locations"
+        - "Artifacts in formats consumable by PlanningAgent"
+        - "Feature matrix JSON parseable for automated task breakdown"
+
+    artifacts:
+      requirement_artifacts:
+        - artifact_type: "brd"
+          name: "Business Requirement Document"
+          storage_location: "requirements/brd_{issue_id}.md"
+          format: "Markdown"
+          content:
+            sections:
+              - "Executive summary"
+              - "Business objectives"
+              - "Scope and constraints"
+              - "Feature list with priorities"
+              - "Non-functional requirements"
+              - "Risks and assumptions"
+          downstream_consumer: "PlanningAgent"
+
+        - artifact_type: "prd"
+          name: "Product Requirement Document"
+          storage_location: "requirements/prd_{issue_id}.md"
+          format: "Markdown"
+          content:
+            sections:
+              - "Product overview"
+              - "Feature specifications"
+              - "Non-functional requirements"
+              - "Constraints"
+              - "Risks"
+          downstream_consumer: "PlanningAgent"
+
+        - artifact_type: "user_stories"
+          name: "User Stories"
+          storage_location: "requirements/user_stories_{issue_id}.md"
+          format: "Markdown"
+          content:
+            structure:
+              - "Epic context"
+              - "User stories (As a / I want / So that)"
+              - "Acceptance criteria per story"
+              - "Priority and estimation"
+          downstream_consumer: "PlanningAgent"
+
+        - artifact_type: "feature_matrix"
+          name: "Feature Matrix"
+          storage_location: "requirements/features_{issue_id}.json"
+          format: "JSON"
+          content:
+            schema:
+              features:
+                - id: "string"
+                  name: "string"
+                  description: "string"
+                  priority: "high | medium | low"
+                  acceptance_criteria: "string[]"
+                  source_document: "string"
+                  interview_notes: "string | null"
+          downstream_consumer: "PlanningAgent (automated parsing)"
+
+        - artifact_type: "interview_transcript"
+          name: "Interview Transcript"
+          storage_location: "requirements/interview_{issue_id}.md"
+          format: "Markdown"
+          content:
+            sections:
+              - "Interview context"
+              - "Q&A rounds (agent questions + stakeholder answers)"
+              - "Decisions made"
+              - "Open items (if any)"
+          downstream_consumer: "LearningAgent (pattern learning)"
+
+      report_artifacts:
+        - artifact_type: "requirement_analysis_report"
+          name: "Requirement Analysis Execution Report"
+          storage_location: "s3://artifacts/blueprint-reports/bp_ba_requirement_analysis_{issue_id}.json"
+          format: "JSON"
+
+        - artifact_type: "audit_report"
+          name: "Audit Report"
+          storage_location: "s3://artifacts/audit-reports/ba_requirement_audit_{issue_id}.json"
+          format: "JSON"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          issue_id: "GH-{issue_id}"
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          comments:
+            - "✅ Business Requirement Analysis completed"
+            - "✅ All artifacts generated and committed"
+            - "✅ RequirementApprovedEvent published to PlanningAgent"
+            - "✅ Ready for HITL Gate 0 review"
+            - ""
+            - "📊 **Summary:**"
+            - "- Features extracted: {feature_count}"
+            - "- User stories generated: {story_count}"
+            - "- Interview rounds: {interview_rounds}"
+            - "- Quality score: {quality_score}"
+            - "- Next: Human review at HITL Gate 0, then PlanningAgent picks up"
+          labels:
+            remove: ["in-progress"]
+            add: ["completed", "ready-for-hitl-gate-0"]
+
+      git_operations:
+        pull_requests:
+          - action: "Create Requirement Analysis PR"
+            content: |
+              # Requirement Analysis for [{epic_name}]
+
+              ## Overview
+              BA Agent completed requirement analysis for epic [{epic_name}] in project [{project_name}].
+
+              ## Artifacts
+              - BRD: `requirements/brd_{issue_id}.md`
+              - PRD: `requirements/prd_{issue_id}.md`
+              - User Stories: `requirements/user_stories_{issue_id}.md`
+              - Feature Matrix: `requirements/features_{issue_id}.json`
+              - Interview Transcript: `requirements/interview_{issue_id}.md`
+
+              ## Metrics
+              - Features: {feature_count}
+              - User Stories: {story_count}
+              - Interview Rounds: {interview_rounds}
+              - Quality Score: {quality_score}
+
+              ## Next Steps
+              - **HITL Gate 0**: Human review of requirement artifacts
+              - Upon approval: PlanningAgent receives RequirementApprovedEvent
+              - PlanningAgent executes bp_architecture_blueprint_design.1.0.0
+
+          - action: "Add labels"
+            labels: ["blueprint", "hitl-gate-0", "requirement-analysis"]
+
+          - action: "Request reviewers"
+            reviewers: ["product-owner", "tech-lead"]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: |
+              ✅ BA Requirement Analysis Completed
+
+              **Blueprint ID**: bp_ba_requirement_analysis.1.0.0
+              **Epic**: {epic_name}
+              **Status**: Ready for HITL Gate 0
+              **Features**: {feature_count}
+              **Stories**: {story_count}
+
+              **PR**: #{pr_number}
+              **Next**: Human review → PlanningAgent
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "requirement_analysis_time"
+        description: "Total time from document upload to artifact generation"
+        unit: "hours"
+        target: "≤ 8h (including HITL wait time)"
+
+      - metric_name: "agent_processing_time"
+        description: "Pure agent processing time (excluding HITL wait)"
+        unit: "minutes"
+        target: "≤ 60m"
+
+      - metric_name: "token_usage"
+        description: "Total LLM tokens consumed"
+        unit: "tokens"
+        target: "≤ 100000"
+
+      - metric_name: "docling_parse_time"
+        description: "Document parsing duration"
+        unit: "seconds"
+        target: "≤ 120s"
+
+    quality:
+      - metric_name: "feature_completeness"
+        description: "Percentage of features with full description + acceptance criteria"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+
+      - metric_name: "interview_convergence_rate"
+        description: "Percentage of features clarified within 3 interview rounds"
+        unit: "percentage"
+        target: "≥ 90%"
+
+      - metric_name: "prd_completeness"
+        description: "PRD sections coverage"
+        unit: "percentage"
+        target: "100%"
+
+      - metric_name: "user_story_quality"
+        description: "Stories with proper format and acceptance criteria"
+        unit: "percentage"
+        target: "≥ 95%"
+
+      - metric_name: "feature_traceability"
+        description: "Features traceable to source documents"
+        unit: "percentage"
+        target: "100%"
+        threshold: "hard_gate"
+
+    efficiency:
+      - metric_name: "cost_per_analysis"
+        description: "Azure OpenAI cost per requirement analysis"
+        unit: "USD"
+        target: "≤ 5.00"
+        threshold: "budget_gate"
+
+      - metric_name: "human_intervention_frequency"
+        description: "Number of HITL interactions beyond planned interview"
+        unit: "count"
+        target: "≤ 1"
+
+      - metric_name: "iteration_count"
+        description: "Rework iterations due to quality gate failures"
+        unit: "count"
+        target: "≤ 2"
+
+    learning:
+      - metric_name: "pattern_reuse_rate"
+        description: "Requirement patterns reused from knowledge base"
+        unit: "percentage"
+        target: "≥ 40%"
+
+      - metric_name: "knowledge_base_growth"
+        description: "New patterns added to knowledge base per analysis"
+        unit: "entries"
+        target: "≥ 3"
+
+    summary:
+      total_blocks: 8
+      hitl_gate: "gate_0"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "quality"
+        description: "Source documents may be ambiguous or incomplete"
+        probability: "high"
+        impact: "high"
+        mitigation: "Interview agent conducts multi-round Q&A to resolve ambiguity"
+
+      - risk_id: "R002"
+        risk_type: "technical"
+        description: "Docling service unavailable or fails to parse document format"
+        probability: "low"
+        impact: "critical"
+        mitigation: "Health check before analysis; fallback to raw text extraction"
+
+      - risk_id: "R003"
+        risk_type: "quality"
+        description: "LLM hallucination in feature extraction"
+        probability: "medium"
+        impact: "high"
+        mitigation: "RAG grounding via vector_service; interview validation with stakeholder"
+
+      - risk_id: "R004"
+        risk_type: "resource"
+        description: "Azure OpenAI token quota exhausted during analysis"
+        probability: "low"
+        impact: "critical"
+        mitigation: "Token budget tracking per block; early termination if 80% consumed"
+
+      - risk_id: "R005"
+        risk_type: "process"
+        description: "Stakeholder unresponsive during interview (HITL blocks pipeline)"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "48h timeout on interview; proceed with best-effort features + flag gaps"
+
+      - risk_id: "R006"
+        risk_type: "quality"
+        description: "Image documents contain requirements not extractable by vision agent"
+        probability: "medium"
+        impact: "low"
+        mitigation: "Flag low-confidence image extractions for manual review in interview"
+
+    escalation_triggers:
+      - trigger: "budget_exceeded"
+        condition: "total_cost_usd > 5.00"
+        action: "Pause execution, generate EscalationRequiredEvent"
+
+      - trigger: "docling_service_down"
+        condition: "docling health check fails"
+        action: "Retry 3 times with backoff; if still down, escalate to SRE"
+
+      - trigger: "interview_timeout"
+        condition: "interview_wait_time > 48h"
+        action: "Proceed with extracted features; flag unvalidated features in PRD"
+
+      - trigger: "feature_extraction_failure"
+        condition: "feature_count == 0 after extraction"
+        action: "Escalate to human; document may require manual analysis"
+
+      - trigger: "quality_gate_failure"
+        condition: "feature_completeness < 95% after interview"
+        action: "Re-run interview for incomplete features; max 2 retry cycles"
+
+    escalation_process:
+      step_1: "System pauses automated execution"
+      step_2: "Generate EscalationRequiredEvent"
+      step_3: "Create GitHub Issue for human intervention"
+      step_4: "Provide context: current state, artifacts generated so far, suggested actions"
+      step_5: "Wait for human resolution"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+
+    requires_security_review: false
+    note: "BA Agent handles business requirements, not code. Security review at PlanningAgent stage."
+
+    parallelism:
+      max_parallel_blocks: 2
+      max_parallel_agents: 1
+      note: "Limited parallelism: B6+B7 run in parallel; rest is sequential due to data dependencies"
+
+    timeouts:
+      block_timeout: "2h"
+      blueprint_timeout: "8h"
+      agent_timeout: "30m"
+      interview_timeout: "48h"
+      docling_timeout: "120s"
+
+    retry:
+      max_retries: 3
+      retry_delay: "5m"
+      backoff_multiplier: 2
+
+    notifications:
+      on_start: true
+      on_complete: true
+      on_failure: true
+      on_hitl_required: true
+      channels: ["slack", "email"]
+
+# ================================================================
+# BA Agent Blueprint End
+# ================================================================
+# Next in pipeline: PlanningAgent receives RequirementApprovedEvent
+# → executes bp_architecture_blueprint_design.1.0.0 (PR #28)
+# ================================================================
