@@ -536,7 +536,22 @@ blueprint:
               dependencies: ["B9", "B10", "B11"]
               skills: ["final_validation", "building", "artifact_generation"]
               output: "Validated code and deployable artifacts"
-              validation:
+              runner: "shell"
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: "go build ./... && go test ./... -cover -count=1 && golangci-lint run"
+              timeout: 300
+              max_retries: 1
+              validators:
+                - type: "command"
+                  run: "go build ./..."
+                - type: "command"
+                  run: "go test ./... -cover -count=1"
+                - type: "command"
+                  run: "golangci-lint run"
+                - type: "git_diff_check"
+                  min_files_changed: 1
+              acceptance_criteria:
                 - "All tests pass"
                 - "Coverage ≥ 95%"
                 - "Linters pass"

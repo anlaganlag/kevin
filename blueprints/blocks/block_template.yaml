@@ -33,8 +33,53 @@ block:
       - "BLOCK-B1"
       - "BLOCK-B2"
 
-    # 超时设置
+    # 超时设置 (block 级别统一字段)
     timeout: "2h"
+
+    # 最大重试次数 (block 级别统一字段，替代 error_handling.max_retries)
+    max_retries: 3
+
+    # ----------------------------------------------------------------
+    # 执行后端 (Kevin 编排器使用)
+    # ----------------------------------------------------------------
+    # runner 声明此 Block 由哪种执行后端运行
+    # 缺省值: claude_cli (向后兼容，不写 runner = claude_cli)
+    runner: "claude_cli | shell | api_call"
+
+    # ----------------------------------------------------------------
+    # 幂等性重置 (Kevin 编排器: resume/retry 前执行)
+    # ----------------------------------------------------------------
+    # pre_check 是一条 shell 命令，在 Block 每次（重新）执行前运行。
+    # 用途：清理上次失败留下的半成品，确保工作区干净。
+    # 如果 pre_check 返回非零退出码，Block 直接标记失败。
+    # 示例:
+    #   pre_check: "git checkout . && git clean -fd"    # 恢复所有未提交修改
+    #   pre_check: "rm -f .kevin/analysis.md"           # 删除旧产物
+    pre_check: ""
+
+    # runner 类型特有参数 (不含 timeout/max_retries，这些用 block 级别字段)
+    runner_config:
+      # --- claude_cli 类型 ---
+      # cwd: "{{target_repo}}"       # Claude Code CLI 工作目录
+      # model: "opus"                 # 可选，指定模型
+      # context_filter:               # 上下文预算管理 (gitignore 风格排除列表)
+      #   - "node_modules"            # 排除巨大目录，避免上下文窗口溢出
+      #   - "dist"
+      #   - "*.min.js"
+      #   - "tests/fixtures"
+
+      # --- shell 类型 ---
+      # cwd: "{{target_repo}}"       # shell 命令工作目录
+      # command: "pytest tests/ --tb=short"
+
+      # --- api_call 类型 ---
+      # method: "POST"
+      # url: "https://api.example.com/analyze"
+      # headers:
+      #   Authorization: "Bearer {{token}}"
+      #   Content-Type: "application/json"
+      # body:
+      #   input: "{{previous_block_output}}"
 
   # ================================================================
   # 3. 输入
@@ -106,14 +151,36 @@ block:
           artifacts: ["artifact1", "artifact2"]
 
   # ================================================================
-  # 7. 验收条件
+  # 7. 验证器 (机器可执行的自动检查)
   # ================================================================
+  # validators 在 Block 执行完成后自动运行
+  # 失败时根据 execution.max_retries 决定重试或终止
+  validators:
+    # L1: Git 变更检查 — 确认 Block 产生了文件变更
+    - type: "git_diff_check"
+      min_files_changed: 1            # 最少变更文件数
+
+    # L2: 命令门禁 — 运行 shell 命令，exit_code == 0 视为通过
+    - type: "command"
+      run: "pytest tests/ --tb=short"
+      # timeout: 60                   # 可选，秒
+
+    # L3: 文件存在检查 — 确认预期产出文件已生成
+    - type: "file_exists"
+      path: "src/health.py"           # 支持 glob 模式
+
+  # ================================================================
+  # 8. 验收条件 (人类可读的验收标准)
+  # ================================================================
+  # acceptance_criteria 与 validators 共存:
+  #   validators = 机器可执行的自动检查
+  #   acceptance_criteria = 人类可读的验收标准
   acceptance_criteria:
     - "验收条件1"
     - "验收条件2"
 
   # ================================================================
-  # 8. 度量指标
+  # 9. 度量指标
   # ================================================================
   metrics:
     - metric_name: "execution_time"
@@ -123,13 +190,13 @@ block:
       target: "≤ 10000"
 
   # ================================================================
-  # 9. 错误处理
+  # 10. 错误处理
   # ================================================================
   error_handling:
     on_failure:
       action: "retry | escalate | abort"
-      max_retries: 3
-      escalation_trigger: "连续失败 3 次"
+      # max_retries 已提升到 execution 级别 (execution.max_retries)
+      escalation_trigger: "连续失败达到 max_retries 次"
 
 # ================================================================
 # Block Template 结束

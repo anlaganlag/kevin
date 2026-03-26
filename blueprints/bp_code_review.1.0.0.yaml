@@ -1,0 +1,348 @@
+# Code Review Blueprint (Kevin v1.0)
+# Lightweight 3-Block sequential Blueprint for automated code review
+# Triggered by GitHub Issue with labels: [kevin, code-review]
+#
+# This Blueprint reviews an existing PR:
+#   B1: Read PR diff and context
+#   B2: Claude CLI reviews code quality, patterns, security
+#   B3: Post review comments on the PR
+#
+# Forms a closed loop with bp_coding_task: implement → review
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_code_review.1.0.0"
+    blueprint_name: "Code Review Automation (Kevin v1.0)"
+    blueprint_type: "verification"
+    version: "1.0.0"
+    created_at: "2026-03-27T00:00:00Z"
+    created_by: "PlanningAgent"
+    tags:
+      - "kevin"
+      - "code-review"
+      - "lightweight"
+      - "automation"
+      - "verification"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for code review — higher quality bar"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/code_style/"
+        - ".agentic/rules/security/"
+        - ".agentic/rules/testing/"
+
+    constraints:
+      load_from:
+        - ".agentic/constraints/infra/static/"
+        - ".agentic/constraints/devops/ci/"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "IssueLabeledEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "{{issue_number}}"
+        issue_type: "task"
+        labels: ["kevin", "code-review"]
+        pr_number: "{{pr_number}}"
+        description: "GitHub Issue requesting review of a specific PR"
+
+    task_mapping:
+      code_review:
+        primary_phase: "verification"
+        entry_point: "BuilderAgent"
+
+    context:
+      source_documents:
+        - type: "GitHub Issue"
+          location: "github://{{owner}}/{{repo}}/issues/{{issue_number}}"
+          required: true
+          description: "Issue with PR number to review"
+
+        - type: "Pull Request"
+          location: "github://{{owner}}/{{repo}}/pull/{{pr_number}}"
+          required: true
+          description: "The PR to be reviewed"
+
+      data_sources:
+        - "PR diff (git diff)"
+        - "PR description and linked issues"
+        - "Target repository codebase"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "BuilderAgent"
+      selection_logic:
+        reasoning: |
+          Labels contain "code-review" → BuilderAgent as Reviewer
+          BuilderAgent acts with a different persona: Code Reviewer
+          (not Implementor — different prompt/role)
+      responsibilities:
+        - "Read and understand PR changes"
+        - "Review code quality, security, test coverage"
+        - "Post structured review feedback"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Task Execution Workflow
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BuilderAgent (Reviewer persona)"
+        input:
+          issue_type: "task"
+          labels: ["kevin", "code-review"]
+        output: "BuilderAgent assigned as Code Reviewer"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "BuilderAgent → Load Review Context"
+        input_sources:
+          - source: "Pull Request"
+            content:
+              pr_number: "{{pr_number}}"
+              pr_diff: "Output of gh pr diff {{pr_number}}"
+              pr_description: "PR title, body, linked issues"
+              pr_files: "List of changed files"
+
+          - source: "Repository"
+            content:
+              code_style: "Existing patterns and conventions"
+              test_patterns: "Existing test structure"
+
+        output: "Review context loaded"
+
+      # Step 3: Execute Blocks
+      step_3:
+        action: "BuilderAgent → Execute 3-Block Review Pipeline"
+        coordination_model: "sequential"
+
+        dependency_graph:
+          blocks:
+            # --------------------------------------------------------
+            # B1: Read PR Diff and Context
+            # --------------------------------------------------------
+            # Fetch the PR diff, file list, and linked issue context.
+            # Output a structured summary for the reviewer.
+            - block_id: "B1"
+              name: "read_pr_context"
+              assigned_to: "BuilderAgent"
+              dependencies: []
+              runner: "shell"
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  echo "=== PR #{{pr_number}} ===" > .kevin/pr_context.md && \
+                  echo "" >> .kevin/pr_context.md && \
+                  echo "## PR Description" >> .kevin/pr_context.md && \
+                  gh pr view {{pr_number}} --json title,body,labels,files --jq '
+                    "Title: \(.title)\n\nBody:\n\(.body)\n\nLabels: \(.labels | map(.name) | join(", "))\n\nFiles changed:\n\(.files | map(.path) | join("\n"))"
+                  ' >> .kevin/pr_context.md && \
+                  echo "" >> .kevin/pr_context.md && \
+                  echo "## Diff" >> .kevin/pr_context.md && \
+                  gh pr diff {{pr_number}} >> .kevin/pr_context.md
+              timeout: 60
+              max_retries: 2
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/pr_context.md"
+              acceptance_criteria:
+                - "PR diff and metadata captured"
+                - "Context file written for reviewer"
+
+            # --------------------------------------------------------
+            # B2: Review Code
+            # --------------------------------------------------------
+            # Claude CLI acts as Code Reviewer:
+            # - Code quality and readability
+            # - Security issues (OWASP)
+            # - Test coverage gaps
+            # - Naming and pattern consistency
+            # - Performance concerns
+            # Produces a structured review report.
+            - block_id: "B2"
+              name: "review_code"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B1"]
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+              timeout: 300
+              max_retries: 1
+              prompt_template: |
+                You are a Senior Code Reviewer. Review PR #{{pr_number}}.
+
+                ## Context
+
+                Read `.kevin/pr_context.md` for the full PR diff and metadata.
+
+                ## Review Checklist
+
+                For each changed file, evaluate:
+                1. **Correctness** — Does the code do what it claims?
+                2. **Security** — SQL injection, XSS, hardcoded secrets, input validation
+                3. **Test coverage** — Are new behaviors tested? Edge cases?
+                4. **Code quality** — Naming, complexity, duplication, dead code
+                5. **Consistency** — Does it follow existing patterns in the repo?
+                6. **Performance** — Any obvious N+1, unbounded loops, missing indexes?
+
+                ## Output
+
+                Write your review to `.kevin/review_report.md` with this structure:
+
+                ```markdown
+                # Code Review: PR #{{pr_number}}
+
+                ## Summary
+                (1-2 sentence overall assessment)
+
+                ## Verdict
+                (APPROVE | REQUEST_CHANGES | COMMENT)
+
+                ## Findings
+
+                ### Critical (must fix before merge)
+                - [ ] file:line — description
+
+                ### Suggestions (recommended improvements)
+                - [ ] file:line — description
+
+                ### Praise (things done well)
+                - file:line — description
+                ```
+
+                Be specific. Reference file paths and line numbers.
+                Do NOT create or modify any source code files.
+              output: "Structured review report in .kevin/review_report.md"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/review_report.md"
+              acceptance_criteria:
+                - "All changed files reviewed"
+                - "Findings categorized by severity"
+                - "Verdict determined"
+
+            # --------------------------------------------------------
+            # B3: Post Review on PR
+            # --------------------------------------------------------
+            # Read the review report and post it as a PR review comment.
+            # Use appropriate review action (APPROVE/REQUEST_CHANGES/COMMENT).
+            - block_id: "B3"
+              name: "post_review"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B2"]
+              runner: "shell"
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  VERDICT=$(grep -A1 "## Verdict" .kevin/review_report.md | tail -1 | tr -d '[:space:]') && \
+                  REVIEW_EVENT="COMMENT" && \
+                  if [ "$VERDICT" = "APPROVE" ]; then REVIEW_EVENT="APPROVE"; fi && \
+                  if [ "$VERDICT" = "REQUEST_CHANGES" ]; then REVIEW_EVENT="REQUEST_CHANGES"; fi && \
+                  gh pr review {{pr_number}} \
+                    --body "$(cat .kevin/review_report.md)" \
+                    --"$(echo $REVIEW_EVENT | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+              timeout: 60
+              max_retries: 2
+              validators:
+                - type: "command"
+                  run: "gh pr view {{pr_number}} --json reviews --jq '.reviews | length'"
+              acceptance_criteria:
+                - "Review posted on PR"
+                - "Review action matches verdict"
+
+          execution_order: "B1 → B2 → B3"
+
+      # Step 4: Confirm Completion
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-{{issue_number}}"
+              comments:
+                - "Kevin completed code review via `bp_code_review.1.0.0`"
+                - ""
+                - "| Block | Status |"
+                - "|-------|--------|"
+                - "| B1: Read PR Context | :white_check_mark: |"
+                - "| B2: Review Code | :white_check_mark: |"
+                - "| B3: Post Review | :white_check_mark: |"
+                - ""
+                - "Verdict: {{verdict}}"
+                - "Review posted on PR #{{pr_number}}"
+              labels:
+                remove: ["kevin"]
+                add: ["kevin-reviewed"]
+
+      # Step 5: Audit (lightweight)
+      step_5:
+        action: "Lightweight Audit"
+        description: |
+          Code review is itself a verification activity.
+          No additional audit needed for v1.0.
+        phase_1_parallel_audits: []
+        phase_2_governance_decision:
+          final_decision:
+            status: "not_applicable"
+            reason: "Code review IS the governance activity"
+
+  # ================================================================
+  # 6. Completion
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      functional:
+        - "All changed files reviewed"
+        - "Review findings posted on PR"
+      process:
+        - "Issue updated with completion status"
+        - "PR has review with verdict"
+
+    artifacts:
+      report_artifacts:
+        - artifact_type: "review_report"
+          name: "Code review report"
+          storage_location: ".kevin/review_report.md"
+        - artifact_type: "pr_context"
+          name: "PR context snapshot"
+          storage_location: ".kevin/pr_context.md"
+
+  # ================================================================
+  # 7. Config
+  # ================================================================
+  config:
+    risk_level: "low"
+    requires_security_review: false
+    parallelism:
+      max_parallel_blocks: 1
+    timeouts:
+      block_timeout: "5m"
+      blueprint_timeout: "15m"
+    retry:
+      max_retries: 2
+      retry_delay: "10s"
+
+# ================================================================
+# Blueprint End
+# ================================================================

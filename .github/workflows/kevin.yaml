@@ -1,0 +1,99 @@
+# Kevin Planning Agent — GitHub Actions Workflow
+#
+# Trigger: Add the "kevin" label to any Issue.
+# Kevin reads the Issue labels, selects a Blueprint, and executes blocks.
+#
+# Requirements:
+#   - ANTHROPIC_API_KEY repo secret (for Claude Code CLI)
+#   - gh CLI is pre-installed on ubuntu-latest
+#   - Node.js for Claude Code CLI install
+
+name: Kevin Planning Agent
+
+on:
+  issues:
+    types: [labeled]
+
+# Cancel in-progress runs for the same issue
+concurrency:
+  group: kevin-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: write
+
+jobs:
+  kevin-run:
+    # Only trigger when the "kevin" label is added
+    if: github.event.label.name == 'kevin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. Checkout AgenticSDLC (Kevin source + blueprints)
+      - name: Checkout AgenticSDLC
+        uses: actions/checkout@v4
+        with:
+          repository: centific-cn/AgenticSDLC
+          path: agentic-sdlc
+
+      # 2. Checkout target repo (the repo where the Issue lives)
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: target-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 4. Install dependencies (only pyyaml)
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # 5. Install Claude Code CLI
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # 6. Run Kevin
+      - name: Run Kevin
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: agentic-sdlc
+        run: |
+          python -m kevin run \
+            --issue ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --target-repo ${{ github.workspace }}/target-repo \
+            --verbose
+
+      # 7. Upload run state as artifact (always, even on failure)
+      - name: Upload Kevin run state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kevin-run-issue-${{ github.event.issue.number }}
+          path: ${{ github.workspace }}/target-repo/.kevin/runs/
+          retention-days: 30
+
+      # 8. Post failure comment if Kevin crashed
+      - name: Post failure comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --body "Kevin run **failed**. Check [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
