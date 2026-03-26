@@ -343,31 +343,87 @@ blueprint:
               name: "requirement_analysis"
               assigned_to: "BA_Agent"
               dependencies: []
+              runner: "claude_cli"           # 缺省值，可省略
+              runner_config:
+                cwd: "{{target_repo}}"
+              timeout: 120
+              max_retries: 1
+              pre_check: ""                  # B1 无需清理（首个 Block）
+              validators:
+                - type: "file_exists"
+                  path: "docs/requirements.md"
+              acceptance_criteria:
+                - "需求已结构化并输出为 markdown"
 
             - block_id: "B2"
               name: "architecture_design"
               assigned_to: "PlanningAgent"
               dependencies: ["B1"]
+              # runner 缺省 = claude_cli
+              timeout: 300
+              max_retries: 1
+              pre_check: "rm -f docs/architecture.md"   # 幂等性：清理上次产物
+              validators:
+                - type: "file_exists"
+                  path: "docs/architecture.md"
 
             - block_id: "B3"
               name: "implementation"
               assigned_to: "BuilderAgent"
               dependencies: ["B2"]
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: "opus"
+                context_filter:              # 上下文预算管理
+                  - "node_modules"
+                  - "dist"
+                  - "vendor"
+              timeout: 600
+              max_retries: 2
+              pre_check: "git checkout . && git clean -fd"  # 幂等性：恢复干净工作区
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "command"
+                  run: "go test ./... -count=1"
+              acceptance_criteria:
+                - "代码实现完成并通过测试"
 
             - block_id: "B4"
               name: "testing"
               assigned_to: "QAAgent"
               dependencies: ["B3"]
+              runner: "shell"
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: "go test ./... -cover -count=1"
+              timeout: 300
+              max_retries: 1
+              validators:
+                - type: "command"
+                  run: "go test ./... -cover -count=1"
 
             - block_id: "B5"
               name: "security_scan"
               assigned_to: "SecurityAgent"
               dependencies: ["B3"]
+              runner: "shell"
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: "gosec ./..."
+              timeout: 300
+              max_retries: 1
 
             - block_id: "B6"
               name: "deployment"
               assigned_to: "PlatformAgent"
               dependencies: ["B4", "B5"]
+              runner: "shell"
+              runner_config:
+                command: "gh pr create --title '{{issue_title}}' --body '{{pr_body}}'"
+              timeout: 120
+              max_retries: 1
 
           execution_order: "B1 → B2 → B3 → (B4 + B5 parallel) → B6"
 

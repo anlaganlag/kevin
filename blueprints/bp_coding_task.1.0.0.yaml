@@ -1,0 +1,344 @@
+# Coding Task Blueprint (Kevin v1.0)
+# Lightweight 3-Block sequential Blueprint for simple coding tasks
+# Triggered by GitHub Issue with labels: [kevin, coding-task]
+#
+# This is the simplest Kevin-executable Blueprint:
+#   B1: Analyze requirements from Issue
+#   B2: Implement solution + tests on feature branch
+#   B3: Create Pull Request with summary
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_coding_task.1.0.0"
+    blueprint_name: "Coding Task Automation (Kevin v1.0)"
+    blueprint_type: "feature"
+    version: "1.0.0"
+    created_at: "2026-03-27T00:00:00Z"
+    created_by: "PlanningAgent"
+    tags:
+      - "kevin"
+      - "coding-task"
+      - "lightweight"
+      - "automation"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "default_profile"
+      description: "Standard development profile"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/code_style/"
+        - ".agentic/rules/testing/"
+
+    constraints:
+      load_from:
+        - ".agentic/constraints/infra/static/"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "IssueLabeledEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "{{issue_number}}"
+        issue_type: "task"
+        labels: ["kevin", "coding-task"]
+        description: "GitHub Issue containing task description and acceptance criteria"
+
+    task_mapping:
+      coding_task:
+        primary_phase: "implementation"
+        entry_point: "BuilderAgent"
+
+    context:
+      source_documents:
+        - type: "GitHub Issue"
+          location: "github://{{owner}}/{{repo}}/issues/{{issue_number}}"
+          required: true
+          description: "Issue title, body, and labels as task specification"
+
+      data_sources:
+        - "Git Repository (target repo, main branch)"
+        - "Issue description and acceptance criteria"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "BuilderAgent"
+      selection_logic:
+        reasoning: |
+          Labels contain "coding-task" → BuilderAgent as Primary
+          Simple coding task → no sub-agent coordination needed
+      responsibilities:
+        - "Analyze issue requirements"
+        - "Implement solution with tests"
+        - "Create pull request"
+
+    sub_agents: []  # No sub-agents for lightweight coding tasks
+
+  # ================================================================
+  # 5. Task Execution Workflow
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BuilderAgent as Primary"
+        input:
+          issue_type: "task"
+          labels: ["kevin", "coding-task"]
+        output: "BuilderAgent assigned as Primary Agent"
+        decision_logic: |
+          IF labels contain "coding-task" THEN BuilderAgent
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "BuilderAgent → Load Rules + Context"
+        input_sources:
+          - source: "GitHub Issue"
+            content:
+              issue_title: "{{issue_title}}"
+              issue_body: "{{issue_body}}"
+              issue_labels: "{{issue_labels}}"
+
+          - source: "Target Repository"
+            content:
+              repo_structure: "File tree of target repo"
+              existing_code: "Relevant existing source files"
+              existing_tests: "Existing test files for patterns"
+
+        output: "Implementation strategy formulated from issue context"
+
+      # Step 3: Execute Blocks
+      step_3:
+        action: "BuilderAgent → Execute 3-Block Sequential Pipeline"
+        coordination_model: "sequential"
+
+        dependency_graph:
+          blocks:
+            # --------------------------------------------------------
+            # B1: Analyze Requirements
+            # --------------------------------------------------------
+            # Read the GitHub Issue and produce a structured analysis:
+            # - What needs to be built
+            # - Which files to create/modify
+            # - Acceptance criteria extracted
+            # - Test scenarios identified
+            - block_id: "B1"
+              name: "analyze_requirements"
+              assigned_to: "BuilderAgent"
+              dependencies: []
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+              timeout: 120
+              max_retries: 1
+              pre_check: "rm -f .kevin/analysis.md"  # 幂等性：清理上次分析产物
+              prompt_template: |
+                You are analyzing a GitHub Issue to plan an implementation.
+
+                ## Issue #{{issue_number}}: {{issue_title}}
+
+                {{issue_body}}
+
+                ## Instructions
+
+                1. Read the issue carefully
+                2. Explore the existing codebase to understand current structure
+                3. Write a brief implementation plan to `.kevin/analysis.md`:
+                   - Summary of what needs to be built
+                   - Files to create or modify
+                   - Test scenarios to cover
+                   - Any risks or open questions
+                4. Create a feature branch: `kevin/issue-{{issue_number}}`
+
+                Do NOT implement yet. Only analyze and plan.
+              output: "Implementation plan in .kevin/analysis.md + feature branch created"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/analysis.md"
+              acceptance_criteria:
+                - "Issue requirements are understood and structured"
+                - "Feature branch created"
+                - "Implementation plan written"
+
+            # --------------------------------------------------------
+            # B2: Implement Solution
+            # --------------------------------------------------------
+            # On the feature branch, implement the solution:
+            # - Write tests first (TDD when applicable)
+            # - Implement the feature
+            # - Ensure tests pass
+            # - Commit to feature branch
+            - block_id: "B2"
+              name: "implement_solution"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B1"]
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                context_filter:              # 上下文预算：排除大目录
+                  - "node_modules"
+                  - "dist"
+                  - ".next"
+                  - "vendor"
+                  - "*.min.js"
+              timeout: 600
+              max_retries: 2
+              # 幂等性：resume 时撤销 B2 上次未完成的修改，但保留 B1 的 analysis.md
+              pre_check: "git checkout -- . && git clean -fd --exclude=.kevin/"
+              prompt_template: |
+                You are implementing a coding task on branch `kevin/issue-{{issue_number}}`.
+
+                ## Context
+
+                Read the implementation plan from `.kevin/analysis.md`.
+
+                ## Instructions
+
+                1. Read `.kevin/analysis.md` for the implementation plan
+                2. Write tests first for the expected behavior
+                3. Implement the solution to make tests pass
+                4. Run all tests to ensure nothing is broken
+                5. Commit your changes with message:
+                   `feat: {{issue_title}} (resolves #{{issue_number}})`
+
+                Follow existing code style and patterns in the repo.
+              output: "Working code with tests, committed to feature branch"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "command"
+                  run: "git log --oneline -1 | grep -q 'feat:'"
+              acceptance_criteria:
+                - "Feature implemented and tests pass"
+                - "Code committed to feature branch"
+                - "No existing tests broken"
+
+            # --------------------------------------------------------
+            # B3: Create Pull Request
+            # --------------------------------------------------------
+            # Push the branch and create a PR with:
+            # - Summary of changes
+            # - Link to original issue
+            # - Test results
+            - block_id: "B3"
+              name: "create_pull_request"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B2"]
+              runner: "shell"
+              pre_check: ""                  # shell block 无需清理
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  git push -u origin kevin/issue-{{issue_number}} && \
+                  gh pr create \
+                    --title "{{issue_title}}" \
+                    --body "## Summary\n\nResolves #{{issue_number}}\n\n## Changes\n\n$(git diff main...HEAD --stat)\n\n## Test Results\n\n$(cd {{target_repo}} && cat .kevin/analysis.md | head -20)\n\n---\n_Automated by Kevin Planning Agent via bp_coding_task.1.0.0_" \
+                    --label "kevin-automated"
+              timeout: 120
+              max_retries: 1
+              validators:
+                - type: "command"
+                  run: "gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number'"
+              acceptance_criteria:
+                - "PR created and linked to original issue"
+                - "PR description includes change summary"
+
+          execution_order: "B1 → B2 → B3"
+
+      # Step 4: Confirm Completion
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-{{issue_number}}"
+              comments:
+                - "Kevin completed coding task via `bp_coding_task.1.0.0`"
+                - ""
+                - "| Block | Status |"
+                - "|-------|--------|"
+                - "| B1: Analyze Requirements | :white_check_mark: |"
+                - "| B2: Implement Solution | :white_check_mark: |"
+                - "| B3: Create Pull Request | :white_check_mark: |"
+                - ""
+                - "PR: {{pr_url}}"
+              labels:
+                remove: ["kevin"]
+                add: ["kevin-completed"]
+
+      # Step 5: Audit (lightweight for coding tasks)
+      step_5:
+        action: "Lightweight Audit"
+        description: |
+          For simple coding tasks, governance is lightweight:
+          - Validators already checked git diff + test pass
+          - PR review serves as human gate
+          - No separate audit agent needed for v1.0
+        phase_1_parallel_audits: []
+        phase_2_governance_decision:
+          gates_check:
+            code_gate:
+              condition: "All validators passed"
+              status: "auto"
+          final_decision:
+            status: "delegated_to_pr_review"
+            reason: "Simple coding task — PR review is the governance gate"
+
+  # ================================================================
+  # 6. Completion
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      functional:
+        - "Feature implemented per issue requirements"
+        - "All tests pass"
+      process:
+        - "PR created and linked to issue"
+        - "Issue updated with completion status"
+
+    artifacts:
+      code_artifacts:
+        - artifact_type: "source_code"
+          name: "Feature implementation"
+          storage_location: "github://{{owner}}/{{repo}}/tree/kevin/issue-{{issue_number}}"
+        - artifact_type: "tests"
+          name: "Test coverage for new feature"
+          storage_location: "github://{{owner}}/{{repo}}/tree/kevin/issue-{{issue_number}}"
+
+      report_artifacts:
+        - artifact_type: "analysis"
+          name: "Implementation plan"
+          storage_location: ".kevin/analysis.md"
+
+  # ================================================================
+  # 7. Config
+  # ================================================================
+  config:
+    risk_level: "low"
+    requires_security_review: false
+    parallelism:
+      max_parallel_blocks: 1  # Sequential execution
+    timeouts:
+      block_timeout: "10m"
+      blueprint_timeout: "30m"
+    retry:
+      max_retries: 2
+      retry_delay: "10s"
+
+# ================================================================
+# Blueprint End
+# ================================================================
