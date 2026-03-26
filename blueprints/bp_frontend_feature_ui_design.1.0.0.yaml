@@ -1,0 +1,1448 @@
+# Frontend Agent Blueprint
+# Blueprint for Frontend Agent to design UI and generate frontend implementation
+# from approved UX specifications and architecture contracts
+# Based on AgenticSDLC v2.0 Architecture
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_frontend_feature_ui_design.1.0.0"
+    blueprint_name: "Frontend UI Design and Implementation Blueprint"
+    blueprint_type: "feature"
+    version: "1.0.0"
+    created_at: "2026-03-26T12:00:00Z"
+    created_by: "FrontendAgent"
+    tags:
+      - "frontend"
+      - "ui-design"
+      - "component-architecture"
+      - "typescript"
+      - "accessibility"
+      - "hitl-gate"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    # Profile Reference
+    profile:
+      name: "default_profile"
+      description: "Balanced quality and speed for UI design and implementation"
+      overrides:
+        quality:
+          test_coverage: 90  # UI component tests: slightly lower than backend hard gate
+          documentation: "comprehensive"  # All components must have Storybook stories
+
+    # Rules Loading
+    rules:
+      # Load entire rule directories
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/security/"
+
+      # Specific rule files relevant to frontend
+      specific:
+        - ".agentic/rules/naming/general.yaml"
+        - ".agentic/rules/security/owasp_top10.yaml"
+
+      # Frontend-specific inline rules
+      inline:
+        custom_rules:
+          - name: "component_naming_convention"
+            rule: "React/Vue components must use PascalCase; filenames must match component name exactly"
+            enforcement: "strict"
+            validator: "component_name_validator"
+
+          - name: "component_single_responsibility"
+            rule: "Each component must have a single, clearly defined responsibility; no component exceeds 200 lines"
+            enforcement: "strict"
+            validator: "complexity_checker"
+
+          - name: "accessibility_compliance"
+            rule: "All interactive components must achieve WCAG 2.1 Level AA compliance"
+            enforcement: "strict"
+            validator: "axe_accessibility_validator"
+
+          - name: "design_token_usage"
+            rule: "Components must consume design tokens (colors, spacing, typography) from the design system; no hardcoded values"
+            enforcement: "strict"
+            validator: "design_token_linter"
+
+          - name: "storybook_story_required"
+            rule: "Every public-facing component must have a corresponding Storybook story with at least: Default, Loading, Error states"
+            enforcement: "strict"
+            validator: "storybook_coverage_checker"
+
+          - name: "no_inline_styles"
+            rule: "No inline style attributes on JSX/TSX elements; use CSS modules or design system utility classes"
+            enforcement: "strict"
+            validator: "eslint_no_inline_style"
+
+          - name: "xss_prevention"
+            rule: "No use of dangerouslySetInnerHTML or equivalent without explicit SecurityAgent approval; all user-supplied content must be sanitized"
+            enforcement: "strict"
+            validator: "xss_static_analyzer"
+
+    # Constraints Loading
+    constraints:
+      # Load entire constraint directories
+      load_from:
+        - ".agentic/constraints/infra/static/"
+        - ".agentic/constraints/devops/ci/"
+
+      # Specific constraint files
+      specific:
+        - ".agentic/constraints/infra/static/technical_stack.yaml"
+        - ".agentic/constraints/devops/ci/quality_gates.yaml"
+
+      # Frontend-specific inline constraints
+      inline:
+        technical_stack:
+          typescript_version: ">= 5.0"
+          node_version: ">= 20.x"
+          framework:
+            primary: "React >= 18.0"
+            alternative: "Vue >= 3.3"
+            selection_rule: "Follow existing project convention from Learning Agent; default to React"
+          styling:
+            approach: "CSS Modules or TailwindCSS (as defined in project config)"
+            preprocessor: "PostCSS"
+          component_library:
+            storybook_version: ">= 7.6"
+            testing_library: "React Testing Library >= 14 / Vue Test Utils >= 2"
+            unit_test_runner: "Vitest >= 1.0"
+            e2e_framework: "Playwright >= 1.40 (visual regression via Chromatic)"
+
+        architecture_constraints:
+          component_max_lines: 200
+          component_max_props: 12
+          max_nesting_depth: 4
+          state_management: "Local state preferred; global state (Zustand/Pinia) only when explicitly required"
+          preferred_patterns:
+            - "Compound Component Pattern"
+            - "Render Props (when needed)"
+            - "Custom Hooks for logic reuse"
+            - "Context API for theme/config injection"
+
+        resource_quotas:
+          max_design_time: "6h"
+          max_bundle_size_per_component: "50KB (gzipped)"
+          max_render_time_ms: 16  # 60fps threshold
+          max_token_usage: 60000
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    # Trigger Definition
+    trigger:
+      event_type: "IssueCreatedEvent | BlueprintApprovedEvent | ArchitectureApprovedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "22"
+        issue_type: "task"
+        labels: ["frontend", "ui-design", "component"]
+        priority: "high"
+        description: "Create Frontend Agent Blueprint for UI design and component implementation"
+
+    # Task Type Mapping
+    task_mapping:
+      task:
+        primary_phase: "design_and_implementation"
+        entry_point: "FrontendAgent"
+      requirement:
+        primary_phase: "analysis"
+        entry_point: "BA_Agent"
+
+    # Input Context
+    context:
+      source_documents:
+        - type: "Architecture Blueprint"
+          location: "blueprints/bp_architecture_blueprint_design.1.0.0.yaml"
+          required: true
+          description: "Defines API contracts and system component boundaries that the UI consumes"
+
+        - type: "UX Specification / Wireframes"
+          location: "requirements/ux_spec_*.md"
+          required: true
+          description: "UX wireframes, interaction flows, and design intent from the design phase"
+
+        - type: "Design System Tokens"
+          location: "design-system/tokens/*.json"
+          required: true
+          description: "Color, typography, spacing, and elevation tokens from the design system"
+
+        - type: "Approved Requirements (User Stories)"
+          location: "requirements/user_stories_*.md"
+          required: true
+          description: "User stories with UI-relevant acceptance criteria"
+
+        - type: "GitHub Issue"
+          location: "github://centific-cn/AgenticSDLC/issues/22"
+          required: true
+          description: "Issue containing the frontend UI design task"
+
+      data_sources:
+        - "Git Repository (main branch) — existing component library and patterns"
+        - "Learning Agent Knowledge Base — historical UI patterns and component designs"
+        - "Storybook (project) — existing component inventory"
+        - "Design Token Engine — live token definitions"
+        - "Architecture Contract (API endpoints and data schemas)"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    # Primary Agent Selection
+    primary_agent:
+      agent_type: "FrontendAgent"
+      selection_logic:
+        reasoning: |
+          1. Issue type = "task" with label "frontend" and "ui-design" → FrontendAgent
+          2. Task involves UI component design and TypeScript/React implementation → FrontendAgent core competency
+          3. Task requires design system application and accessibility compliance → FrontendAgent domain expertise
+          → Decision: FrontendAgent as Primary Agent
+
+      responsibilities:
+        - "Parse UX specifications and translate to component architecture"
+        - "Design component tree and data flow"
+        - "Generate TypeScript/React (or Vue) component code following design system"
+        - "Generate Storybook stories for all components"
+        - "Coordinate accessibility audit (QAAgent) and security review (SecurityAgent)"
+        - "Create PR with all frontend artifacts for HITL Gate review"
+
+    # Sub-Agents Coordination
+    sub_agents:
+      - agent_type: "LearningAgent"
+        phase: "context_loading"
+        responsibilities:
+          - "Retrieve historical UI component patterns from knowledge base"
+          - "Identify existing reusable components to avoid duplication"
+          - "Provide design system usage patterns from previous features"
+          - "Surface lessons learned from past accessibility failures"
+        coordination: "sequential_before_design"
+
+      - agent_type: "QAAgent"
+        phase: "verification"
+        responsibilities:
+          - "Generate unit tests for each component (Vitest + React Testing Library)"
+          - "Run accessibility audit using axe-core against generated components"
+          - "Generate visual regression baseline via Chromatic/Playwright"
+          - "Verify component behavior against acceptance criteria"
+        coordination: "parallel_with_security"
+
+      - agent_type: "SecurityAgent"
+        phase: "verification"
+        responsibilities:
+          - "Scan generated components for XSS vulnerabilities (dangerouslySetInnerHTML, eval, etc.)"
+          - "Verify input sanitization on all form components"
+          - "Check Content Security Policy (CSP) compatibility"
+          - "Audit third-party dependency security (npm audit)"
+        coordination: "parallel_with_qa"
+
+      - agent_type: "DocAgent"
+        phase: "documentation"
+        responsibilities:
+          - "Generate component API documentation (prop types, events, slots)"
+          - "Create component usage examples and code snippets"
+          - "Document design decisions and deviation rationale"
+        coordination: "parallel_with_output_generation"
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    # Agent Skills
+    agent_skills:
+      FrontendAgent:
+        - name: "ux_spec_parsing"
+          description: "Parse UX wireframes and interaction specs into component requirements"
+          input: "UX spec documents, wireframe descriptions"
+          output: "Component requirement list with states, props, and events"
+
+        - name: "component_architecture_design"
+          description: "Design component hierarchy, data flow, and composition patterns"
+          input: "Component requirements, API contract, design tokens"
+          output: "Component tree diagram (Mermaid), data flow spec"
+
+        - name: "design_system_application"
+          description: "Map UX design intent to design system tokens and existing components"
+          input: "UX spec, design token definitions, existing component inventory"
+          output: "Token usage map, component reuse plan"
+
+        - name: "frontend_code_generation"
+          description: "Generate production-ready TypeScript React/Vue component code"
+          input: "Component architecture spec, API schema, design tokens"
+          output: "*.tsx / *.vue files with props, events, and slots defined"
+
+        - name: "responsive_layout_design"
+          description: "Implement responsive layouts using CSS Grid/Flexbox and design system breakpoints"
+          input: "Layout requirements, breakpoint tokens"
+          output: "Responsive CSS Modules / Tailwind class composition"
+
+        - name: "interaction_design_implementation"
+          description: "Implement interaction states (hover, focus, active, disabled, loading, error)"
+          input: "Interaction spec, design tokens"
+          output: "State-aware component code with appropriate ARIA attributes"
+
+        - name: "storybook_story_generation"
+          description: "Generate Storybook stories covering Default, Loading, Error, and edge-case variants"
+          input: "Component code, acceptance criteria"
+          output: "*.stories.tsx files with Controls and Docs"
+
+        - name: "accessibility_implementation"
+          description: "Implement ARIA roles, keyboard navigation, focus management, and color contrast compliance"
+          input: "Component code, WCAG 2.1 AA requirements"
+          output: "Accessible component code with axe audit report"
+
+        - name: "i18n_preparation"
+          description: "Extract all user-facing strings into i18n keys; no hardcoded display text"
+          input: "Component code, i18n key naming convention"
+          output: "Locale key file additions, component wired to i18n provider"
+
+        - name: "performance_optimization"
+          description: "Apply code splitting, lazy loading, and memoization where appropriate"
+          input: "Component code, bundle size constraints"
+          output: "Optimized component with React.memo / dynamic import annotations"
+
+        - name: "git_operations"
+          description: "Commit generated artifacts and create PR for HITL Gate review"
+          input: "All generated artifacts"
+          output: "Feature branch commit, PR with description and labels"
+
+      LearningAgent:
+        - "pattern_matching"
+        - "historical_context_retrieval"
+        - "component_pattern_recommendation"
+        - "best_practice_recommendation"
+
+      QAAgent:
+        - "unit_test_generation"
+        - "accessibility_audit"
+        - "visual_regression_testing"
+        - "component_behavior_verification"
+
+      SecurityAgent:
+        - "xss_vulnerability_scan"
+        - "input_sanitization_check"
+        - "csp_compatibility_check"
+        - "dependency_security_audit"
+
+      DocAgent:
+        - "component_api_documentation"
+        - "usage_example_generation"
+        - "design_decision_documentation"
+
+    # Tool Access Permissions
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+          - "repository:read"
+        usage: "Read task issue, create feature branch, commit artifacts, open PR"
+
+      - tool: "bash_execution"
+        permissions:
+          - "command_execution"
+          - "file_operations"
+          - "directory_operations"
+        usage: |
+          Run: npm run build, npm run lint, npm run test, npm run storybook:build,
+          npx tsc --noEmit, npx axe-core, npm audit
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "pattern_matching"
+          - "component_patterns:query"
+        usage: "Query existing component designs, UI patterns, and lessons learned"
+
+      - tool: "design_token_engine"
+        permissions:
+          - "tokens:read"
+          - "token_validation:execute"
+        usage: "Fetch current design token values; validate token usage in generated code"
+
+      - tool: "storybook_api"
+        permissions:
+          - "component_inventory:read"
+          - "stories:read/write"
+        usage: "Check existing component inventory; write new Storybook stories"
+
+      - tool: "figma_api"
+        permissions:
+          - "designs:read"
+          - "components:read"
+          - "design_tokens:read"
+        usage: "Read UX wireframes, component specs, and design tokens directly from Figma"
+
+      - tool: "accessibility_checker"
+        permissions:
+          - "axe_core:execute"
+          - "wcag_audit:execute"
+          - "accessibility_report:generate"
+        usage: "Run axe-core accessibility scans on rendered components; generate WCAG audit report"
+
+      - tool: "visual_regression_tool"
+        permissions:
+          - "screenshot:capture"
+          - "baseline:compare"
+          - "chromatic:publish"
+        usage: "Capture component screenshots for visual regression baseline via Chromatic"
+
+      - tool: "platform_agent_api"
+        permissions:
+          - "infra_state:read"
+          - "technical_constraints:read"
+        usage: "Read CDN configuration, allowed npm registries, and resource quotas"
+
+      - tool: "openapi_generator"
+        permissions:
+          - "openapi_spec:read"
+          - "type_generation:execute"
+        usage: "Generate TypeScript types from API contract OpenAPI spec (openapi-typescript)"
+
+  # ================================================================
+  # 6. Task Execution Workflow
+  # ================================================================
+  workflow:
+    # Ralph Loop 5-Step Execution Process
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm FrontendAgent as Primary"
+        input:
+          issue_type: "task"
+          issue_id: "22"
+          labels: ["frontend", "ui-design", "component"]
+          priority: "high"
+        output: "FrontendAgent assigned as Primary Agent"
+        decision_logic: |
+          IF label == "frontend" AND label == "ui-design" THEN FrontendAgent
+          ELSE IF label == "backend" THEN BuilderAgent
+          ELSE IF label == "architecture" THEN PlanningAgent
+          ELSE default → BuilderAgent
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "FrontendAgent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer (Static)"
+            content:
+              language_stack: ["TypeScript >= 5.0", "Node >= 20.x"]
+              framework: "React >= 18.0"
+              styling: "CSS Modules + design system utility classes"
+              component_library: "Storybook >= 7.6"
+              testing:
+                unit: "Vitest + React Testing Library"
+                visual: "Playwright + Chromatic"
+                accessibility: "axe-core"
+              bundler: "Vite"
+              linting: ["ESLint", "Prettier", "stylelint"]
+
+          - source: "Infra Dependency Layer (Dynamic)"
+            content:
+              npm_registry: "Project-configured private registry"
+              cdn_config: "CloudFront distribution configuration"
+              deployment_environment: "staging"
+
+          - source: "Learning Agent"
+            content:
+              existing_components:
+                - "Button, Input, Select, Modal, Toast — already in component library"
+                - "DataTable, Pagination, FilterPanel — available in Storybook"
+              ui_patterns:
+                - "Form validation: React Hook Form + Zod schema"
+                - "Async data: React Query (TanStack Query)"
+                - "State: Zustand for global; useState/useReducer for local"
+              lessons_learned:
+                - "Always set aria-label on icon-only buttons"
+                - "Use role='status' aria-live='polite' for async loading indicators"
+                - "Avoid layout shift: pre-define skeleton dimensions from design tokens"
+                - "Color contrast AA requires 4.5:1 for normal text, 3:1 for large text"
+
+          - source: "Architecture Contract"
+            content:
+              api_endpoints:
+                - "OpenAPI spec at: docs/api/api_contract_openapi.yaml"
+                - "TypeScript types auto-generated via openapi-typescript"
+              data_schemas: "Request/response schemas define component prop types"
+              auth_pattern: "JWT Bearer token via Authorization header"
+
+          - source: "UX Specification"
+            content:
+              wireframes: "requirements/ux_spec_*.md"
+              interaction_flows: "Defined per-feature in UX spec"
+              design_tokens: "design-system/tokens/*.json"
+
+        output: "Execution strategy formulated with full frontend context"
+
+      # Step 3: Coordinate Sub-Agents
+      step_3:
+        action: "FrontendAgent → Coordinate Sub-Agents"
+        coordination_model: "sequential_with_parallel_verification"
+        description: |
+          UI design and implementation process:
+          1. Load context and existing component inventory (LearningAgent)
+          2. Parse UX specs and design component architecture
+          3. Generate TypeScript component code, Storybook stories, and i18n keys
+          4. Run parallel verification: QAAgent (tests + accessibility) + SecurityAgent (XSS scan)
+          5. DocAgent generates component API docs in parallel with verification
+          6. Consolidate all artifacts and create PR for HITL Gate
+
+        dependency_graph:
+          blocks:
+            # Phase 1: Context Loading
+            - block_id: "B1"
+              name: "load_context_and_inventory"
+              assigned_to: "FrontendAgent + LearningAgent"
+              dependencies: []
+              skills:
+                - "knowledge_base:read"
+                - "pattern_matching"
+                - "storybook_api:component_inventory:read"
+              tools_used:
+                - "learning_agent_query"
+                - "storybook_api"
+                - "figma_api"
+                - "design_token_engine"
+              actions:
+                - "Query LearningAgent for existing component patterns and UI lessons learned"
+                - "Fetch current component inventory from Storybook"
+                - "Read design tokens from design system"
+                - "Read UX wireframes from Figma (if available) or spec documents"
+              output: "Context report: reusable components identified, design tokens loaded, UI patterns loaded"
+              estimated_duration: "20m"
+
+            # Phase 2: UX Requirements Analysis
+            - block_id: "B2"
+              name: "analyze_ux_requirements"
+              assigned_to: "FrontendAgent"
+              dependencies: ["B1"]
+              skills:
+                - "ux_spec_parsing"
+                - "design_system_application"
+              tools_used:
+                - "figma_api"
+                - "learning_agent_query"
+              actions:
+                - "Parse UX spec documents and extract component list"
+                - "Identify which existing components can be reused vs. which need to be created"
+                - "Map UX design intent to design system tokens"
+                - "Identify all interaction states per component (default, hover, focus, active, disabled, loading, error, empty)"
+                - "Extract all user-facing strings for i18n key registration"
+              output: "Component requirement list with: name, props interface, events, states, accessibility notes"
+              estimated_duration: "30m"
+
+            # Phase 3: Component Architecture Design
+            - block_id: "B3"
+              name: "design_component_architecture"
+              assigned_to: "FrontendAgent"
+              dependencies: ["B2"]
+              skills:
+                - "component_architecture_design"
+                - "responsive_layout_design"
+              tools_used:
+                - "openapi_generator"
+                - "bash_execution"
+              actions:
+                - "Design component tree with clear parent/child relationships"
+                - "Define TypeScript prop interfaces for each component"
+                - "Generate TypeScript types from OpenAPI spec (npx openapi-typescript)"
+                - "Map API response types to component prop types"
+                - "Define responsive breakpoint strategy per layout component"
+                - "Document composition patterns (e.g. Compound Component, slot injection)"
+              output: "Component architecture document (Mermaid component tree + TypeScript interface definitions)"
+              estimated_duration: "45m"
+
+            # Phase 4a: Component Code Generation
+            - block_id: "B4"
+              name: "generate_component_code"
+              assigned_to: "FrontendAgent"
+              dependencies: ["B3"]
+              skills:
+                - "frontend_code_generation"
+                - "interaction_design_implementation"
+                - "accessibility_implementation"
+                - "i18n_preparation"
+                - "performance_optimization"
+              tools_used:
+                - "bash_execution"
+                - "design_token_engine"
+              actions:
+                - "Generate TypeScript React/Vue component files (*.tsx / *.vue)"
+                - "Implement all interaction states using design tokens only (no hardcoded values)"
+                - "Add ARIA attributes, roles, and keyboard event handlers"
+                - "Extract all display strings to i18n key files"
+                - "Apply React.memo / useMemo / useCallback for performance-critical components"
+                - "Run tsc --noEmit to verify TypeScript correctness"
+                - "Run ESLint + Prettier to enforce code style"
+              output: "Production-ready component source files (*.tsx / *.vue) + i18n locale additions"
+              estimated_duration: "90m"
+
+            # Phase 4b: Storybook Story Generation (parallel with B5, B6, B7)
+            - block_id: "B5"
+              name: "generate_storybook_stories"
+              assigned_to: "FrontendAgent + DocAgent"
+              dependencies: ["B4"]
+              skills:
+                - "storybook_story_generation"
+                - "component_api_documentation"
+              tools_used:
+                - "storybook_api"
+                - "bash_execution"
+              actions:
+                - "Generate *.stories.tsx files for each component"
+                - "Cover required story variants: Default, Loading, Error, Empty, Disabled, Mobile viewport"
+                - "Add ArgTypes for interactive Controls panel"
+                - "Add JSDoc / autodocs for prop documentation"
+                - "Run Storybook build to verify no story compilation errors"
+              output: "*.stories.tsx files; Storybook build verification passed"
+              estimated_duration: "40m"
+
+            # Phase 4c: Unit Test Generation (parallel)
+            - block_id: "B6"
+              name: "generate_unit_tests"
+              assigned_to: "QAAgent"
+              dependencies: ["B4"]
+              skills:
+                - "unit_test_generation"
+                - "component_behavior_verification"
+              tools_used:
+                - "bash_execution"
+              actions:
+                - "Generate Vitest + React Testing Library test files (*.test.tsx)"
+                - "Cover: render smoke test, prop variations, user interaction events, error states"
+                - "Verify component behavior matches acceptance criteria"
+                - "Run npm run test to confirm all tests pass"
+                - "Verify test coverage ≥ 90% for generated components"
+              output: "*.test.tsx files; test coverage report; all tests passing"
+              estimated_duration: "50m"
+
+            # Phase 4d: Accessibility Audit (parallel)
+            - block_id: "B7"
+              name: "accessibility_audit"
+              assigned_to: "QAAgent"
+              dependencies: ["B4"]
+              skills:
+                - "accessibility_audit"
+              tools_used:
+                - "accessibility_checker"
+                - "bash_execution"
+              actions:
+                - "Render each component in a headless browser environment"
+                - "Run axe-core audit on all rendered components"
+                - "Verify color contrast ratios against design tokens (AA: 4.5:1 normal, 3:1 large)"
+                - "Verify keyboard navigation: Tab order, Enter/Space activation, Escape dismissal"
+                - "Verify ARIA labels on all interactive elements"
+                - "Remediate any failures before proceeding"
+              output: "axe accessibility audit report; all violations resolved or documented with rationale"
+              estimated_duration: "30m"
+
+            # Phase 4e: Security Scan (parallel)
+            - block_id: "B8"
+              name: "security_scan"
+              assigned_to: "SecurityAgent"
+              dependencies: ["B4"]
+              skills:
+                - "xss_vulnerability_scan"
+                - "input_sanitization_check"
+                - "dependency_security_audit"
+              tools_used:
+                - "bash_execution"
+              actions:
+                - "Static analysis scan for XSS patterns (dangerouslySetInnerHTML, eval, innerHTML)"
+                - "Verify all user-input form components use controlled inputs with validation"
+                - "Check input sanitization on file upload, rich text, and URL input components"
+                - "Run npm audit for new dependencies introduced"
+                - "Verify no new critical or high CVEs introduced"
+              output: "Security scan report (SAST); npm audit report; all critical/high issues resolved"
+              estimated_duration: "25m"
+
+            # Phase 5: Visual Regression Baseline
+            - block_id: "B9"
+              name: "visual_regression_baseline"
+              assigned_to: "QAAgent"
+              dependencies: ["B5", "B6", "B7", "B8"]
+              skills:
+                - "visual_regression_testing"
+              tools_used:
+                - "visual_regression_tool"
+                - "bash_execution"
+              actions:
+                - "Publish Storybook to Chromatic to capture visual baseline"
+                - "Capture screenshots for all story variants across: mobile (375px), tablet (768px), desktop (1440px)"
+                - "Establish visual regression baseline for future comparison"
+              output: "Chromatic build URL; visual baseline established"
+              estimated_duration: "20m"
+
+            # Phase 6: Component API Documentation
+            - block_id: "B10"
+              name: "generate_component_docs"
+              assigned_to: "DocAgent"
+              dependencies: ["B5", "B6", "B7", "B8"]
+              skills:
+                - "component_api_documentation"
+                - "usage_example_generation"
+                - "design_decision_documentation"
+              tools_used:
+                - "bash_execution"
+              actions:
+                - "Generate component API documentation (prop tables, event tables, slot definitions)"
+                - "Write usage examples in Markdown with code snippets"
+                - "Document design decisions: why this pattern was chosen, deviations from UX spec, accessibility choices"
+                - "Update CHANGELOG.md with new component entries"
+              output: "docs/components/*.md — component documentation; CHANGELOG.md updated"
+              estimated_duration: "25m"
+
+            # Phase 7: Create PR for HITL Gate
+            - block_id: "B11"
+              name: "create_pr_for_hitl_gate"
+              assigned_to: "FrontendAgent"
+              dependencies: ["B9", "B10"]
+              skills:
+                - "git_operations"
+              tools_used:
+                - "github_api"
+                - "bash_execution"
+              actions:
+                - "Commit all generated artifacts to feature branch"
+                - "Create PR targeting main branch"
+                - "Attach: component code, stories, tests, accessibility report, security scan, visual regression baseline URL, component docs"
+                - "Add PR description with: affected components, acceptance criteria checklist, design decision notes"
+                - "Request reviewers: frontend-lead, ux-lead, accessibility-reviewer"
+              output: "Feature branch PR ready for HITL Gate review"
+              estimated_duration: "15m"
+
+          execution_order: "B1 → B2 → B3 → B4 → (B5 + B6 + B7 + B8 parallel) → B9 + B10 → B11"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-22"
+              status: "In Progress → Done"
+              comments:
+                - "✅ load_context_and_inventory (FrontendAgent + LearningAgent) - Complete"
+                - "✅ analyze_ux_requirements (FrontendAgent) - Complete"
+                - "✅ design_component_architecture (FrontendAgent) - Complete"
+                - "✅ generate_component_code (FrontendAgent) - Complete"
+                - "✅ generate_storybook_stories (FrontendAgent + DocAgent) - Complete"
+                - "✅ generate_unit_tests (QAAgent) - Complete"
+                - "✅ accessibility_audit (QAAgent) - Complete — 0 violations"
+                - "✅ security_scan (SecurityAgent) - Complete — 0 critical/high findings"
+                - "✅ visual_regression_baseline (QAAgent) - Complete"
+                - "✅ generate_component_docs (DocAgent) - Complete"
+                - "✅ create_pr_for_hitl_gate (FrontendAgent) - Complete"
+                - ""
+                - "📊 **Summary:**"
+                - "- All components implemented with TypeScript + React"
+                - "- Storybook stories generated for all components"
+                - "- Unit tests passing with ≥ 90% coverage"
+                - "- WCAG 2.1 AA: 0 accessibility violations"
+                - "- Security: 0 XSS findings, 0 npm audit critical/high"
+                - "- Visual regression baseline established in Chromatic"
+                - "- **Ready for HITL Gate review**"
+              labels:
+                remove: ["in-progress"]
+                add: ["completed", "ready-for-hitl-gate"]
+
+          - type: "artifact"
+            artifact_type: "frontend_implementation_report"
+            content:
+              blueprint_id: "bp_frontend_feature_ui_design.1.0.0"
+              blueprint_name: "Frontend UI Design and Implementation Blueprint"
+              execution_start: "2026-03-26T12:00:00Z"
+              execution_end: "2026-03-26T17:45:00Z"
+              duration_hours: 5.75
+              status: "success"
+
+              blocks_executed:
+                - block_id: "B1"
+                  name: "load_context_and_inventory"
+                  agents: ["FrontendAgent", "LearningAgent"]
+                  status: "completed"
+                  duration_minutes: 20
+                  artifacts: ["context_report.md"]
+
+                - block_id: "B2"
+                  name: "analyze_ux_requirements"
+                  agent: "FrontendAgent"
+                  status: "completed"
+                  duration_minutes: 30
+                  artifacts: ["component_requirements.md"]
+
+                - block_id: "B3"
+                  name: "design_component_architecture"
+                  agent: "FrontendAgent"
+                  status: "completed"
+                  duration_minutes: 45
+                  artifacts: ["component_architecture.md", "typescript_interfaces.ts"]
+
+                - block_id: "B4"
+                  name: "generate_component_code"
+                  agent: "FrontendAgent"
+                  status: "completed"
+                  duration_minutes: 90
+                  artifacts: ["src/components/**/*.tsx", "src/i18n/locales/*.json"]
+
+                - block_id: "B5"
+                  name: "generate_storybook_stories"
+                  agents: ["FrontendAgent", "DocAgent"]
+                  status: "completed"
+                  duration_minutes: 40
+                  artifacts: ["src/components/**/*.stories.tsx"]
+
+                - block_id: "B6"
+                  name: "generate_unit_tests"
+                  agent: "QAAgent"
+                  status: "completed"
+                  duration_minutes: 50
+                  artifacts: ["src/components/**/*.test.tsx", "coverage/lcov.info"]
+
+                - block_id: "B7"
+                  name: "accessibility_audit"
+                  agent: "QAAgent"
+                  status: "completed"
+                  duration_minutes: 30
+                  artifacts: ["reports/accessibility_audit.json"]
+
+                - block_id: "B8"
+                  name: "security_scan"
+                  agent: "SecurityAgent"
+                  status: "completed"
+                  duration_minutes: 25
+                  artifacts: ["reports/sast_scan.sarif", "reports/npm_audit.json"]
+
+                - block_id: "B9"
+                  name: "visual_regression_baseline"
+                  agent: "QAAgent"
+                  status: "completed"
+                  duration_minutes: 20
+                  artifacts: ["chromatic_build_url", "reports/visual_baseline.json"]
+
+                - block_id: "B10"
+                  name: "generate_component_docs"
+                  agent: "DocAgent"
+                  status: "completed"
+                  duration_minutes: 25
+                  artifacts: ["docs/components/*.md", "CHANGELOG.md"]
+
+                - block_id: "B11"
+                  name: "create_pr_for_hitl_gate"
+                  agent: "FrontendAgent"
+                  status: "completed"
+                  duration_minutes: 15
+                  artifacts: ["Feature Branch PR #YY"]
+
+              output_artifacts:
+                - artifact_id: "artifact-fe-001"
+                  type: "component_source_code"
+                  name: "TypeScript React Component Source Files"
+                  storage_location: "github://centific-cn/AgenticSDLC/src/components/"
+                  format: "TypeScript (.tsx)"
+
+                - artifact_id: "artifact-fe-002"
+                  type: "storybook_stories"
+                  name: "Storybook Component Stories"
+                  storage_location: "github://centific-cn/AgenticSDLC/src/components/**/*.stories.tsx"
+                  format: "TypeScript (.stories.tsx)"
+
+                - artifact_id: "artifact-fe-003"
+                  type: "unit_tests"
+                  name: "Component Unit Tests"
+                  storage_location: "github://centific-cn/AgenticSDLC/src/components/**/*.test.tsx"
+                  format: "TypeScript (.test.tsx)"
+
+                - artifact_id: "artifact-fe-004"
+                  type: "accessibility_report"
+                  name: "axe-core Accessibility Audit Report"
+                  storage_location: "github://centific-cn/AgenticSDLC/reports/accessibility_audit.json"
+                  format: "JSON"
+
+                - artifact_id: "artifact-fe-005"
+                  type: "security_scan"
+                  name: "SAST + npm Audit Security Report"
+                  storage_location: "github://centific-cn/AgenticSDLC/reports/sast_scan.sarif"
+                  format: "SARIF"
+
+                - artifact_id: "artifact-fe-006"
+                  type: "visual_regression_baseline"
+                  name: "Chromatic Visual Regression Baseline"
+                  storage_location: "chromatic://project/build-baseline"
+                  format: "Chromatic Build"
+
+                - artifact_id: "artifact-fe-007"
+                  type: "component_documentation"
+                  name: "Component API Documentation"
+                  storage_location: "github://centific-cn/AgenticSDLC/docs/components/"
+                  format: "Markdown"
+
+                - artifact_id: "artifact-fe-008"
+                  type: "component_architecture"
+                  name: "Component Architecture Document"
+                  storage_location: "github://centific-cn/AgenticSDLC/docs/frontend/component_architecture.md"
+                  format: "Markdown + Mermaid"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "Frontend Security Audit"
+            checks:
+              - "XSS vulnerability scan (SAST)": "passed — 0 findings"
+              - "Input sanitization on form components": "passed"
+              - "CSP compatibility": "passed"
+              - "npm audit (critical/high CVEs)": "passed — 0 critical, 0 high"
+              - "OWASP Top 10 A03 (Injection) compliance": "passed"
+            output: "SecurityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "QualityAuditAgent"
+            scope: "Frontend Quality Audit"
+            checks:
+              - "TypeScript compilation (tsc --noEmit)": "passed — 0 type errors"
+              - "ESLint + Prettier compliance": "passed — 0 lint errors"
+              - "Unit test coverage ≥ 90%": "passed"
+              - "All Storybook stories compile and render": "passed"
+              - "Component architecture follows single responsibility": "passed"
+              - "No hardcoded design values (all from tokens)": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "Frontend Compliance Audit"
+            checks:
+              - "WCAG 2.1 AA accessibility compliance": "passed — 0 axe violations"
+              - "Design token naming convention": "passed"
+              - "Component naming convention (PascalCase)": "passed"
+              - "i18n compliance (no hardcoded display strings)": "passed"
+              - "Storybook story coverage (all components)": "passed"
+            output: "ComplianceAuditReport Artifact"
+            status: "passed"
+
+          - agent: "CostAuditAgent"
+            scope: "Frontend Cost Audit"
+            checks:
+              - "Token usage": "52000 ≤ 60000 = passed"
+              - "Execution time": "5.75h ≤ 6h = passed"
+              - "Bundle size per component": "all ≤ 50KB gzipped = passed"
+            output: "CostAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          inputs:
+            - "FrontendImplementationReport"
+            - "SecurityAuditReport"
+            - "QualityAuditReport"
+            - "ComplianceAuditReport"
+            - "CostAuditReport"
+
+          gates_check:
+            quality_gate:
+              condition: "tsc_errors == 0 AND lint_errors == 0 AND test_coverage >= 90%"
+              actual: "0 type errors, 0 lint errors, 92% coverage"
+              status: "passed"
+
+            security_gate:
+              condition: "xss_findings == 0 AND npm_audit_critical == 0 AND npm_audit_high == 0"
+              actual: "0 XSS findings, 0 critical CVEs, 0 high CVEs"
+              status: "passed"
+
+            compliance_gate:
+              condition: "wcag_violations == 0 AND i18n_hardcoded == 0 AND story_coverage == 100%"
+              actual: "0 axe violations, 0 hardcoded strings, 100% story coverage"
+              status: "passed"
+
+            budget_gate:
+              condition: "total_tokens ≤ 60000 AND execution_time ≤ 6h"
+              actual: "52000 tokens, 5.75h"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            reason: "All governance gates passed. Frontend implementation meets quality, security, and compliance standards."
+            action: "Allow PR merge after HITL Gate human review (frontend-lead + ux-lead + accessibility-reviewer)"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    # Acceptance Criteria
+    acceptance_criteria:
+      implementation:
+        - "All components listed in UX spec have been implemented in TypeScript React/Vue"
+        - "All interaction states implemented: default, hover, focus, active, disabled, loading, error, empty"
+        - "All components consume design tokens exclusively (no hardcoded color/spacing/typography)"
+        - "TypeScript strict mode: 0 type errors"
+        - "ESLint + Prettier: 0 violations"
+
+      testing:
+        - "Unit test coverage ≥ 90% for all generated components"
+        - "All component tests pass in CI"
+        - "All Storybook stories build and render without error"
+        - "Visual regression baseline captured in Chromatic"
+
+      accessibility:
+        - "WCAG 2.1 Level AA: 0 axe-core violations"
+        - "All interactive elements have accessible names (aria-label or visible label)"
+        - "Keyboard navigation verified: Tab, Shift+Tab, Enter, Space, Escape"
+        - "Color contrast ratios verified against design tokens"
+
+      security:
+        - "0 XSS vulnerability findings from SAST scan"
+        - "0 critical or high CVEs in npm audit"
+        - "All user inputs validated and sanitized"
+
+      documentation:
+        - "All components have Storybook stories (Default + state variants)"
+        - "Component API documentation generated (props, events, slots)"
+        - "All user-facing strings extracted to i18n locale files"
+        - "CHANGELOG.md updated with new component entries"
+
+      process:
+        - "Feature branch PR created and linked to parent issue"
+        - "All audit reports attached to PR"
+        - "Reviewers requested: frontend-lead, ux-lead, accessibility-reviewer"
+        - "Awaiting HITL Gate human review"
+
+    # Output Artifacts
+    artifacts:
+      # Code Artifacts
+      code_artifacts:
+        - artifact_type: "component_source_code"
+          name: "TypeScript React Component Files"
+          storage_location: "src/components/{feature}/"
+          format: "TypeScript (.tsx)"
+          content:
+            includes:
+              - "Component implementation files (*.tsx / *.vue)"
+              - "Component CSS modules (*.module.css) or Tailwind class composition"
+              - "Custom hooks extracted from component logic (use*.ts)"
+              - "Component index barrel exports (index.ts)"
+
+        - artifact_type: "type_definitions"
+          name: "Component TypeScript Interface Definitions"
+          storage_location: "src/types/{feature}.types.ts"
+          format: "TypeScript"
+          content:
+            includes:
+              - "Prop interface definitions"
+              - "Event handler type definitions"
+              - "API-derived types (from openapi-typescript)"
+
+        - artifact_type: "i18n_keys"
+          name: "Internationalization Locale Additions"
+          storage_location: "src/i18n/locales/{locale}.json"
+          format: "JSON"
+
+      # Test Artifacts
+      test_artifacts:
+        - artifact_type: "unit_tests"
+          name: "Component Unit Tests (Vitest + React Testing Library)"
+          storage_location: "src/components/{feature}/*.test.tsx"
+          format: "TypeScript (.test.tsx)"
+
+        - artifact_type: "storybook_stories"
+          name: "Storybook Component Stories"
+          storage_location: "src/components/{feature}/*.stories.tsx"
+          format: "TypeScript (.stories.tsx)"
+
+        - artifact_type: "visual_regression_baseline"
+          name: "Chromatic Visual Regression Baseline"
+          storage_location: "chromatic://project/builds"
+          format: "Chromatic Build"
+
+      # Documentation Artifacts
+      documentation_artifacts:
+        - artifact_type: "component_architecture"
+          name: "Component Architecture Document"
+          storage_location: "docs/frontend/component_architecture.md"
+          format: "Markdown + Mermaid"
+          content:
+            sections:
+              - "Component tree diagram"
+              - "Data flow and state management"
+              - "TypeScript interface summary"
+              - "Design pattern rationale"
+              - "Deviations from UX spec (with justification)"
+
+        - artifact_type: "component_api_docs"
+          name: "Component API Documentation"
+          storage_location: "docs/components/{ComponentName}.md"
+          format: "Markdown"
+          content:
+            sections:
+              - "Component overview and purpose"
+              - "Prop table (name, type, default, required, description)"
+              - "Event table (name, payload, description)"
+              - "Slot / children API"
+              - "Usage examples with code snippets"
+              - "Accessibility notes"
+              - "Design token references"
+
+      # Report Artifacts
+      report_artifacts:
+        - artifact_type: "accessibility_report"
+          name: "axe-core Accessibility Audit Report"
+          storage_location: "reports/accessibility_audit.json"
+          format: "JSON"
+
+        - artifact_type: "security_scan"
+          name: "SAST Scan + npm Audit Report"
+          storage_location: "reports/sast_scan.sarif"
+          format: "SARIF"
+
+        - artifact_type: "frontend_blueprint_report"
+          name: "Frontend Blueprint Execution Report"
+          storage_location: "s3://artifacts/blueprint-reports/bp_frontend_feature_ui_design.1.0.0.json"
+          format: "JSON"
+
+        - artifact_type: "audit_report"
+          name: "Governance Audit Report"
+          storage_location: "s3://artifacts/audit-reports/frontend_audit.json"
+          format: "JSON"
+
+    # Task Status Update
+    status_updates:
+      github_issues:
+        parent_issue:
+          issue_id: "GH-22"
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          labels:
+            remove: ["in-progress"]
+            add: ["completed", "ready-for-hitl-gate"]
+
+      git_operations:
+        pull_requests:
+          - action: "Create Feature PR"
+            content: |
+              # Frontend UI Design — [Feature Name]
+
+              ## Overview
+              This PR contains the frontend implementation for [feature description].
+              Generated by FrontendAgent via bp_frontend_feature_ui_design.1.0.0.
+
+              ## Artifacts
+              - Component Source: `src/components/{feature}/`
+              - Storybook Stories: `src/components/{feature}/*.stories.tsx`
+              - Unit Tests: `src/components/{feature}/*.test.tsx`
+              - Component Docs: `docs/components/`
+              - Component Architecture: `docs/frontend/component_architecture.md`
+
+              ## Quality Summary
+              | Check | Status |
+              |---|---|
+              | TypeScript (tsc) | ✅ 0 errors |
+              | ESLint + Prettier | ✅ 0 violations |
+              | Unit Tests | ✅ Passing (92% coverage) |
+              | WCAG 2.1 AA (axe) | ✅ 0 violations |
+              | SAST / XSS Scan | ✅ 0 findings |
+              | npm audit | ✅ 0 critical/high |
+              | Visual Baseline | ✅ Established |
+
+              ## Next Steps
+              - **HITL Gate**: Human review by frontend-lead, ux-lead, accessibility-reviewer
+              - Upon approval: integration tests and deployment pipeline proceed
+
+          - action: "Add labels"
+            labels: ["frontend", "hitl-gate", "ui-design", "ready-for-review"]
+
+          - action: "Request reviewers"
+            reviewers: ["frontend-lead", "ux-lead", "accessibility-reviewer"]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: |
+              ✅ Frontend UI Design Blueprint Completed
+
+              **Blueprint ID**: bp_frontend_feature_ui_design.1.0.0
+              **Status**: Ready for HITL Gate
+              **Duration**: 5.75 hours
+
+              **Quality Gates**: All passed
+              - TypeScript: ✅ 0 errors
+              - Tests: ✅ 92% coverage
+              - Accessibility: ✅ 0 WCAG violations
+              - Security: ✅ 0 XSS findings
+
+              **PR**: #YY — awaiting review by frontend-lead, ux-lead
+
+          - channel: "email"
+            recipients: ["frontend-lead@centific.com", "ux-lead@centific.com"]
+            subject: "[Frontend Blueprint] Ready for HITL Gate Review"
+            body: |
+              Frontend implementation blueprint has been completed.
+
+              Blueprint: bp_frontend_feature_ui_design.1.0.0
+              Feature PR: #YY
+              Status: Ready for HITL Gate human review
+
+              All quality, accessibility, and security gates passed.
+              Next step: Human review and approval.
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    # Execution Metrics
+    execution:
+      - metric_name: "frontend_implementation_time"
+        description: "Total time from task assignment to PR creation"
+        unit: "hours"
+        target: "≤ 6h"
+        actual: 5.75
+        status: "passed"
+
+      - metric_name: "token_usage"
+        description: "LLM token consumption for the blueprint run"
+        unit: "tokens"
+        target: "≤ 60000"
+        actual: 52000
+        status: "passed"
+
+      - metric_name: "blocks_executed"
+        description: "Number of workflow blocks completed"
+        unit: "count"
+        target: "11"
+        actual: 11
+        status: "passed"
+
+      - metric_name: "components_generated"
+        description: "Number of React/Vue component files created"
+        unit: "count"
+        target: "≥ components in UX spec"
+        actual: "pending measurement"
+
+    # Quality Metrics
+    quality:
+      - metric_name: "typescript_errors"
+        description: "TypeScript compilation errors (tsc --noEmit)"
+        unit: "count"
+        target: "0"
+        actual: 0
+        threshold: "hard_gate"
+        status: "passed"
+
+      - metric_name: "unit_test_coverage"
+        description: "Test coverage for generated components"
+        unit: "percentage"
+        target: "≥ 90%"
+        actual: "92%"
+        threshold: "hard_gate"
+        status: "passed"
+
+      - metric_name: "storybook_story_coverage"
+        description: "Percentage of components with Storybook stories"
+        unit: "percentage"
+        target: "100%"
+        actual: "100%"
+        status: "passed"
+
+      - metric_name: "component_size_compliance"
+        description: "Components within 200-line limit"
+        unit: "percentage"
+        target: "100%"
+        actual: "100%"
+        status: "passed"
+
+    # Accessibility Metrics
+    accessibility:
+      - metric_name: "wcag_violations"
+        description: "axe-core WCAG 2.1 AA violations"
+        unit: "count"
+        target: "0"
+        actual: 0
+        threshold: "hard_gate"
+        status: "passed"
+
+      - metric_name: "keyboard_navigation_coverage"
+        description: "Interactive components with verified keyboard navigation"
+        unit: "percentage"
+        target: "100%"
+        actual: "100%"
+        status: "passed"
+
+    # Security Metrics
+    security:
+      - metric_name: "xss_findings"
+        description: "XSS vulnerability findings from SAST"
+        unit: "count"
+        target: "0"
+        actual: 0
+        threshold: "hard_gate"
+        status: "passed"
+
+      - metric_name: "npm_audit_critical"
+        description: "Critical CVEs introduced by new dependencies"
+        unit: "count"
+        target: "0"
+        actual: 0
+        threshold: "hard_gate"
+        status: "passed"
+
+    # Performance Metrics
+    performance:
+      - metric_name: "bundle_size_compliance"
+        description: "Components within 50KB gzipped limit"
+        unit: "percentage"
+        target: "100%"
+        actual: "100%"
+        status: "passed"
+
+      - metric_name: "render_performance"
+        description: "Component render time within 16ms (60fps)"
+        unit: "percentage_compliant"
+        target: "100%"
+        actual: "pending Lighthouse measurement"
+
+    # Summary
+    summary:
+      total_execution_time: "5.75 hours"
+      total_cost_usd: 2.60
+      total_blocks_executed: 11
+      total_blocks_failed: 0
+      overall_status: "completed"
+      hitl_gate: "ready_for_gate"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    # Risk Identification
+    risks:
+      - risk_id: "R001"
+        risk_type: "design_drift"
+        description: "Generated components may deviate from UX spec intent when wireframes are ambiguous"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "HITL Gate requires UX Lead review; FrontendAgent documents all ambiguity resolutions in component_architecture.md"
+        status: "mitigated"
+
+      - risk_id: "R002"
+        risk_type: "design_system_mismatch"
+        description: "UX spec may reference design values not yet available in the design token system"
+        probability: "medium"
+        impact: "low"
+        mitigation: "FrontendAgent queries design_token_engine first; any missing tokens are flagged in component_requirements.md before code generation begins"
+        status: "mitigated"
+
+      - risk_id: "R003"
+        risk_type: "accessibility_regression"
+        description: "Complex interactive components (e.g. date pickers, comboboxes) may fail axe audit"
+        probability: "medium"
+        impact: "high"
+        mitigation: "Accessibility audit (B7) runs before PR creation; all violations must be resolved before proceeding to B9"
+        status: "mitigated"
+
+      - risk_id: "R004"
+        risk_type: "api_contract_mismatch"
+        description: "Generated component prop types may drift from backend API contract changes"
+        probability: "low"
+        impact: "high"
+        mitigation: "TypeScript types auto-generated from OpenAPI spec at B3; tsc --noEmit at B4 catches any contract drift"
+        status: "mitigated"
+
+      - risk_id: "R005"
+        risk_type: "bundle_size_bloat"
+        description: "New dependencies introduced for complex UI components may exceed bundle size limits"
+        probability: "low"
+        impact: "medium"
+        mitigation: "npm audit + bundle analyzer run at B8; any component exceeding 50KB triggers mandatory code-splitting review"
+        status: "mitigated"
+
+      - risk_id: "R006"
+        risk_type: "i18n_coverage_gap"
+        description: "Hardcoded display strings may be missed during i18n extraction"
+        probability: "low"
+        impact: "low"
+        mitigation: "ESLint i18n plugin (no-hardcoded-string) enforced at B4; ComplianceAuditAgent verifies 0 hardcoded strings"
+        status: "mitigated"
+
+    # Escalation Triggers
+    escalation_triggers:
+      - trigger: "ux_spec_ambiguity"
+        condition: "FrontendAgent cannot resolve UX wireframe intent after 2 interpretation attempts"
+        action: "Pause B2; generate EscalationRequiredEvent; request UX Lead clarification via GitHub issue comment"
+
+      - trigger: "accessibility_violation_unresolvable"
+        condition: "axe audit violations > 0 after 3 fix attempts"
+        action: "Pause B9; escalate to accessibility-reviewer for manual guidance"
+
+      - trigger: "security_gate_failure"
+        condition: "xss_findings > 0 OR npm_audit_critical > 0 OR npm_audit_high > 0"
+        action: "Block PR creation; require SecurityAgent re-analysis and developer fix"
+
+      - trigger: "design_token_missing"
+        condition: "UX spec references token not present in design_token_engine"
+        action: "Pause B4; flag missing tokens in issue comment; request design system update"
+
+      - trigger: "budget_exceeded"
+        condition: "total_tokens > 60000 OR execution_time > 6h"
+        action: "Pause execution; generate EscalationRequiredEvent; request human guidance on scope reduction"
+
+      - trigger: "api_type_mismatch"
+        condition: "tsc --noEmit reports errors after openapi-typescript generation"
+        action: "Pause B4; flag API contract discrepancy; request BuilderAgent or PlanningAgent to update OpenAPI spec"
+
+    # Escalation Process
+    escalation_process:
+      step_1: "FrontendAgent pauses automated execution at the failed block"
+      step_2: "Generate EscalationRequiredEvent with context: block_id, failure_reason, attempted_mitigations"
+      step_3: "Create GitHub issue comment on parent issue with escalation details"
+      step_4: "Tag appropriate human reviewer based on escalation type"
+      step_5: "Wait for human resolution before resuming"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    # Risk Level
+    risk_level: "medium"  # UI defects are visible to users; accessibility violations carry compliance risk
+
+    # Requires Security Review
+    requires_security_review: true  # XSS risk in user-facing components
+    security_review_completed: true
+
+    # Deployment Strategy (for frontend assets)
+    deployment_strategy: "blue_green"  # CDN cache invalidation + feature flag
+
+    # Parallelism
+    parallelism:
+      max_parallel_blocks: 4  # B5 + B6 + B7 + B8 run simultaneously
+      max_parallel_agents: 3  # QAAgent + SecurityAgent + DocAgent in parallel
+      actual_parallelism: 4
+
+    # Timeouts
+    timeouts:
+      block_timeout: "2h"       # Longest single block: B4 component code generation
+      blueprint_timeout: "6h"   # Full frontend implementation cycle
+      agent_timeout: "45m"      # Per-agent action timeout
+
+    # Retry Strategy
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+      backoff_multiplier: 2
+      actual_retries: 0
+
+    # Notification Configuration
+    notifications:
+      on_start: true
+      on_complete: true
+      on_failure: true
+      channels: ["slack", "email"]
+      notifications_sent: 2
+
+# ================================================================
+# Frontend Agent Blueprint End
+# ================================================================
