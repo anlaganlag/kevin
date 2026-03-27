@@ -7,6 +7,7 @@
 #   - ANTHROPIC_API_KEY repo secret (for Claude Code CLI)
 #   - gh CLI is pre-installed on ubuntu-latest
 #   - Node.js for Claude Code CLI install
+#   - TEAMS_BOT_URL repo secret (optional, for Teams notifications)
 
 name: Kevin Planning Agent
 
@@ -66,11 +67,31 @@ jobs:
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
 
-      # 6. Run Kevin
+      # 6. Notify Teams — Run Started
+      - name: Notify Teams — Run Started
+        if: env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_started",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ github.event.issue.number }},
+              "issue_title": ${{ toJSON(github.event.issue.title) }},
+              "repo": "${{ github.repository }}",
+              "blueprint_id": "",
+              "status": "running",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      # 7. Run Kevin
       - name: Run Kevin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         working-directory: agentic-sdlc
         run: |
           python -m kevin run \
@@ -79,7 +100,44 @@ jobs:
             --target-repo ${{ github.workspace }}/target-repo \
             --verbose
 
-      # 7. Upload run state as artifact (always, even on failure)
+      # 8. Notify Teams — Run Completed
+      - name: Notify Teams — Run Completed
+        if: success() && env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_completed",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ github.event.issue.number }},
+              "issue_title": ${{ toJSON(github.event.issue.title) }},
+              "repo": "${{ github.repository }}",
+              "status": "completed",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      # 9. Notify Teams — Run Failed
+      - name: Notify Teams — Run Failed
+        if: failure() && env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_failed",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ github.event.issue.number }},
+              "issue_title": ${{ toJSON(github.event.issue.title) }},
+              "repo": "${{ github.repository }}",
+              "status": "failed",
+              "error": "Check workflow logs for details",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      # 10. Upload run state as artifact (always, even on failure)
       - name: Upload Kevin run state
         if: always()
         uses: actions/upload-artifact@v4
@@ -88,7 +146,7 @@ jobs:
           path: ${{ github.workspace }}/target-repo/.kevin/runs/
           retention-days: 30
 
-      # 8. Post failure comment if Kevin crashed
+      # 11. Post failure comment if Kevin crashed
       - name: Post failure comment
         if: failure()
         env:
