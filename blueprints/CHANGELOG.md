@@ -1,5 +1,24 @@
 # Blueprint 模板更新日志
 
+## 2026-03-27 - Planning Agent Full Lifecycle Orchestration Blueprint
+
+### New Blueprint: bp_planning_agent_orchestration.1.0.0
+
+**Purpose**: Master orchestration blueprint for the Planning Agent as Ralph Loop driver.
+
+**Key design decisions**:
+- Blueprint type `orchestration` introduced — distinct from single-agent types (feature/bugfix/test)
+- Covers full SDLC lifecycle: RequirementApprovedEvent → Phase 1 design → HITL Gate 1 → Phase 2 cascade → Step 5b audit → HITL Gate 2 → merge to main
+- Complements (does NOT replace) `bp_architecture_blueprint_design.1.0.0.yaml`
+- **Context pointer model**: Planning Agent selects specific `.agentic/` paths per block; downstream agents pull their own context at execution time. Planning Agent does NOT carry or forward context content.
+- **Phase 2 is Git-webhook-driven**: After Gate 1 approval (Blueprint PR merged), Builder and Platform agents start independently via Git webhooks. Planning Agent does NOT dispatch Phase 2 agents at runtime. `BlockAssignedEvent` coordination is intra-Phase-1 only.
+- **HITL Gate 2 ordering corrected**: Gate 2 comes AFTER Step 5b automated governance passes — human is the final sign-off on top of an already-greenlighted system.
+- Gate 1 rejection triggers rework from B3 (max 1 cycle), then escalates to human.
+
+**New file**: `blueprints/bp_planning_agent_orchestration.1.0.0.yaml`
+
+---
+
 ## 2026-03-26 - 配置管理和 Blueprint ID 命名规范更新
 
 ### 更新 1: 配置管理架构
