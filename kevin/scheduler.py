@@ -63,17 +63,23 @@ def compute_waves(blocks: list[Block], variables: dict[str, str]) -> list[Wave]:
 
 
 def _compute_level(
-    block_id: str, block_map: dict[str, Block], levels: dict[str, int]
+    block_id: str,
+    block_map: dict[str, Block],
+    levels: dict[str, int],
+    _visiting: frozenset[str] = frozenset(),
 ) -> int:
     """Recursively compute the dependency level for a block."""
     if block_id in levels:
         return levels[block_id]
+    if block_id in _visiting:
+        raise ValueError(f"Cyclic dependency detected: {block_id}")
     block = block_map[block_id]
     if not block.dependencies:
         levels[block_id] = 0
         return 0
+    next_visiting = _visiting | {block_id}
     dep_levels = [
-        _compute_level(dep, block_map, levels)
+        _compute_level(dep, block_map, levels, next_visiting)
         for dep in block.dependencies
         if dep in block_map
     ]

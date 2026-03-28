@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from kevin.learning.db import (
     connect, delete_fts, ensure_schema, safe_variables_json,
@@ -79,6 +82,7 @@ def harvest_all(db_path: Path, state_dir: Path) -> HarvestResult:
                 _harvest_run_data(conn, data, run_dir)
                 harvested += 1
             except Exception:
+                logger.debug("Failed to harvest run %s", run_id, exc_info=True)
                 failed_parse += 1
     finally:
         conn.close()
@@ -132,7 +136,7 @@ def _harvest_run_data(conn: Any, data: dict[str, Any], run_dir: Path) -> None:
             for rb in raw_blocks:
                 block_names[rb.get("block_id", "")] = rb.get("name", "")
         except Exception:
-            pass  # Best-effort: names stay empty if snapshot is broken
+            logger.debug("Failed to load blueprint snapshot in %s", run_dir, exc_info=True)
 
     logs_dir = run_dir / "logs"
     for bid, bdata in blocks_data.items():

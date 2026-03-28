@@ -62,7 +62,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS block_logs_fts USING fts5(
 def connect(db_path: Path) -> sqlite3.Connection:
     """Open or create the knowledge database."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.Connection(str(db_path))
+    conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
@@ -107,6 +107,7 @@ def delete_fts(conn: sqlite3.Connection, *, run_id: str, block_id: str) -> None:
         "DELETE FROM block_logs_fts WHERE run_id = ? AND block_id = ?",
         (run_id, block_id),
     )
+    conn.commit()
 
 
 def upsert_fts(conn: sqlite3.Connection, *, run_id: str, block_id: str,

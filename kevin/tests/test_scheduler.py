@@ -103,3 +103,11 @@ class TestComputeWaves:
     def test_should_format_sub_wave_label(self) -> None:
         w = Wave(index=2, subindex=2, blocks=())
         assert w.label == "Wave 3.2"
+
+    def test_should_raise_on_cyclic_dependency(self) -> None:
+        blocks = [
+            _make_block("B1", dependencies=["B2"]),
+            _make_block("B2", dependencies=["B1"]),
+        ]
+        with pytest.raises(ValueError, match="Cyclic dependency detected"):
+            compute_waves(blocks, {})

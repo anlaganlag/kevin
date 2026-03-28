@@ -177,8 +177,10 @@ def _cmd_run_inner(args: argparse.Namespace) -> int:
             variables["learning_context"] = lc
             _log(config, f"  Learning: injected {len(lc)} chars of historical context")
         else:
+            variables["learning_context"] = ""
             _log(config, "  Learning: no historical data available")
     except Exception:
+        variables["learning_context"] = ""
         _log(config, "  Learning: advisor unavailable (silent degradation)")
 
     # 5. Create run state
