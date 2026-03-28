@@ -1,8 +1,14 @@
-"""Tests for kevin/teams_bot/cards.py — duration display and action buttons."""
+"""Tests for kevin/teams_bot/cards.py — duration display, action buttons,
+reject form card, and terminal state cards."""
 
 import pytest
 
-from kevin.teams_bot.cards import build_run_status_card, format_duration
+from kevin.teams_bot.cards import (
+    build_reject_form_card,
+    build_run_status_card,
+    build_terminal_card,
+    format_duration,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -156,3 +162,99 @@ class TestBuildRunStatusCardButtons:
         actions = _get_actions(RUNNING_PAYLOAD)
         submit_actions = [a for a in actions if a.get("type") == "Action.Submit"]
         assert submit_actions == []
+
+
+# ---------------------------------------------------------------------------
+# TestBuildRejectFormCard
+# ---------------------------------------------------------------------------
+
+
+def _all_body_elements(card: dict) -> list[dict]:
+    return card.get("body", [])
+
+
+def _all_actions(card: dict) -> list[dict]:
+    return card.get("actions", [])
+
+
+class TestBuildRejectFormCard:
+    CARD = None
+
+    def setup_method(self) -> None:
+        self.__class__.CARD = build_reject_form_card(
+            run_id="run-99",
+            repo="org/repo",
+            pr_number=7,
+            issue_number=5,
+            issue_title="Add login page",
+        )
+
+    def test_should_contain_input_text_with_id_reason_and_required(self) -> None:
+        card = self.__class__.CARD
+        inputs = [el for el in _all_body_elements(card) if el.get("type") == "Input.Text"]
+        assert len(inputs) == 1
+        assert inputs[0]["id"] == "reason"
+        assert inputs[0]["isRequired"] is True
+
+    def test_should_have_confirm_reject_and_cancel_buttons(self) -> None:
+        card = self.__class__.CARD
+        titles = [a["title"] for a in _all_actions(card)]
+        assert "Confirm Reject" in titles
+        assert "Cancel" in titles
+
+    def test_confirm_button_data_has_reject_confirm_action(self) -> None:
+        card = self.__class__.CARD
+        confirm = next(a for a in _all_actions(card) if a.get("title") == "Confirm Reject")
+        assert confirm["type"] == "Action.Submit"
+        assert confirm["data"]["action"] == "reject_confirm"
+        assert confirm["data"]["run_id"] == "run-99"
+        assert confirm["data"]["pr_number"] == 7
+        assert confirm["data"]["issue_number"] == 5
+
+
+# ---------------------------------------------------------------------------
+# TestBuildTerminalCard
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTerminalCard:
+    def test_approved_title_contains_approved_and_no_submit_buttons(self) -> None:
+        card = build_terminal_card(
+            terminal_type="approved",
+            run_id="run-99",
+            repo="org/repo",
+            pr_number=7,
+            issue_number=5,
+            issue_title="Add login page",
+        )
+        title_block = card["body"][0]
+        assert "Approved" in title_block["text"]
+        submit_actions = [a for a in _all_actions(card) if a.get("type") == "Action.Submit"]
+        assert submit_actions == []
+
+    def test_rejected_with_reason_body_contains_reason_string(self) -> None:
+        card = build_terminal_card(
+            terminal_type="rejected",
+            run_id="run-99",
+            repo="org/repo",
+            pr_number=7,
+            issue_number=5,
+            issue_title="Add login page",
+            reason="Needs more tests",
+        )
+        body_texts = " ".join(
+            el.get("text", "") for el in _all_body_elements(card) if el.get("type") == "TextBlock"
+        )
+        assert "Needs more tests" in body_texts
+
+    def test_retried_title_contains_retry(self) -> None:
+        card = build_terminal_card(
+            terminal_type="retried",
+            run_id="run-99",
+            repo="org/repo",
+            pr_number=None,
+            issue_number=5,
+            issue_title="Add login page",
+        )
+        title_block = card["body"][0]
+        assert "Retry" in title_block["text"]

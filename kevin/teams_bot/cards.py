@@ -206,3 +206,184 @@ def build_run_status_card(payload: dict[str, Any]) -> dict[str, Any]:
         "body": body,
         "actions": actions,
     }
+
+
+def build_reject_form_card(
+    *,
+    run_id: str,
+    repo: str,
+    pr_number: int,
+    issue_number: int,
+    issue_title: str,
+) -> dict[str, Any]:
+    """Build an Adaptive Card with a reason input form for rejecting a PR.
+
+    Args:
+        run_id: The Kevin run identifier.
+        repo: GitHub repository slug (e.g. "org/repo").
+        pr_number: PR number being rejected.
+        issue_number: Source issue number.
+        issue_title: Source issue title.
+
+    Returns:
+        Adaptive Card dict with Input.Text for reason and Confirm/Cancel submit buttons.
+    """
+    common_data = {
+        "run_id": run_id,
+        "repo": repo,
+        "pr_number": pr_number,
+        "issue_number": issue_number,
+    }
+
+    body: list[dict[str, Any]] = [
+        {
+            "type": "TextBlock",
+            "text": f"⚠️ Rejecting PR #{pr_number}",
+            "size": "large",
+            "weight": "bolder",
+            "color": "warning",
+        },
+        {
+            "type": "TextBlock",
+            "text": f"Issue: #{issue_number} {issue_title}",
+            "isSubtle": True,
+            "wrap": True,
+        },
+        {
+            "type": "Input.Text",
+            "id": "reason",
+            "placeholder": "Enter rejection reason…",
+            "isMultiline": True,
+            "isRequired": True,
+            "label": "Reason",
+        },
+    ]
+
+    actions: list[dict[str, Any]] = [
+        {
+            "type": "Action.Submit",
+            "title": "Confirm Reject",
+            "style": "destructive",
+            "data": {**common_data, "action": "reject_confirm"},
+        },
+        {
+            "type": "Action.Submit",
+            "title": "Cancel",
+            "data": {**common_data, "action": "reject_cancel"},
+        },
+    ]
+
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.4",
+        "body": body,
+        "actions": actions,
+    }
+
+
+_TERMINAL_CONFIG: dict[str, dict[str, str]] = {
+    "approved": {
+        "title_template": "🎉 PR #{pr_number} Approved",
+        "subtitle": "Auto-merge enabled, waiting for CI",
+        "color": "good",
+    },
+    "rejected": {
+        "title_template": "🚫 PR #{pr_number} Rejected",
+        "color": "attention",
+    },
+    "retried": {
+        "title_template": "🔄 Retry Triggered",
+        "subtitle": "New run dispatched",
+        "color": "accent",
+    },
+}
+
+
+def build_terminal_card(
+    *,
+    terminal_type: str,
+    run_id: str,
+    repo: str,
+    pr_number: int | None,
+    issue_number: int,
+    issue_title: str,
+    reason: str = "",
+) -> dict[str, Any]:
+    """Build a terminal (non-interactive) Adaptive Card for HITL outcome states.
+
+    No Action.Submit buttons are included to prevent repeat submissions.
+
+    Args:
+        terminal_type: One of "approved", "rejected", or "retried".
+        run_id: The Kevin run identifier.
+        repo: GitHub repository slug (e.g. "org/repo").
+        pr_number: PR number, or None for retried (no PR yet).
+        issue_number: Source issue number.
+        issue_title: Source issue title.
+        reason: Optional rejection reason (only used for "rejected" type).
+
+    Returns:
+        Adaptive Card dict with OpenUrl action buttons only.
+    """
+    config = _TERMINAL_CONFIG.get(terminal_type, _TERMINAL_CONFIG["retried"])
+
+    pr_num_str = str(pr_number) if pr_number is not None else "?"
+    raw_title = config["title_template"].format(pr_number=pr_num_str)  # type: ignore[index]
+
+    if terminal_type == "rejected":
+        subtitle = f"Reason: {reason}" if reason else "Rejected via Teams"
+    else:
+        subtitle = config.get("subtitle", "")  # type: ignore[attr-defined]
+
+    body: list[dict[str, Any]] = [
+        {
+            "type": "TextBlock",
+            "text": raw_title,
+            "size": "large",
+            "weight": "bolder",
+            "color": config["color"],  # type: ignore[index]
+        },
+        {
+            "type": "TextBlock",
+            "text": f"Issue: #{issue_number} {issue_title}",
+            "isSubtle": True,
+            "wrap": True,
+        },
+    ]
+
+    if subtitle:
+        body.append(
+            {
+                "type": "TextBlock",
+                "text": subtitle,
+                "wrap": True,
+                "spacing": "medium",
+            }
+        )
+
+    # OpenUrl buttons only — no Action.Submit to prevent repeat clicks
+    actions: list[dict[str, Any]] = [
+        {
+            "type": "Action.OpenUrl",
+            "title": "View Issue",
+            "url": f"https://github.com/{repo}/issues/{issue_number}",
+        }
+    ]
+
+    if terminal_type in {"approved", "rejected"} and pr_number is not None:
+        actions.append(
+            {
+                "type": "Action.OpenUrl",
+                "title": "View PR",
+                "url": f"https://github.com/{repo}/pull/{pr_number}",
+            }
+        )
+
+    return {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.4",
+        "body": body,
+        "actions": actions,
+    }
