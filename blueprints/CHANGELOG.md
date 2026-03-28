@@ -20,10 +20,11 @@ Agent is a stateless event-driven orchestrator — it does not execute tasks its
 
 **Related changes**:
 - `agents/agent_02_planner.md` — rewritten to reflect orchestrator role
-- `.github/workflows/agent-planning.yaml` — new GHA workflow implementing the state machine
+- `event-driven-architecture-playground/azure-functions/src/planningAgent.ts` — inline Azure Function implementing the state machine
 - `event-driven-architecture-playground/config/agent-routing.yml` — added `IssueCreatedEvent` and `AgentCompletedEvent` routes
 - `event-driven-architecture-playground/adapters/issue-comment-bus-command.ts` — added `AgentCompletedEvent` parsing
-- `bp_planning_agent_orchestration.1.0.0.yaml` — archived with deprecation notice
+- `bp_planning_agent_orchestration.1.0.0.yaml` — deleted (was a linear block-list, wrong shape for an orchestrator)
+- `.github/workflows/agent-planning.yaml` — deleted (superseded by inline Azure Function)
 
 ---
 
