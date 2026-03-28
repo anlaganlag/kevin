@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kevin"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dashboard = [
+    "streamlit>=1.30.0",
+    "streamlit-mermaid>=0.2.0",
+    "plotly>=5.18.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["kevin*"]
