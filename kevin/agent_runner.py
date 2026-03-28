@@ -28,6 +28,7 @@ HEARTBEAT_TIMEOUT_SECONDS = 600
 
 from kevin.blueprint_loader import Block, Validator
 from kevin.prompt_template import render
+from kevin.utils import resolve_cwd
 
 
 @dataclass
@@ -362,10 +363,7 @@ VALIDATORS = {
 
 def _resolve_cwd(runner_config: dict[str, Any], variables: dict[str, str]) -> Path:
     """Resolve the working directory from runner_config or default to cwd."""
-    cwd_raw = runner_config.get("cwd", "")
-    if cwd_raw:
-        return Path(render(cwd_raw, variables))
-    return Path.cwd()
+    return resolve_cwd(runner_config, variables)
 
 
 def _subprocess_run(
