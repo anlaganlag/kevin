@@ -64,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
     p_dry.add_argument("--target-repo", default="")
     p_dry.add_argument("--verbose", action="store_true")
 
+    # --- debug ---
+    p_debug = sub.add_parser("debug", help="Replay a failed block's prompt in interactive Claude CLI")
+    p_debug.add_argument("--run-id", required=True, help="Run ID to debug")
+    p_debug.add_argument("--block", required=True, help="Block ID to replay (e.g. B2)")
+    p_debug.add_argument("--target-repo", default="", help="Local path to target repo")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -77,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_resume(args)
     elif args.command == "list-runs":
         return cmd_list_runs(args)
+    elif args.command == "debug":
+        return cmd_debug(args)
     return 1
 
 
@@ -137,7 +145,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     # 7. Execute blocks
-    return _execute_blocks(config, state_mgr, run, blueprint.blocks, variables)
+    return _execute_blocks(config, state_mgr, run, blueprint.blocks, variables, issue=issue)
 
 
 def cmd_run_block(args: argparse.Namespace) -> int:
@@ -146,8 +154,7 @@ def cmd_run_block(args: argparse.Namespace) -> int:
     state_mgr = StateManager(config.state_dir)
 
     run = state_mgr.load_run(args.run_id)
-    bp_path = find_blueprint(config.blueprints_dir, run.blueprint_id)
-    blueprint = load(bp_path)
+    blueprint = _load_blueprint_for_run(config, args.run_id, run.blueprint_id)
 
     block = next((b for b in blueprint.blocks if b.block_id == args.block), None)
     if block is None:
@@ -163,8 +170,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
     state_mgr = StateManager(config.state_dir)
 
     run = state_mgr.load_run(args.run_id)
-    bp_path = find_blueprint(config.blueprints_dir, run.blueprint_id)
-    blueprint = load(bp_path)
+    blueprint = _load_blueprint_for_run(config, args.run_id, run.blueprint_id)
 
     # Filter to blocks that haven't passed
     remaining = [
@@ -200,6 +206,80 @@ def cmd_list_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_debug(args: argparse.Namespace) -> int:
+    """Replay a failed block's prompt in interactive Claude CLI.
+
+    Reads the saved log from a previous run, extracts the rendered prompt,
+    and launches `claude` (interactive, no -p) with the prompt pre-loaded
+    so the developer can take over from where the agent failed.
+    """
+    import subprocess
+
+    config = build_config(target_repo=args.target_repo)
+    state_mgr = StateManager(config.state_dir)
+    run = state_mgr.load_run(args.run_id)
+
+    # Find the log file (prefer latest attempt)
+    logs_dir = config.state_dir / args.run_id / "logs"
+    if not logs_dir.exists():
+        _err(f"No logs found for run {args.run_id}")
+        return 1
+
+    # Find the most recent attempt log for this block
+    candidates = sorted(logs_dir.glob(f"{args.block}*.log"), reverse=True)
+    if not candidates:
+        _err(f"No log found for block {args.block} in run {args.run_id}")
+        return 1
+
+    log_content = candidates[0].read_text(encoding="utf-8")
+
+    # Extract prompt section
+    prompt = ""
+    if "=== PROMPT ===" in log_content:
+        parts = log_content.split("=== PROMPT ===\n", 1)
+        if len(parts) > 1:
+            # Everything until next section or end
+            prompt_section = parts[1]
+            for marker in ("=== STDOUT ===", "=== STDERR ==="):
+                if marker in prompt_section:
+                    prompt_section = prompt_section.split(marker)[0]
+            prompt = prompt_section.strip()
+
+    if not prompt:
+        _err(f"No prompt found in {candidates[0]}")
+        return 1
+
+    # Resolve cwd from block config
+    blueprint = _load_blueprint_for_run(config, args.run_id, run.blueprint_id)
+    block = next((b for b in blueprint.blocks if b.block_id == args.block), None)
+    cwd = str(config.target_repo)
+    if block and block.runner_config.get("cwd"):
+        from kevin.prompt_template import render
+        cwd = render(block.runner_config["cwd"], run.variables)
+
+    print(f"Replaying block {args.block} from run {args.run_id}")
+    print(f"Log: {candidates[0]}")
+    print(f"CWD: {cwd}")
+    print(f"Prompt length: {len(prompt)} chars")
+    print("-" * 60)
+
+    # Launch interactive Claude CLI with the prompt
+    return subprocess.call(["claude", "-p", prompt, "--cwd", cwd])
+
+
+# ---------------------------------------------------------------------------
+# Blueprint loading helper
+# ---------------------------------------------------------------------------
+
+def _load_blueprint_for_run(config: KevinConfig, run_id: str, blueprint_id: str) -> "Blueprint":
+    """Load a Blueprint, preferring the immutable snapshot from the run directory."""
+    from kevin.blueprint_loader import Blueprint
+
+    snapshot = config.state_dir / run_id / "blueprint_snapshot.yaml"
+    bp_path = snapshot if snapshot.exists() else find_blueprint(config.blueprints_dir, blueprint_id)
+    return load(bp_path)
+
+
 # ---------------------------------------------------------------------------
 # Core execution loop
 # ---------------------------------------------------------------------------
@@ -210,6 +290,8 @@ def _execute_blocks(
     run: RunState,
     blocks: list[Block],
     variables: dict[str, str],
+    *,
+    issue: Issue | None = None,
 ) -> int:
     """Execute a list of blocks sequentially with retry logic."""
     all_passed = True
@@ -229,12 +311,14 @@ def _execute_blocks(
             if attempt > 0:
                 _log(config, f"  Retry {attempt}/{block.max_retries}...")
 
-            result = run_block(block, variables, dry_run=config.dry_run)
+            result = run_block(block, variables, dry_run=config.dry_run, is_retry=attempt > 0)
 
             # Save full execution logs (rendered prompt, not template)
+            # Include attempt number to preserve logs across retries
+            log_id = f"{block.block_id}.attempt-{attempt}" if attempt > 0 else block.block_id
             state_mgr.save_block_logs(
                 run.run_id,
-                block.block_id,
+                log_id,
                 prompt=result.prompt or block.prompt_template,
                 stdout=result.stdout or "",
                 stderr=result.stderr or "",
@@ -268,7 +352,8 @@ def _execute_blocks(
 
     # Post completion comment
     if not config.dry_run:
-        _post_completion_comment(config, run)
+        _post_completion_comment(config, run, blocks)
+        _notify_teams(config, run, blocks, issue, final_status)
 
     _log(config, f"\nRun {run.run_id}: {final_status}")
     return 0 if all_passed else 1
@@ -280,7 +365,7 @@ def _execute_blocks(
 
 def _build_variables(config: KevinConfig, issue: Issue) -> dict[str, str]:
     """Build the variable dictionary for template rendering."""
-    return {
+    variables = {
         "issue_number": str(issue.number),
         "issue_title": issue.title,
         "issue_body": issue.body,
@@ -291,20 +376,84 @@ def _build_variables(config: KevinConfig, issue: Issue) -> dict[str, str]:
         "repo_full": config.repo_full_name,
     }
 
+    # Extract pr_number from issue body (e.g. "PR #30", "#30", "pull/30")
+    import re
+    pr_match = re.search(r"(?:PR\s*#|pull/|pull request\s*#?)(\d+)", issue.body, re.IGNORECASE)
+    if pr_match:
+        variables["pr_number"] = pr_match.group(1)
 
-def _post_completion_comment(config: KevinConfig, run: RunState) -> None:
+    return variables
+
+
+def _post_completion_comment(
+    config: KevinConfig, run: RunState, blocks: list[Block] | None = None,
+) -> None:
     """Post a summary comment on the issue."""
+    # Build block_id → name lookup
+    name_map: dict[str, str] = {}
+    if blocks:
+        name_map = {b.block_id: b.name for b in blocks}
+
     lines = [f"Kevin run `{run.run_id}` — **{run.status}**\n"]
-    lines.append("| Block | Status |")
-    lines.append("|-------|--------|")
+    lines.append("| Block | Name | Status |")
+    lines.append("|-------|------|--------|")
     for bid, bs in run.blocks.items():
         icon = ":white_check_mark:" if bs.status == "passed" else ":x:"
-        lines.append(f"| {bid} | {icon} {bs.status} |")
+        name = name_map.get(bid, "")
+        lines.append(f"| {bid} | {name} | {icon} {bs.status} |")
 
     try:
         post_comment(run.repo, run.issue_number, "\n".join(lines))
     except Exception:
         pass  # TODO: FIX — don't fail the run for a comment failure
+
+
+def _notify_teams(
+    config: KevinConfig,
+    run: RunState,
+    blocks: list[Block],
+    issue: Issue | None,
+    status: str,
+) -> None:
+    """Push run status to Teams Bot (if TEAMS_BOT_URL is set)."""
+    import json
+    import os
+    from urllib.request import Request, urlopen
+
+    teams_url = os.getenv("TEAMS_BOT_URL", "")
+    if not teams_url:
+        return
+
+    block_list = []
+    for b in blocks:
+        bs = run.blocks.get(b.block_id)
+        block_list.append({
+            "block_id": b.block_id,
+            "name": b.name,
+            "status": bs.status if bs else "pending",
+        })
+
+    payload = {
+        "event": f"run_{status}",
+        "run_id": run.run_id,
+        "issue_number": run.issue_number,
+        "issue_title": issue.title if issue else "",
+        "repo": run.repo,
+        "blueprint_id": run.blueprint_id,
+        "status": status,
+        "blocks": block_list,
+    }
+
+    try:
+        data = json.dumps(payload).encode()
+        req = Request(
+            f"{teams_url}/api/notify",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urlopen(req, timeout=10)
+    except Exception as e:
+        _log(config, f"  [WARN] Teams notify failed: {e}")
 
 
 def _log(config: KevinConfig, msg: str) -> None:
