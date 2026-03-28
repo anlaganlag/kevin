@@ -92,6 +92,7 @@ jobs:
       - name: Run Kevin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         working-directory: agentic-sdlc
