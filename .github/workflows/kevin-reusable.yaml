@@ -1,0 +1,173 @@
+# Kevin Planning Agent — Reusable Workflow
+#
+# Called by target repos via workflow_call.
+# All logic lives here; target repos only need a thin caller workflow.
+
+name: Kevin Reusable
+
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: number
+      issue_title:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+    secrets:
+      CHECKOUT_TOKEN:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+      ANTHROPIC_BASE_URL:
+        required: false
+      ANTHROPIC_MODEL:
+        required: false
+      ANTHROPIC_SMALL_FAST_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_HAIKU_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_SONNET_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_OPUS_MODEL:
+        required: false
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
+        required: false
+      TEAMS_BOT_URL:
+        required: false
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: write
+
+jobs:
+  kevin-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout AgenticSDLC
+        uses: actions/checkout@v4
+        with:
+          repository: centific-cn/AgenticSDLC
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+          path: agentic-sdlc
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+          path: target-repo
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Notify Teams — Run Started
+        if: env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_started",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ inputs.issue_number }},
+              "issue_title": ${{ toJSON(inputs.issue_title) }},
+              "repo": "${{ inputs.repo }}",
+              "blueprint_id": "",
+              "status": "running",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      - name: Run Kevin
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+          ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_OPUS_MODEL }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ secrets.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC }}
+          API_TIMEOUT_MS: "600000"
+          GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN }}
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        working-directory: agentic-sdlc
+        run: |
+          python -m kevin run \
+            --issue ${{ inputs.issue_number }} \
+            --repo ${{ inputs.repo }} \
+            --target-repo ${{ github.workspace }}/target-repo \
+            --verbose
+
+      - name: Notify Teams — Run Completed
+        if: success() && env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_completed",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ inputs.issue_number }},
+              "issue_title": ${{ toJSON(inputs.issue_title) }},
+              "repo": "${{ inputs.repo }}",
+              "status": "completed",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      - name: Notify Teams — Run Failed
+        if: failure() && env.TEAMS_BOT_URL != ''
+        env:
+          TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+        run: |
+          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "run_failed",
+              "run_id": "gh-${{ github.run_id }}",
+              "issue_number": ${{ inputs.issue_number }},
+              "issue_title": ${{ toJSON(inputs.issue_title) }},
+              "repo": "${{ inputs.repo }}",
+              "status": "failed",
+              "error": "Check workflow logs for details",
+              "blocks": []
+            }' || echo "::warning::Teams notification failed (non-fatal)"
+
+      - name: Upload Kevin run state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kevin-run-issue-${{ inputs.issue_number }}
+          path: ${{ github.workspace }}/target-repo/.kevin/runs/
+          retention-days: 30
+
+      - name: Post failure comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN }}
+        run: |
+          gh issue comment ${{ inputs.issue_number }} \
+            --repo ${{ inputs.repo }} \
+            --body "Kevin run **failed**. Check [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."

@@ -1,0 +1,31 @@
+# Kevin — Thin caller workflow for target repos
+#
+# Copy this file to your repo as .github/workflows/kevin.yaml
+# Then configure org-level or repo-level secrets (see below).
+#
+# Required secrets:
+#   CHECKOUT_TOKEN     — GitHub PAT with repo access
+#   ANTHROPIC_API_KEY  — Anthropic API key (or Qianfan key)
+#
+# Optional secrets (for Qianfan / Teams):
+#   ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, TEAMS_BOT_URL, etc.
+
+name: Kevin Planning Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: kevin-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  kevin:
+    if: github.event.label.name == 'kevin'
+    uses: centific-cn/AgenticSDLC/.github/workflows/kevin-reusable.yaml@main
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      issue_title: ${{ github.event.issue.title }}
+      repo: ${{ github.repository }}
+    secrets: inherit
