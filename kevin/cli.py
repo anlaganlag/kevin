@@ -12,12 +12,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from kevin import __version__
-from kevin.agent_runner import run_block
+from kevin.agent_runner import run_block, run_block_async
 from kevin.blueprint_loader import Block, find_blueprint, load
 from kevin.config import KevinConfig, build_config
 from kevin.github_client import Issue, add_labels, fetch_issue, post_comment, remove_labels
@@ -320,6 +321,11 @@ def _load_blueprint_for_run(config: KevinConfig, run_id: str, blueprint_id: str)
 # Core execution loop
 # ---------------------------------------------------------------------------
 
+def _now() -> str:
+    """Return current UTC time as ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _execute_blocks(
     config: KevinConfig,
     state_mgr: StateManager,
@@ -329,37 +335,45 @@ def _execute_blocks(
     *,
     issue: Issue | None = None,
 ) -> int:
-    """Execute a list of blocks sequentially with retry logic."""
+    """Execute blocks using the wave scheduler (sync wrapper)."""
+    return asyncio.run(
+        _execute_blocks_async(config, state_mgr, run, blocks, variables, issue=issue)
+    )
+
+
+async def _execute_blocks_async(
+    config: KevinConfig,
+    state_mgr: StateManager,
+    run: RunState,
+    blocks: list[Block],
+    variables: dict[str, str],
+    *,
+    issue: Issue | None = None,
+) -> int:
+    """Execute blocks grouped into waves with parallel dispatch."""
+    from kevin.scheduler import compute_waves
+
+    waves = compute_waves(blocks, variables)
     all_passed = True
 
-    for block in blocks:
-        _log(config, f"\n{'='*60}")
-        _log(config, f"Block {block.block_id}: {block.name} (runner: {block.runner})")
-        _log(config, f"{'='*60}")
-
-        # Update state: running
-        bs = BlockState(
-            block_id=block.block_id,
-            status="running",
-            runner=block.runner,
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
+    async def _run_single(block: Block) -> tuple[Block, bool]:
+        """Run a single block with retry logic."""
+        success = False
+        bs = BlockState(block_id=block.block_id, status="running", runner=block.runner)
+        bs.started_at = _now()
         state_mgr.update_block(run, bs)
 
         # Notify Teams: block started (real-time progress)
         if not config.dry_run:
             _notify_teams(config, run, blocks, issue, "running")
 
-        # Retry loop
-        success = False
         for attempt in range(block.max_retries + 1):
             if attempt > 0:
-                _log(config, f"  Retry {attempt}/{block.max_retries}...")
+                _log(config, f"  {block.block_id}: Retry {attempt}/{block.max_retries}...")
 
-            result = run_block(block, variables, dry_run=config.dry_run, is_retry=attempt > 0)
+            result = await run_block_async(block, variables, dry_run=config.dry_run, is_retry=attempt > 0)
 
-            # Save full execution logs (rendered prompt, not template)
-            # Include attempt number to preserve logs across retries
+            # Save logs
             log_id = f"{block.block_id}.attempt-{attempt}" if attempt > 0 else block.block_id
             state_mgr.save_block_logs(
                 run.run_id,
@@ -376,26 +390,50 @@ def _execute_blocks(
 
             if result.success:
                 bs.status = "passed"
-                bs.completed_at = datetime.now(timezone.utc).isoformat()
+                bs.completed_at = _now()
                 state_mgr.update_block(run, bs)
-                _log(config, f"  PASSED")
+                _log(config, f"  {block.block_id}: PASSED")
                 success = True
                 break
             else:
-                _log(config, f"  FAILED: {result.stderr[:200]}")
+                _log(config, f"  {block.block_id}: FAILED: {result.stderr[:200]}")
                 bs.error = result.stderr[:500]
 
         if not success:
             bs.status = "failed"
-            bs.completed_at = datetime.now(timezone.utc).isoformat()
+            bs.completed_at = _now()
             state_mgr.update_block(run, bs)
             _err(f"Block {block.block_id} failed after {block.max_retries + 1} attempts")
+
+        return block, success
+
+    # Execute wave by wave
+    for wave in waves:
+        block_ids = [b.block_id for b in wave.blocks]
+        parallel_tag = " (parallel)" if len(wave.blocks) > 1 else ""
+        _log(config, f"\n--- {wave.label}: [{', '.join(block_ids)}]{parallel_tag} ---")
+
+        for block in wave.blocks:
+            _log(config, f"  Block {block.block_id}: {block.name} (runner: {block.runner})")
+
+        results = await asyncio.gather(*[_run_single(b) for b in wave.blocks])
+
+        # Check for failures in this wave
+        wave_failed = any(not ok for _, ok in results)
+        if wave_failed:
             all_passed = False
-            break  # Stop pipeline on failure
+            break  # Stop subsequent waves
 
     # Finalize run
     final_status = "completed" if all_passed else "failed"
     state_mgr.complete_run(run, final_status)
+
+    # Harvest learning (C1: silent degradation — knowledge_db doesn't exist yet)
+    try:
+        from kevin.learning import harvest_run
+        harvest_run(config.knowledge_db, config.state_dir, run.run_id)
+    except Exception:
+        pass  # Learning never blocks main execution path
 
     # Build error summary from failed block (if any)
     error_summary = ""
