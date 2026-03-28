@@ -161,6 +161,20 @@ def _cmd_run_inner(args: argparse.Namespace) -> int:
     # 4. Build variables
     variables = _build_variables(config, issue)
 
+    # 4b. Learning Agent — inject historical context
+    try:
+        from kevin.learning import advise
+        from kevin.learning.advisor import format_learning_context
+        ctx = advise(config.knowledge_db, intent.blueprint_id, issue.title, issue.body)
+        lc = format_learning_context(ctx)
+        if lc:
+            variables["learning_context"] = lc
+            _log(config, f"  Learning: injected {len(lc)} chars of historical context")
+        else:
+            _log(config, "  Learning: no historical data available")
+    except Exception:
+        _log(config, "  Learning: advisor unavailable (silent degradation)")
+
     # 5. Create run state
     state_mgr = StateManager(config.state_dir)
     run = state_mgr.create_run(
