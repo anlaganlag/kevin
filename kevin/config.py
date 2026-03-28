@@ -20,6 +20,17 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "architecture": "bp_architecture_blueprint_design.1.0.0",
 }
 
+# Aliases: common GitHub labels → Kevin task-type labels.
+# These are checked AFTER exact intent_map match fails.
+DEFAULT_LABEL_ALIASES: dict[str, str] = {
+    "enhancement": "coding-task",
+    "bug": "coding-task",
+    "feature": "coding-task",
+    "documentation": "coding-task",
+    "refactor": "coding-task",
+    "testing": "coding-task",
+}
+
 # Label that triggers Kevin
 KEVIN_TRIGGER_LABEL = "kevin"
 
