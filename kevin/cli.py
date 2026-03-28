@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from kevin import __version__
@@ -337,7 +338,12 @@ def _execute_blocks(
         _log(config, f"{'='*60}")
 
         # Update state: running
-        bs = BlockState(block_id=block.block_id, status="running", runner=block.runner)
+        bs = BlockState(
+            block_id=block.block_id,
+            status="running",
+            runner=block.runner,
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
         state_mgr.update_block(run, bs)
 
         # Notify Teams: block started (real-time progress)
@@ -370,6 +376,7 @@ def _execute_blocks(
 
             if result.success:
                 bs.status = "passed"
+                bs.completed_at = datetime.now(timezone.utc).isoformat()
                 state_mgr.update_block(run, bs)
                 _log(config, f"  PASSED")
                 success = True
@@ -380,6 +387,7 @@ def _execute_blocks(
 
         if not success:
             bs.status = "failed"
+            bs.completed_at = datetime.now(timezone.utc).isoformat()
             state_mgr.update_block(run, bs)
             _err(f"Block {block.block_id} failed after {block.max_retries + 1} attempts")
             all_passed = False
@@ -519,10 +527,16 @@ def _notify_teams(
     block_list = []
     for b in blocks:
         bs = run.blocks.get(b.block_id)
+        duration: float | None = None
+        if bs and bs.started_at and bs.completed_at:
+            started = datetime.fromisoformat(bs.started_at)
+            completed = datetime.fromisoformat(bs.completed_at)
+            duration = (completed - started).total_seconds()
         block_list.append({
             "block_id": b.block_id,
             "name": b.name,
             "status": bs.status if bs else "pending",
+            "duration_seconds": duration,
         })
 
     # Map status to event type
