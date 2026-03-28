@@ -19,7 +19,7 @@ from kevin import __version__
 from kevin.agent_runner import run_block
 from kevin.blueprint_loader import Block, find_blueprint, load
 from kevin.config import KevinConfig, build_config
-from kevin.github_client import Issue, add_labels, fetch_issue, post_comment
+from kevin.github_client import Issue, add_labels, fetch_issue, post_comment, remove_labels
 from kevin.intent import classify
 from kevin.state import BlockState, RunState, StateManager
 
@@ -350,10 +350,16 @@ def _execute_blocks(
     final_status = "completed" if all_passed else "failed"
     state_mgr.complete_run(run, final_status)
 
-    # Post completion comment
+    # Post completion comment + update labels
     if not config.dry_run:
         _post_completion_comment(config, run, blocks)
         _notify_teams(config, run, blocks, issue, final_status)
+        try:
+            remove_labels(run.repo, run.issue_number, ["kevin"])
+            if all_passed:
+                add_labels(run.repo, run.issue_number, ["kevin-completed"])
+        except Exception:
+            pass
 
     _log(config, f"\nRun {run.run_id}: {final_status}")
     return 0 if all_passed else 1
