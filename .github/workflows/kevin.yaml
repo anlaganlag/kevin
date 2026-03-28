@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: centific-cn/AgenticSDLC
-          token: ${{ secrets.CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CHECKOUT_TOKEN }}
           path: agentic-sdlc
 
       # 2. Checkout target repo (the repo where the Issue lives)
