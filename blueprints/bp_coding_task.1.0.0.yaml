@@ -247,7 +247,9 @@ blueprint:
               runner_config:
                 cwd: "{{target_repo}}"
                 command: |
-                  git push -u origin kevin/issue-{{issue_number}} && \
+                  git push --force-with-lease -u origin kevin/issue-{{issue_number}} && \
+                  EXISTING_PR=$(gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number' 2>/dev/null) && \
+                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR already exists"; exit 0; fi && \
                   gh pr create \
                     --title "{{issue_title}}" \
                     --body "## Summary
