@@ -89,11 +89,20 @@ def _query_common_failures(conn, blueprint_id: str) -> list[FailurePattern]:
 
 
 def _query_similar_runs(conn, blueprint_id: str, issue_title: str, issue_body: str) -> list[SimilarSnippet]:
-    keywords = extract_keywords(issue_title)
-    if not keywords:
+    title_kw = extract_keywords(issue_title)
+    body_kw = extract_keywords(issue_body)
+    if not title_kw and not body_kw:
         return []
-    # FTS5 requires all terms by default; use OR so any matching keyword returns results
-    fts_query = " OR ".join(keywords.split())
+    # Build column-qualified FTS query to search ONLY issue text columns,
+    # not prompt/output_summary (which share template vocabulary — spec requirement).
+    parts: list[str] = []
+    if title_kw:
+        terms = " OR ".join(title_kw.split())
+        parts.append(f"issue_title : ({terms})")
+    if body_kw:
+        terms = " OR ".join(body_kw.split())
+        parts.append(f"issue_body : ({terms})")
+    fts_query = " OR ".join(parts)
     try:
         rows = conn.execute(
             "SELECT run_id, issue_title, output_summary, rank FROM block_logs_fts "

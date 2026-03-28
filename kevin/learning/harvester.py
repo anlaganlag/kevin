@@ -114,11 +114,31 @@ def _harvest_run_data(conn: Any, data: dict[str, Any], run_dir: Path) -> None:
                elapsed_seconds=elapsed, created_at=data.get("created_at"),
                variables_json=safe_variables_json(variables))
 
+    # Load block names from blueprint snapshot (BlockState doesn't persist name)
+    block_names: dict[str, str] = {}
+    snapshot_path = run_dir / "blueprint_snapshot.yaml"
+    if snapshot_path.exists():
+        try:
+            with snapshot_path.open(encoding="utf-8") as f:
+                bp_data = yaml.safe_load(f)
+            bp_root = bp_data.get("blueprint", bp_data)
+            raw_blocks = (
+                bp_root.get("workflow", {})
+                .get("ralph_loop", {})
+                .get("step_3", {})
+                .get("dependency_graph", {})
+                .get("blocks", [])
+            )
+            for rb in raw_blocks:
+                block_names[rb.get("block_id", "")] = rb.get("name", "")
+        except Exception:
+            pass  # Best-effort: names stay empty if snapshot is broken
+
     logs_dir = run_dir / "logs"
     for bid, bdata in blocks_data.items():
         block_elapsed = _compute_elapsed(bdata.get("started_at", ""), bdata.get("completed_at", ""))
         upsert_block(conn, run_id=run_id, block_id=bid, blueprint_id=blueprint_id,
-                     block_name=bdata.get("name", ""), runner=bdata.get("runner", ""),
+                     block_name=block_names.get(bid, ""), runner=bdata.get("runner", ""),
                      status=bdata.get("status", ""), exit_code=bdata.get("exit_code"),
                      retries=int(bdata.get("retries", 0)), elapsed_seconds=block_elapsed,
                      error=(bdata.get("error") or "")[:500] or None,
