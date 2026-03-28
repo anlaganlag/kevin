@@ -56,34 +56,6 @@ on:
       TEAMS_BOT_URL:
         required: false
 
-  # Direct dispatch from the Planning Agent (Azure Function → createWorkflowDispatch).
-  # workflow_dispatch only supports string/boolean/choice inputs.
-  workflow_dispatch:
-    inputs:
-      issue_number:
-        description: "Issue number"
-        required: true
-        type: string
-      issue_title:
-        description: "Issue title (optional, used in notifications)"
-        required: false
-        type: string
-        default: ""
-      repo:
-        description: "Target repo (owner/repo)"
-        required: true
-        type: string
-      blueprint_id:
-        description: "Blueprint ID to run (overrides label classification)"
-        required: false
-        type: string
-        default: ""
-      agent_id:
-        description: "Agent identity posted in AgentCompletedEvent (e.g. ba-agent)"
-        required: false
-        type: string
-        default: ""
-
 permissions:
   issues: write
   pull-requests: write
