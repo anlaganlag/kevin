@@ -464,3 +464,25 @@ def _subprocess_run(
         )
     finally:
         sel.close()
+
+
+# ---------------------------------------------------------------------------
+# Async wrapper
+# ---------------------------------------------------------------------------
+
+async def run_block_async(
+    block: Block,
+    variables: dict[str, str],
+    *,
+    dry_run: bool = False,
+    is_retry: bool = False,
+) -> BlockResult:
+    """Async wrapper — runs synchronous run_block in a thread pool.
+
+    run_block() internals (subprocess, heartbeat, validators) are unchanged.
+    Only the scheduling layer is async. Uses asyncio.to_thread (Python 3.11+).
+    """
+    import asyncio
+    return await asyncio.to_thread(
+        run_block, block, variables, dry_run=dry_run, is_retry=is_retry,
+    )
