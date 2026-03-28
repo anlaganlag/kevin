@@ -153,11 +153,30 @@ def _cmd_run_inner(args: argparse.Namespace) -> int:
     else:
         intent = classify(issue.labels, config.intent_map)
         if intent is None:
-            _err(f"Cannot classify issue #{args.issue}. Labels: {issue.labels}")
-            _err("Ensure the issue has 'kevin' label + a task type label (coding-task, code-review, etc.)")
+            supported = ", ".join(config.intent_map.keys())
+            from kevin.config import DEFAULT_LABEL_ALIASES
+            alias_list = ", ".join(DEFAULT_LABEL_ALIASES.keys())
+            error_msg = (
+                f"Cannot classify issue #{args.issue}. "
+                f"Labels: {issue.labels}. "
+                f"Supported: {supported}. Aliases: {alias_list}. "
+                "Add a supported label and re-trigger."
+            )
+            _err(f"Cannot classify issue #{args.issue}.")
+            _err(f"  Labels found: {issue.labels}")
+            _err(f"  Supported task-type labels: {supported}")
+            _err(f"  Auto-mapped aliases: {alias_list}")
+            _err("Add one of the above labels to the issue and re-trigger.")
+            _notify_teams_early_failure(
+                issue_number=args.issue,
+                issue_title=issue.title,
+                repo=args.repo,
+                error=error_msg,
+            )
             return 1
         blueprint_id = intent.blueprint_id
-        _log(config, f"  Intent: {blueprint_id} (matched: {intent.matched_label})")
+        confidence_tag = f" [{intent.confidence}]" if intent.confidence != "exact" else ""
+        _log(config, f"  Intent: {blueprint_id} (matched: {intent.matched_label}{confidence_tag})")
 
     # 3. Load blueprint
     bp_path = find_blueprint(config.blueprints_dir, blueprint_id)
@@ -720,6 +739,60 @@ def _notify_teams(
         urlopen(req, timeout=10)
     except Exception as e:
         _log(config, f"  [WARN] Teams notify failed: {e}")
+
+
+def _notify_teams_early_failure(
+    *,
+    issue_number: int,
+    issue_title: str,
+    repo: str,
+    error: str,
+) -> None:
+    """Lightweight Teams notification for pre-run failures (e.g. classification error).
+
+    Unlike _notify_teams(), this has no dependency on RunState or blocks —
+    it fires before any run is created.
+    """
+    import json
+    import os
+    from urllib.request import Request, urlopen
+
+    teams_url = os.getenv("TEAMS_BOT_URL", "")
+    if not teams_url:
+        return
+
+    github_run_id = os.getenv("GITHUB_RUN_ID", "")
+    github_server = os.getenv("GITHUB_SERVER_URL", "https://github.com")
+    github_repo = os.getenv("GITHUB_REPOSITORY", "")
+    logs_url = (
+        f"{github_server}/{github_repo}/actions/runs/{github_run_id}"
+        if github_run_id and github_repo
+        else ""
+    )
+
+    payload: dict[str, object] = {
+        "event": "run_failed",
+        "run_id": f"gh-{github_run_id}" if github_run_id else "unknown",
+        "issue_number": issue_number,
+        "issue_title": issue_title,
+        "repo": repo,
+        "status": "failed",
+        "error": error[:500],
+        "blocks": [],
+    }
+    if logs_url:
+        payload["logs_url"] = logs_url
+
+    try:
+        data = json.dumps(payload).encode()
+        req = Request(
+            f"{teams_url}/api/notify",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urlopen(req, timeout=10)
+    except Exception:
+        pass  # Non-fatal — workflow step 9 is the backup
 
 
 def _log(config: KevinConfig, msg: str) -> None:
