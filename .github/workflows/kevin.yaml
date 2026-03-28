@@ -71,11 +71,11 @@ jobs:
 
       # 6. Notify Teams — Run Started
       - name: Notify Teams — Run Started
-        if: env.TEAMS_BOT_URL != ''
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
+          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
             -H "Content-Type: application/json" \
             -d '{
               "event": "run_started",
@@ -90,6 +90,7 @@ jobs:
 
       # 7. Run Kevin
       - name: Run Kevin
+        id: kevin-run
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -109,15 +110,16 @@ jobs:
             --issue ${{ github.event.issue.number }} \
             --repo ${{ github.repository }} \
             --target-repo ${{ github.workspace }}/target-repo \
-            --verbose
+            --verbose 2> >(tee /tmp/kevin-stderr.log >&2)
 
       # 8. Notify Teams — Run Completed
       - name: Notify Teams — Run Completed
-        if: success() && env.TEAMS_BOT_URL != ''
+        if: success()
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
+          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
             -H "Content-Type: application/json" \
             -d '{
               "event": "run_completed",
@@ -129,24 +131,31 @@ jobs:
               "blocks": []
             }' || echo "::warning::Teams notification failed (non-fatal)"
 
-      # 9. Notify Teams — Run Failed
+      # 9. Notify Teams — Run Failed (with captured error details)
       - name: Notify Teams — Run Failed
-        if: failure() && env.TEAMS_BOT_URL != ''
+        if: failure()
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
+          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
+          ERROR_MSG="Check workflow logs for details"
+          if [ -f /tmp/kevin-stderr.log ]; then
+            ERROR_MSG=$(tail -5 /tmp/kevin-stderr.log | tr '\n' ' ' | head -c 400)
+          fi
+          ERROR_JSON=$(echo "$ERROR_MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
+          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
             -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_failed",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ github.event.issue.number }},
-              "issue_title": ${{ toJSON(github.event.issue.title) }},
-              "repo": "${{ github.repository }}",
-              "status": "failed",
-              "error": "Check workflow logs for details",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+            -d "{
+              \"event\": \"run_failed\",
+              \"run_id\": \"gh-${{ github.run_id }}\",
+              \"issue_number\": ${{ github.event.issue.number }},
+              \"issue_title\": ${{ toJSON(github.event.issue.title) }},
+              \"repo\": \"${{ github.repository }}\",
+              \"status\": \"failed\",
+              \"error\": $ERROR_JSON,
+              \"logs_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"blocks\": []
+            }" || echo "::warning::Teams notification failed (non-fatal)"
 
       # 10. Upload run state as artifact (always, even on failure)
       - name: Upload Kevin run state
