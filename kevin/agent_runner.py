@@ -14,6 +14,7 @@ Validators (run after block execution):
 from __future__ import annotations
 
 import glob as glob_mod
+import selectors
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -22,8 +23,8 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 # Seconds of silence before the heartbeat watchdog kills a subprocess.
-# Claude CLI can think for a while, so this needs to be generous.
-HEARTBEAT_TIMEOUT_SECONDS = 120
+# Claude CLI can think for a while (extended thinking), so this needs to be generous.
+HEARTBEAT_TIMEOUT_SECONDS = 600
 
 from kevin.blueprint_loader import Block, Validator
 from kevin.prompt_template import render
@@ -51,8 +52,14 @@ def run_block(
     variables: dict[str, str],
     *,
     dry_run: bool = False,
+    is_retry: bool = False,
 ) -> BlockResult:
-    """Execute a block using the appropriate runner, then validate."""
+    """Execute a block using the appropriate runner, then validate.
+
+    Args:
+        is_retry: If True, run pre_check before execution to reset workspace.
+                  First attempt skips pre_check to preserve prior block outputs.
+    """
     runner = block.runner or "claude_cli"
 
     if dry_run:
@@ -62,10 +69,12 @@ def run_block(
             stdout=f"[dry-run] Would execute {runner} block {block.block_id}",
         )
 
-    # Run pre_check for idempotency (e.g. git checkout . && git clean -fd)
-    pre_check_result = _run_pre_check(block, variables)
-    if pre_check_result is not None:
-        return pre_check_result
+    # Only run pre_check on retries to reset workspace to a clean state.
+    # First attempt preserves prior block outputs (e.g. analysis.md from B1).
+    if is_retry:
+        pre_check_result = _run_pre_check(block, variables)
+        if pre_check_result is not None:
+            return pre_check_result
 
     runner_fn = RUNNERS.get(runner)
     if runner_fn is None:
@@ -107,9 +116,14 @@ def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
     model = block.runner_config.get("model", "")
     context_filter: list[str] = block.runner_config.get("context_filter", [])
 
-    cmd = ["claude", "-p", prompt, "--cwd", str(cwd)]
+    cmd = [
+        "claude", "-p", prompt,
+        "--verbose",
+        "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
+    ]
     if model:
         cmd.extend(["--model", model])
+    # cwd is passed to subprocess.run, not as a CLI flag
 
     # Write temporary .claudeignore for context budget management
     claudeignore_path = cwd / ".claudeignore"
@@ -252,25 +266,44 @@ def _run_validators(
 
 
 def _validate_git_diff(v: Validator, variables: dict[str, str], cwd: Path) -> dict[str, Any]:
-    """Check that git has file changes."""
+    """Check that the current branch has file changes vs main.
+
+    Checks three sources (any non-zero count passes):
+    1. Uncommitted changes (git status --porcelain)
+    2. Committed changes vs main (git diff main...HEAD --name-only)
+    3. Committed changes vs HEAD~ (git diff HEAD~1 --name-only) for single-commit branches
+    """
     min_files = v.params.get("min_files_changed", 1)
-    result = subprocess.run(
-        ["git", "diff", "--stat", "HEAD"],
-        capture_output=True, text=True, cwd=str(cwd), timeout=10,
-    )
-    # Count changed files from diff --stat (last line is summary)
-    lines = [line for line in result.stdout.strip().split("\n") if line.strip()]
-    # Also check staged + untracked
+
+    # Check 1: uncommitted changes
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         capture_output=True, text=True, cwd=str(cwd), timeout=10,
     )
-    changed_files = len([l for l in status.stdout.strip().split("\n") if l.strip()])
+    uncommitted = len([l for l in status.stdout.strip().split("\n") if l.strip()])
+
+    # Check 2: committed diff vs main
+    diff_vs_main = subprocess.run(
+        ["git", "diff", "main...HEAD", "--name-only"],
+        capture_output=True, text=True, cwd=str(cwd), timeout=10,
+    )
+    committed_vs_main = len([l for l in diff_vs_main.stdout.strip().split("\n") if l.strip()])
+
+    # Check 3: diff vs previous commit (fallback if main is the same commit)
+    diff_vs_prev = subprocess.run(
+        ["git", "diff", "HEAD~1", "--name-only"],
+        capture_output=True, text=True, cwd=str(cwd), timeout=10,
+    )
+    committed_vs_prev = len([l for l in diff_vs_prev.stdout.strip().split("\n") if l.strip()])
+
+    changed_files = max(uncommitted, committed_vs_main, committed_vs_prev)
     passed = changed_files >= min_files
     return {
         "type": "git_diff_check",
         "passed": passed,
         "files_changed": changed_files,
+        "uncommitted": uncommitted,
+        "committed_vs_main": committed_vs_main,
         "expected_min": min_files,
     }
 
@@ -342,11 +375,11 @@ def _subprocess_run(
     cwd: Path,
     timeout: int,
 ) -> BlockResult:
-    """Run a subprocess with streaming output and heartbeat watchdog.
+    """Run a subprocess with non-blocking I/O and heartbeat watchdog.
 
-    Instead of blocking on subprocess.run, this uses Popen to read stdout
-    line-by-line. If no output is received for HEARTBEAT_TIMEOUT_SECONDS,
-    the process is killed (prevents "fake death" in CI environments like GHA).
+    Uses selectors to monitor both stdout and stderr without blocking.
+    If no output on either stream for HEARTBEAT_TIMEOUT_SECONDS, the process
+    is killed (prevents "fake death" in CI environments like GHA).
     """
     try:
         proc = subprocess.Popen(
@@ -363,65 +396,64 @@ def _subprocess_run(
             stderr=f"Command not found: {exc}",
         )
 
-    stdout_lines: list[str] = []
-    stderr_content = ""
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
     start_time = time.monotonic()
     last_output_time = start_time
     heartbeat_limit = min(HEARTBEAT_TIMEOUT_SECONDS, timeout)
 
+    # Register both stdout and stderr for non-blocking reads
+    sel = selectors.DefaultSelector()
     try:
-        # Read stdout line-by-line for heartbeat detection
-        assert proc.stdout is not None
-        while True:
-            # Check overall timeout
+        if proc.stdout:
+            sel.register(proc.stdout, selectors.EVENT_READ, "stdout")
+        if proc.stderr:
+            sel.register(proc.stderr, selectors.EVENT_READ, "stderr")
+
+        while sel.get_map():
             elapsed = time.monotonic() - start_time
             if elapsed > timeout:
                 proc.kill()
                 proc.wait()
-                stderr_content = _drain_stderr(proc)
                 return BlockResult(
                     block_id=block_id,
                     success=False,
-                    stdout="".join(stdout_lines),
-                    stderr=f"Timeout after {timeout}s\n{stderr_content}",
+                    stdout="".join(stdout_chunks),
+                    stderr=f"Timeout after {timeout}s\n{''.join(stderr_chunks)}",
                 )
 
-            # Check heartbeat (no output for too long)
             silence = time.monotonic() - last_output_time
             if silence > heartbeat_limit:
                 proc.kill()
                 proc.wait()
-                stderr_content = _drain_stderr(proc)
                 return BlockResult(
                     block_id=block_id,
                     success=False,
-                    stdout="".join(stdout_lines),
-                    stderr=f"Heartbeat timeout: no output for {heartbeat_limit}s\n{stderr_content}",
+                    stdout="".join(stdout_chunks),
+                    stderr=f"Heartbeat timeout: no output for {heartbeat_limit}s\n{''.join(stderr_chunks)}",
                 )
 
-            # Non-blocking line read via poll + readline
-            if proc.poll() is not None:
-                # Process exited — drain remaining output
-                remaining = proc.stdout.read()
-                if remaining:
-                    stdout_lines.append(remaining)
-                break
+            # Wait up to 1s for data on either stream
+            ready = sel.select(timeout=1.0)
+            for key, _ in ready:
+                chunk = key.fileobj.read1(8192) if hasattr(key.fileobj, "read1") else key.fileobj.readline()
+                if chunk:
+                    if key.data == "stdout":
+                        stdout_chunks.append(chunk)
+                    else:
+                        stderr_chunks.append(chunk)
+                    last_output_time = time.monotonic()
+                else:
+                    # EOF on this stream
+                    sel.unregister(key.fileobj)
 
-            line = proc.stdout.readline()
-            if line:
-                stdout_lines.append(line)
-                last_output_time = time.monotonic()
-            else:
-                # No data yet, short sleep to avoid busy-wait
-                time.sleep(0.1)
-
-        stderr_content = _drain_stderr(proc)
+        proc.wait()
         return BlockResult(
             block_id=block_id,
             success=proc.returncode == 0,
             exit_code=proc.returncode,
-            stdout="".join(stdout_lines),
-            stderr=stderr_content,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
         )
 
     except Exception as exc:
@@ -432,13 +464,5 @@ def _subprocess_run(
             success=False,
             stderr=f"Unexpected error: {exc}",
         )
-
-
-def _drain_stderr(proc: subprocess.Popen[str]) -> str:
-    """Read all remaining stderr from a finished/killed process."""
-    if proc.stderr:
-        try:
-            return proc.stderr.read()
-        except Exception:
-            return ""
-    return ""
+    finally:
+        sel.close()
