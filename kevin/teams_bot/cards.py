@@ -3,6 +3,24 @@
 from typing import Any
 
 
+def format_duration(seconds: float | None) -> str:
+    """Format a duration in seconds to a human-readable string.
+
+    Args:
+        seconds: Duration in seconds, or None if not available.
+
+    Returns:
+        Formatted string like "32s", "2m13s", or "" for None.
+    """
+    if seconds is None:
+        return ""
+    total = int(seconds)
+    minutes, secs = divmod(total, 60)
+    if minutes:
+        return f"{minutes}m{secs}s"
+    return f"{secs}s"
+
+
 def _status_icon(status: str) -> str:
     return {
         "passed": "\u2705",
@@ -58,11 +76,13 @@ def build_run_status_card(payload: dict[str, Any]) -> dict[str, Any]:
     }
     title = f"{title_icon} {title_map.get(status, 'Kevin Update')}"
 
-    # Block 状态列表
+    # Block status lines with optional duration
     block_lines = []
     for block in blocks:
         icon = _status_icon(block.get("status", "pending"))
-        block_lines.append(f"{icon} **{block['block_id']}**: {block['name']}")
+        duration_str = format_duration(block.get("duration_seconds"))
+        suffix = f" ({duration_str})" if duration_str else ""
+        block_lines.append(f"{icon} **{block['block_id']}**: {block['name']}{suffix}")
 
     blocks_text = "\n\n".join(block_lines) if block_lines else "No blocks"
 
@@ -108,6 +128,52 @@ def build_run_status_card(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     actions: list[dict[str, Any]] = []
+
+    # Action.Submit buttons (Approve/Reject for completed+PR, Retry for failed)
+    if status == "completed" and pr_number:
+        actions.append(
+            {
+                "type": "Action.Submit",
+                "title": "Approve",
+                "style": "positive",
+                "data": {
+                    "action": "approve",
+                    "run_id": run_id,
+                    "repo": repo,
+                    "pr_number": pr_number,
+                    "issue_number": issue_number,
+                },
+            }
+        )
+        actions.append(
+            {
+                "type": "Action.Submit",
+                "title": "Reject",
+                "style": "destructive",
+                "data": {
+                    "action": "reject",
+                    "run_id": run_id,
+                    "repo": repo,
+                    "pr_number": pr_number,
+                    "issue_number": issue_number,
+                },
+            }
+        )
+    elif status == "failed":
+        actions.append(
+            {
+                "type": "Action.Submit",
+                "title": "Retry",
+                "data": {
+                    "action": "retry",
+                    "run_id": run_id,
+                    "repo": repo,
+                    "issue_number": issue_number,
+                },
+            }
+        )
+
+    # Action.OpenUrl buttons (always after Submit buttons)
     if repo and issue_number:
         actions.append(
             {
