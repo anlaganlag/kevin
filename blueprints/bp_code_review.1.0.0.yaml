@@ -192,6 +192,8 @@ blueprint:
               prompt_template: |
                 You are a Senior Code Reviewer. Review PR #{{pr_number}}.
 
+                {{learning_context}}
+
                 ## Context
 
                 Read `.kevin/pr_context.md` for the full PR diff and metadata.
