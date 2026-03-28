@@ -31,6 +31,26 @@ on:
     # Secrets must be declared to be accessible via secrets: inherit.
     # All set to required: false — actual availability depends on org/repo config.
     secrets:
+      CHECKOUT_TOKEN:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      ANTHROPIC_BASE_URL:
+        required: false
+      ANTHROPIC_MODEL:
+        required: false
+      ANTHROPIC_SMALL_FAST_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_HAIKU_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_SONNET_MODEL:
+        required: false
+      ANTHROPIC_DEFAULT_OPUS_MODEL:
+        required: false
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
+        required: false
+      TEAMS_BOT_URL:
+        required: false
 
   # Direct dispatch from the Planning Agent (Azure Function → createWorkflowDispatch).
   # workflow_dispatch only supports string/boolean/choice inputs.
@@ -59,26 +79,6 @@ on:
         required: false
         type: string
         default: ""
-      CHECKOUT_TOKEN:
-        required: false
-      ANTHROPIC_API_KEY:
-        required: false
-      ANTHROPIC_BASE_URL:
-        required: false
-      ANTHROPIC_MODEL:
-        required: false
-      ANTHROPIC_SMALL_FAST_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_HAIKU_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_SONNET_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_OPUS_MODEL:
-        required: false
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
-        required: false
-      TEAMS_BOT_URL:
-        required: false
 
 permissions:
   issues: write
