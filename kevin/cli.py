@@ -37,13 +37,19 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- run ---
     p_run = sub.add_parser("run", help="Run a full Blueprint for a GitHub Issue")
-    p_run.add_argument("--issue", type=int, required=True, help="GitHub Issue number")
-    p_run.add_argument("--repo", required=True, help="GitHub repo (owner/repo)")
+    p_run.add_argument("--issue", type=int, default=0, help="GitHub Issue number")
+    p_run.add_argument("--repo", default="", help="GitHub repo (owner/repo)")
     p_run.add_argument("--target-repo", default="", help="Local path to target repo")
     p_run.add_argument("--blueprint", default="", help="Blueprint ID override (skips label classification)")
     p_run.add_argument("--agent-id", default="", help="Agent identity posted in AgentCompletedEvent signal")
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--verbose", action="store_true")
+    # Executor mode args
+    p_run.add_argument("--run-id", default="", help="Executor run ID (enables executor mode)")
+    p_run.add_argument("--instruction", default="", help="Task instruction (executor mode)")
+    p_run.add_argument("--context", default="{}", help="JSON context (executor mode)")
+    p_run.add_argument("--callback-url", default="", help="Callback URL (executor mode)")
+    p_run.add_argument("--callback-secret", default="", help="HMAC secret for callback (executor mode)")
 
     # --- run-block ---
     p_block = sub.add_parser("run-block", help="Run a single block from an existing run")
@@ -103,7 +109,26 @@ def main(argv: list[str] | None = None) -> int:
 # ---------------------------------------------------------------------------
 
 def cmd_run(args: argparse.Namespace) -> int:
-    """Full run: fetch issue → classify → load blueprint → execute blocks."""
+    """Full run: either issue mode or executor mode."""
+    run_id = getattr(args, "run_id", "").strip()
+    instruction = getattr(args, "instruction", "").strip()
+
+    if run_id and instruction:
+        return _cmd_run_executor(args)
+
+    if instruction and not run_id:
+        print("error: --instruction requires --run-id", file=sys.stderr)
+        return 1
+
+    # Issue mode: require --issue and --repo
+    if not getattr(args, "issue", 0) or not getattr(args, "repo", ""):
+        print(
+            "error: --issue and --repo are required "
+            "(or use --run-id + --instruction for executor mode)",
+            file=sys.stderr,
+        )
+        return 1
+
     agent_id = getattr(args, "agent_id", "").strip()
     exit_code = 1
     repo = args.repo
@@ -126,6 +151,125 @@ def cmd_run(args: argparse.Namespace) -> int:
                 success=(exit_code == 0),
                 blueprint_id=resolved_blueprint_id,
             )
+
+    return exit_code
+
+
+def _cmd_run_executor(args: argparse.Namespace) -> int:
+    """Executor-as-a-Service mode: blueprint + instruction + context from CLI args."""
+    import json as _json
+
+    from kevin.callback import CallbackClient
+
+    cfg = build_config(
+        repo=getattr(args, "repo", "") or "",
+        target_repo=getattr(args, "target_repo", ""),
+        dry_run=getattr(args, "dry_run", False),
+        verbose=getattr(args, "verbose", False),
+    )
+
+    callback = CallbackClient(
+        callback_url=getattr(args, "callback_url", ""),
+        callback_secret=getattr(args, "callback_secret", ""),
+    )
+
+    # Report: running
+    callback.report_status(run_id=args.run_id, status="running")
+
+    # Load blueprint
+    blueprint_id = getattr(args, "blueprint", "").strip()
+    if not blueprint_id:
+        callback.report_status(
+            run_id=args.run_id,
+            status="failed",
+            error_code="BLUEPRINT_NOT_FOUND",
+            error_message="No --blueprint specified",
+        )
+        return 1
+
+    try:
+        bp_path = find_blueprint(cfg.blueprints_dir, blueprint_id)
+        bp = load(bp_path)
+    except FileNotFoundError:
+        callback.report_status(
+            run_id=args.run_id,
+            status="failed",
+            error_code="BLUEPRINT_NOT_FOUND",
+            error_message=f"Blueprint not found: {blueprint_id}",
+        )
+        return 1
+
+    # Build variables from instruction + context
+    raw_context = getattr(args, "context", "{}") or "{}"
+    ctx: dict = _json.loads(raw_context)
+    repo_full = ctx.get("repo", cfg.repo_full_name)
+    owner = repo_full.split("/")[0] if "/" in repo_full else cfg.repo_owner
+    repo_name = repo_full.split("/")[-1] if "/" in repo_full else cfg.repo_name
+
+    variables: dict[str, str] = {
+        "instruction": args.instruction,
+        "target_repo": str(cfg.target_repo),
+        "repo_full": repo_full,
+        "owner": owner,
+        "repo": repo_name,
+        "ref": ctx.get("ref", "main"),
+        "run_id": args.run_id,
+        # Compat: map instruction to issue fields so existing prompt templates work
+        "issue_number": str(ctx.get("issue_number", "0")),
+        "issue_title": args.instruction,
+        "issue_body": args.instruction,
+        "issue_labels": "",
+        "learning_context": "",
+    }
+
+    # Create local run state
+    state_mgr = StateManager(cfg.state_dir)
+    run = state_mgr.create_run(
+        blueprint_id=bp.blueprint_id,
+        issue_number=int(variables.get("issue_number", "0")),
+        repo=repo_full,
+        variables=variables,
+        blueprint_path=bp_path,
+    )
+
+    _log(cfg, f"Executor mode: run_id={args.run_id}, blueprint={bp.blueprint_id}")
+    _log(cfg, f"  Local run: {run.run_id}")
+    _log(cfg, f"  Blocks: {' → '.join(b.block_id for b in bp.blocks)}")
+
+    # Execute blocks (reuse existing execution engine)
+    exit_code = _execute_blocks(cfg, state_mgr, run, bp.blocks, variables)
+
+    # Reload run to get latest block states
+    run = state_mgr.load_run(run.run_id)
+    block_results: list[dict[str, str]] = []
+    for bid, bs in run.blocks.items():
+        entry: dict[str, str] = {"block_id": bid, "status": bs.status}
+        if bs.error:
+            entry["error"] = bs.error
+        block_results.append(entry)
+
+    if exit_code == 0:
+        callback.report_status(
+            run_id=args.run_id,
+            status="completed",
+            result={
+                "summary": f"Blueprint {bp.blueprint_id} completed",
+                "blocks": block_results,
+            },
+        )
+    else:
+        failed_block = next((b for b in block_results if b["status"] == "failed"), None)
+        callback.report_status(
+            run_id=args.run_id,
+            status="failed",
+            error_code="BLOCK_FAILED",
+            error_message=(
+                f"Block {failed_block['block_id']} failed"
+                if failed_block
+                else "Unknown failure"
+            ),
+            result={"blocks": block_results},
+        )
 
     return exit_code
 
