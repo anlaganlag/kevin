@@ -49,6 +49,11 @@ class KevinConfig:
     def repo_full_name(self) -> str:
         return f"{self.repo_owner}/{self.repo_name}"
 
+    @property
+    def knowledge_db(self) -> Path:
+        """Path to the SQLite knowledge database."""
+        return self.target_repo / ".kevin" / "knowledge.db"
+
 
 def build_config(
     *,
