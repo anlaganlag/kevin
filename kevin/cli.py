@@ -557,6 +557,35 @@ def _post_completion_comment(
         pass  # TODO: FIX — don't fail the run for a comment failure
 
 
+def _find_pr_for_issue(repo: str, issue_number: int) -> int | None:
+    """Search for an open PR that closes the given issue.
+
+    Agents must include 'Closes #N' in their PR body for this to work.
+    Returns the PR number, or None if not found.
+    """
+    import subprocess
+    import json as _json
+
+    try:
+        result = subprocess.run(
+            [
+                "gh", "pr", "list",
+                "--repo", repo,
+                "--state", "open",
+                "--search", f"closes:#{issue_number}",
+                "--json", "number",
+                "--limit", "1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        prs = _json.loads(result.stdout or "[]")
+        return prs[0]["number"] if prs else None
+    except Exception:
+        return None
+
+
 def _post_agent_completed_event(
     repo: str,
     issue_number: int,
@@ -570,16 +599,23 @@ def _post_agent_completed_event(
 
     The comment must come from github-actions[bot] — satisfied automatically
     when running inside a GitHub Actions workflow.
+
+    If the agent opened a PR with 'Closes #N' in the body, the PR number is
+    included so the Planning Agent can auto-merge non-HITL PRs.
     """
     import json
 
-    payload: dict[str, str] = {
+    payload: dict = {
         "event_type": "AgentCompletedEvent",
         "agent_id": agent_id,
         "status": "success" if success else "failure",
     }
     if blueprint_id:
         payload["blueprint_id"] = blueprint_id
+    if success:
+        pr_number = _find_pr_for_issue(repo, issue_number)
+        if pr_number:
+            payload["pr_number"] = pr_number
 
     body = f"```eda\n{json.dumps(payload)}\n```"
     try:

@@ -80,6 +80,7 @@ paths:
       - ARCHITECT_IN_PROGRESS
       - AWAITING_GATE_1
       - FIP_IN_PROGRESS
+      - AWAITING_GATE_1_5
       - IMPLEMENTATION_IN_PROGRESS
       - AWAITING_GATE_2
       - DEPLOYING
@@ -90,6 +91,7 @@ paths:
     notes: "Skips BA and Architect. FIP Agent uses a reduced scope for bugs."
     states:
       - FIP_IN_PROGRESS
+      - AWAITING_GATE_1_5
       - IMPLEMENTATION_IN_PROGRESS
       - AWAITING_GATE_2
       - DEPLOYING
@@ -178,12 +180,23 @@ states:
     on:
       - event: AgentCompletedEvent
         condition: "agent_id == 'fip-agent' AND status == 'success'"
-        action: dispatch_implementation_agents
-        next: IMPLEMENTATION_IN_PROGRESS
+        action: post_gate1_5_notice
+        next: AWAITING_GATE_1_5
       - event: AgentCompletedEvent
         condition: "agent_id == 'fip-agent' AND status == 'failure'"
         action: handle_failure
         next: FAILED
+
+  AWAITING_GATE_1_5:
+    description: >
+      FIP PR is open. Waiting for human to merge (HITL Gate 1.5).
+      Merge = implementation proposals approved, proceed to parallel implementation.
+      FIP Agent must open a PR with label "fip" and "Closes #N" in the body.
+    on:
+      - event: PullRequestUpdatedEvent
+        condition: "pr_merged == true AND 'fip' in pr_labels"
+        action: dispatch_implementation_agents
+        next: IMPLEMENTATION_IN_PROGRESS
 
   IMPLEMENTATION_IN_PROGRESS:
     description: >
