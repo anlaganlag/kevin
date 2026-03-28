@@ -305,6 +305,10 @@ def _execute_blocks(
         bs = BlockState(block_id=block.block_id, status="running", runner=block.runner)
         state_mgr.update_block(run, bs)
 
+        # Notify Teams: block started (real-time progress)
+        if not config.dry_run:
+            _notify_teams(config, run, blocks, issue, "running")
+
         # Retry loop
         success = False
         for attempt in range(block.max_retries + 1):
@@ -350,10 +354,18 @@ def _execute_blocks(
     final_status = "completed" if all_passed else "failed"
     state_mgr.complete_run(run, final_status)
 
+    # Build error summary from failed block (if any)
+    error_summary = ""
+    if not all_passed:
+        for bs in run.blocks.values():
+            if bs.status == "failed" and bs.error:
+                error_summary = f"[{bs.block_id}] {bs.error[:300]}"
+                break
+
     # Post completion comment + update labels
     if not config.dry_run:
         _post_completion_comment(config, run, blocks)
-        _notify_teams(config, run, blocks, issue, final_status)
+        _notify_teams(config, run, blocks, issue, final_status, error=error_summary)
         try:
             remove_labels(run.repo, run.issue_number, ["kevin"])
             if all_passed:
@@ -420,8 +432,16 @@ def _notify_teams(
     blocks: list[Block],
     issue: Issue | None,
     status: str,
+    *,
+    error: str = "",
 ) -> None:
-    """Push run status to Teams Bot (if TEAMS_BOT_URL is set)."""
+    """Push run status to Teams Bot (if TEAMS_BOT_URL is set).
+
+    Called at three points:
+      1. Before each block starts (status="running") — real-time progress
+      2. After all blocks pass (status="completed")
+      3. On failure (status="failed", error=<summary>)
+    """
     import json
     import os
     from urllib.request import Request, urlopen
@@ -439,8 +459,21 @@ def _notify_teams(
             "status": bs.status if bs else "pending",
         })
 
-    payload = {
-        "event": f"run_{status}",
+    # Map status to event type
+    event = "block_update" if status == "running" else f"run_{status}"
+
+    # Build GitHub Actions logs URL if available
+    github_run_id = os.getenv("GITHUB_RUN_ID", "")
+    github_server = os.getenv("GITHUB_SERVER_URL", "https://github.com")
+    github_repo = os.getenv("GITHUB_REPOSITORY", "")
+    logs_url = (
+        f"{github_server}/{github_repo}/actions/runs/{github_run_id}"
+        if github_run_id and github_repo
+        else ""
+    )
+
+    payload: dict[str, object] = {
+        "event": event,
         "run_id": run.run_id,
         "issue_number": run.issue_number,
         "issue_title": issue.title if issue else "",
@@ -449,6 +482,11 @@ def _notify_teams(
         "status": status,
         "blocks": block_list,
     }
+
+    if error:
+        payload["error"] = error[:500]
+    if logs_url:
+        payload["logs_url"] = logs_url
 
     try:
         data = json.dumps(payload).encode()
