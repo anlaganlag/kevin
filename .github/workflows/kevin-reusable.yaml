@@ -55,6 +55,8 @@ on:
         required: false
       TEAMS_BOT_URL:
         required: false
+      TEAMS_BOT_SECRET:
+        required: false
 
 permissions:
   issues: write
@@ -114,19 +116,30 @@ jobs:
         if: env.TEAMS_BOT_URL != ''
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_started",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ inputs.issue_number }},
-              "issue_title": ${{ toJSON(inputs.issue_title) }},
-              "repo": "${{ inputs.repo }}",
-              "blueprint_id": "",
-              "status": "running",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          payload = json.dumps({
+            'event': 'run_started',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ inputs.issue_number }},
+            'issue_title': ${{ toJSON(inputs.issue_title) }},
+            'repo': '${{ inputs.repo }}',
+            'blueprint_id': '',
+            'status': 'running',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       - name: Run Kevin
         env:
@@ -142,6 +155,7 @@ jobs:
           API_TIMEOUT_MS: "600000"
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.CHECKOUT_TOKEN || github.token }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         working-directory: agentic-sdlc
         run: |
           python -m kevin run \
@@ -156,36 +170,58 @@ jobs:
         if: success() && env.TEAMS_BOT_URL != ''
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_completed",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ inputs.issue_number }},
-              "issue_title": ${{ toJSON(inputs.issue_title) }},
-              "repo": "${{ inputs.repo }}",
-              "status": "completed",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          payload = json.dumps({
+            'event': 'run_completed',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ inputs.issue_number }},
+            'issue_title': ${{ toJSON(inputs.issue_title) }},
+            'repo': '${{ inputs.repo }}',
+            'status': 'completed',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       - name: Notify Teams — Run Failed
         if: failure() && env.TEAMS_BOT_URL != ''
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          curl -sf -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_failed",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ inputs.issue_number }},
-              "issue_title": ${{ toJSON(inputs.issue_title) }},
-              "repo": "${{ inputs.repo }}",
-              "status": "failed",
-              "error": "Check workflow logs for details",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          payload = json.dumps({
+            'event': 'run_failed',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ inputs.issue_number }},
+            'issue_title': ${{ toJSON(inputs.issue_title) }},
+            'repo': '${{ inputs.repo }}',
+            'status': 'failed',
+            'error': 'Check workflow logs for details',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       - name: Upload Kevin run state
         if: always()
