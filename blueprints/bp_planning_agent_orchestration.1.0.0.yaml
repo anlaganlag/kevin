@@ -1,0 +1,1298 @@
+# DEPRECATED — 2026-03-28
+#
+# This file used a linear task-blueprint structure (block list) which is
+# architecturally incorrect for the Planning Agent's orchestrator role.
+#
+# Replaced by: blueprints/planning_agent_state_machine.yaml
+#
+# The Planning Agent is a stateless event-driven orchestrator, not a task executor.
+# Its configuration is a state machine definition, not a sequential block list.
+# See agents/agent_02_planner.md for the updated design.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Original content preserved below for historical reference.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Planning Agent — Full Lifecycle Orchestration Blueprint (ARCHIVED)
+# Master orchestration blueprint for the Planning Agent as Ralph Loop driver.
+# This blueprint is structurally unique: it covers the full SDLC lifecycle from receiving
+# approved requirements through architecture design, HITL Gate 1, downstream cascade
+# coordination, and final governance + HITL Gate 2 before merge to main.
+#
+# IMPORTANT — How this relates to other blueprints:
+#   - Complements bp_architecture_blueprint_design.1.0.0.yaml (Phase 1 detail spec)
+#   - Does NOT replace it — the architecture blueprint is the detailed spec for B3 design work
+#   - Other blueprints (backend, testing, deployment, etc.) are Phase 2 cascade blueprints;
+#     this blueprint documents the full lifecycle that sets them in motion
+#
+# IMPORTANT — Planner Agent vs Planning Agent (two distinct entities):
+#   "Planner Agent" = a meta-routing layer that runs Ralph Loop Step 1 on every event.
+#     Its only job is to inspect labels/type and assign a primary agent. It has no skills,
+#     produces no artifacts, and is NOT the Planning Agent (agent_02_planner.md).
+#   "Planning Agent" = the specialized Architect agent (agent_02_planner.md) that designs
+#     blueprints and task breakdowns. It is one of the agents the Planner Agent can assign.
+#
+# IMPORTANT — Phase 2 execution model (new Ralph Loop cycles, not Git webhooks):
+#   After HITL Gate 1 (Blueprint PR merged), the Planner Agent (routing layer) reads task.md
+#   committed to main and dispatches NEW, independent Ralph Loop cycles — one per agent type.
+#   Each cycle has its own primary agent (Builder, Platform, QA, Security, etc.) running its
+#   own full Ralph Loop against its own blueprint. The Planning Agent does NOT run in Phase 2.
+#   BlockAssignedEvent coordination is intra-Phase-1 only (used within B1-B8).
+#   The Planning Agent's "orchestration" in Phase 2 is indirect: its task.md and
+#   context_pointers are the specification that Planner Agent reads to dispatch those cycles.
+#
+# Based on AgenticSDLC v2.0 Architecture
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_planning_agent_orchestration.1.0.0"
+    blueprint_name: "Planning Agent — Full Lifecycle Orchestration Blueprint"
+    blueprint_type: "orchestration"
+    # Note: "orchestration" is a new blueprint_type introduced for Planning Agent blueprints.
+    # Unlike feature/bugfix/test types (single-agent execution), orchestration blueprints
+    # span the full SDLC lifecycle and coordinate multiple agent types across two HITL gates.
+    version: "1.0.0"
+    created_at: "2026-03-27T00:00:00Z"
+    created_by: "PlanningAgent"
+    tags:
+      - "orchestration"
+      - "ralph-loop"
+      - "full-lifecycle"
+      - "hitl-gate-1"
+      - "hitl-gate-2"
+      - "planning-agent"
+      - "task-decomposition"
+      - "blueprint-design"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  # NOTE: This configuration covers ONLY the Planning Agent's own context needs
+  # for Phase 1 (architecture design work). It is intentionally lean.
+  #
+  # Context for downstream agents (Phase 2) is specified via context_pointers
+  # in each block definition — agents pull only what they need from .agentic/
+  # at execution time. The Planning Agent does NOT pre-load or carry context
+  # on behalf of other agents.
+  configuration:
+    profile:
+      name: "default_profile"
+      description: "Balanced quality and speed for architecture design and orchestration"
+
+    # Selective rule loading — only what the Planning Agent needs to make
+    # architecture decisions and author accurate downstream context_pointers
+    rules:
+      specific:
+        - ".agentic/rules/naming/general.yaml"
+        # Needed to enforce naming conventions in architecture output and task.md
+        - ".agentic/rules/security/owasp_top10.yaml"
+        # Needed to bake security considerations into architecture decisions
+        # and correctly annotate which blocks need security context
+
+      inline:
+        custom_rules:
+          - name: "blueprint_completeness"
+            rule: "Blueprint PR must include all required artifacts: architecture doc, API contract, task.md, diagrams, security review"
+            enforcement: "strict"
+            validator: "blueprint_completeness_validator"
+
+          - name: "task_atomicity"
+            rule: "Every task in task.md must be atomic, independently executable, and assigned to exactly one agent type"
+            enforcement: "strict"
+            validator: "task_atomicity_validator"
+
+          - name: "context_pointer_completeness"
+            rule: "Every block in the dependency graph must specify context_pointers referencing only .agentic/ paths that exist"
+            enforcement: "strict"
+            validator: "context_pointer_validator"
+
+          - name: "hitl_gate_non_bypass"
+            rule: "No implementation blocks may begin execution before HITL Gate 1 approval is recorded"
+            enforcement: "strict"
+            validator: "hitl_gate_sequencing_validator"
+
+    constraints:
+      specific:
+        - ".agentic/constraints/infra/static/technical_stack.yaml"
+        # Hard tech stack boundaries that must be respected in architecture design
+
+      inline:
+        architecture_constraints:
+          max_service_complexity: "medium"
+          preferred_pattern: "microservices_with_event_bus"
+          max_api_depth: 3
+
+        orchestration_constraints:
+          max_phase1_duration: "4h"
+          max_blueprint_pr_size: "2MB"
+          max_tasks_in_task_md: 50
+          max_rework_cycles_at_gate1: 1
+          # If Gate 1 is rejected more than once, escalate to human rather than auto-rework
+
+        resource_quotas:
+          max_tokens_phase1: 50000
+          # Planning Agent only runs in Phase 1. It has no token budget for Phase 2 because
+          # it does not execute in Phase 2 — each Phase 2 cycle's primary agent manages its own budget.
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      # Primary trigger: BA Agent publishes this after Gate 0 (requirement) approval
+      event_type: "RequirementApprovedEvent | ManualTrigger"
+      event_source: "github | scheduler"
+      event_schema:
+        # RequirementApprovedEvent payload (from BA Agent)
+        primary:
+          event_type: "RequirementApprovedEvent"
+          issue_id: "{issue_id}"
+          issue_type: "requirement"
+          labels: ["requirement", "approved", "ready-for-planning"]
+          artifacts:
+            brd_location: "requirements/brd_{issue_id}.md"
+            user_stories_location: "requirements/user_stories_{issue_id}.md"
+            acceptance_criteria_location: "requirements/acceptance_criteria_{issue_id}.md"
+          published_by: "BA_Agent"
+          gate_0_status: "approved"
+
+        # ManualTrigger: for "task" Issues that bypass the BA phase
+        alternative:
+          event_type: "ManualTrigger | IssueCreatedEvent"
+          issue_id: "{issue_id}"
+          issue_type: "task"
+          labels: ["task", "planning-required"]
+          description: "Direct task Issue created without BA analysis phase"
+
+    task_mapping:
+      requirement:
+        primary_phase: "planning"
+        entry_point: "PlanningAgent"
+        precondition: "Gate 0 approved (RequirementApprovedEvent received)"
+      task:
+        primary_phase: "planning"
+        entry_point: "PlanningAgent"
+        precondition: "None — direct task entry"
+
+    context:
+      source_documents:
+        - type: "Approved Business Requirement Document"
+          location: "requirements/brd_{issue_id}.md"
+          required: true
+          description: "BRD generated by BA Agent — primary input for architecture design"
+
+        - type: "User Stories with Acceptance Criteria"
+          location: "requirements/user_stories_{issue_id}.md"
+          required: true
+          description: "Structured user stories — defines scope of task breakdown"
+
+        - type: "Acceptance Criteria"
+          location: "requirements/acceptance_criteria_{issue_id}.md"
+          required: true
+          description: "Measurable criteria that completed implementation must satisfy"
+
+        - type: "Current Codebase"
+          location: "github://repo/tree/main/src"
+          required: true
+          description: "Existing architecture — Planning Agent must respect and extend it"
+
+      data_sources:
+        - "Git Repository (main branch) — current system state"
+        - "Learning Agent Knowledge Base — historical architecture patterns and lessons"
+        - "Infrastructure State (Platform Agent) — current resource quotas and constraints"
+        - "Static Constraints (.agentic/constraints/infra/static/) — tech stack hard limits"
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "PlanningAgent"
+      selection_logic:
+        assigned_by: "Planner Agent (meta-routing layer, Ralph Loop Step 1)"
+        reasoning: |
+          The Planner Agent (routing layer) — not the Planning Agent itself — makes this decision.
+          1. RequirementApprovedEvent received → issue_type=requirement, Gate 0 passed
+             → default primary for post-requirement cycle: PlanningAgent
+          2. IssueCreatedEvent with issue_type=task, label=planning-required
+             → default primary for task cycle: PlanningAgent
+          3. If label=security → SecurityAgent (different blueprint, Planning Agent not involved)
+             If label=infrastructure → PlatformAgent (different blueprint)
+          → Planner Agent assigns: PlanningAgent as Primary for this Ralph Loop cycle
+
+      responsibilities:
+        # Phase 1 — Blueprint Author Mode
+        - "Load historical context from Learning Agent"
+        - "Analyze approved requirements and current codebase"
+        - "Design system architecture with security baked in from the start"
+        - "Define API contracts (OpenAPI 3.0)"
+        - "Decompose work into atomic tasks (task.md) — the cascade trigger for Phase 2"
+        - "Coordinate SecurityAgent consultation on architecture (consultative, not blocking)"
+        - "Coordinate DocAgent for diagram and documentation generation"
+        - "Open Blueprint PR for HITL Gate 1 review"
+        - "Assign correct context_pointers to each block for downstream agents"
+        # Post-Gate-1 — Planning Agent's role ends; Planner Agent dispatches Phase 2
+        - "Blueprint PR merge commits task.md to Git SSOT — Planning Agent's active role ends here"
+        - "Planner Agent (routing layer) reads task.md → dispatches new Ralph Loop cycles for Phase 2"
+        - "Phase 2 agents (Builder, Platform, QA, Security) each run their own Ralph Loop independently"
+        - "Planning Agent does NOT run in Phase 2 — its task.md is the specification Phase 2 agents follow"
+
+    sub_agents:
+      - agent_type: "LearningAgent"
+        phase: "context_loading"
+        responsibilities:
+          - "Retrieve historical architecture patterns for similar features"
+          - "Surface lessons learned from past design failures"
+          - "Provide best-practice recommendations for current tech stack"
+          - "Identify reusable patterns to avoid reinventing the wheel"
+        coordination: "sequential_before_design"
+        # Must complete before B2 (requirements analysis) begins
+
+      - agent_type: "SecurityAgent"
+        phase: "architecture_review"
+        responsibilities:
+          - "Perform threat modeling on proposed architecture"
+          - "Identify security gaps before implementation begins"
+          - "Validate OWASP Top 10 compliance in architecture design"
+          - "Provide security recommendations for architecture decisions"
+        coordination: "consultative"
+        # Runs in parallel with B4/B5/B6; findings incorporated into Blueprint PR
+        # SecurityAgent reports facts; Planning Agent incorporates findings into design
+        context_pointers:
+          - ".agentic/rules/security/owasp_top10.yaml"
+
+      - agent_type: "DocAgent"
+        phase: "documentation"
+        responsibilities:
+          - "Generate Mermaid architecture diagrams from design"
+          - "Create OpenAPI 3.0 specification from API contract"
+          - "Document design decisions and rationale"
+        coordination: "parallel_with_output"
+        # Runs in parallel with B6 (task decomposition) once B3 is complete
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      PlanningAgent:
+        - skill: "blueprint_design"
+          description: "Design end-to-end executable plans from requirements"
+        - skill: "task_decomposition"
+          description: "Break features into atomic, independently executable task units → task.md"
+        - skill: "api_contract_design"
+          description: "Define OpenAPI 3.0 contracts for all service interfaces"
+        - skill: "architecture_consistency_check"
+          description: "Validate proposed design against existing codebase and tech stack constraints"
+        - skill: "dependency_graph_execution"
+          description: "Parse, schedule, and drive intra-Phase-1 block execution via BlockAssignedEvent"
+        - skill: "context_pointer_selection"
+          description: "Determine which .agentic/ paths are relevant per block — assigns selectively, does not bulk-load"
+        - skill: "hitl_gate_management"
+          description: "Pause execution at Gate 1; prepare artifacts for human review; handle approve/reject flows"
+        - skill: "technology_stack_selection"
+          description: "Select appropriate technologies within hard constraint boundaries from .agentic/"
+        - skill: "integration_pattern_design"
+          description: "Design event-driven integration patterns between system components"
+
+      LearningAgent:
+        - "historical_context_retrieval"
+        - "pattern_matching"
+        - "best_practice_recommendation"
+        - "lesson_learned_extraction"
+
+      SecurityAgent:
+        - "threat_modeling"
+        - "security_architecture_review"
+        - "owasp_compliance_check"
+        - "security_pattern_recommendation"
+
+      DocAgent:
+        - "architecture_diagram_creation"
+        - "openapi_specification_generation"
+        - "design_decision_documentation"
+
+    tool_access:
+      - tool: "github_api"
+        permissions:
+          - "issues:read/write"
+          - "pull_requests:read/write"
+          - "commits:read/write"
+          - "repository:read"
+
+      - tool: "bash_execution"
+        permissions:
+          - "file_operations"
+          - "directory_operations"
+
+      - tool: "learning_agent_query"
+        permissions:
+          - "knowledge_base:read"
+          - "pattern_matching"
+          - "architecture_patterns:query"
+
+      - tool: "platform_agent_api"
+        permissions:
+          - "infra_state:read"
+          - "resource_quotas:read"
+          - "technical_constraints:read"
+
+      - tool: "openapi_generator"
+        permissions:
+          - "openapi_spec:generate"
+          - "api_contract:validate"
+
+      - tool: "diagram_generator"
+        permissions:
+          - "mermaid_diagrams:create"
+
+  # ================================================================
+  # 6. Task Execution Workflow
+  # ================================================================
+  workflow:
+    overview: |
+      The Planning Agent's workflow spans two phases separated by HITL Gate 1.
+      Each phase is a distinct Ralph Loop cycle with a different primary agent.
+
+      PHASE 1 — Planning Agent's Ralph Loop cycle (this blueprint):
+        Planner Agent (routing layer) assigns PlanningAgent as primary
+        Steps 1-4: PlanningAgent designs architecture, creates task.md, opens Blueprint PR
+        Step 5a:   Pre-Gate-1 audit — verifies architecture quality (not implementation)
+        ⛔ HITL Gate 1: Human approves/rejects Blueprint PR
+
+      HANDOFF — Blueprint PR merged to main:
+        task.md is now committed to the Git SSOT
+        Planner Agent (routing layer) reads task.md and dispatches NEW Ralph Loop cycles
+        Planning Agent's active role ends here — its output IS the instruction set for Phase 2
+
+      PHASE 2 — New Ralph Loop cycles, each with a different primary agent:
+        Planner Agent → Builder as primary  (implementation cycle, runs own blueprint)
+        Planner Agent → Platform as primary (IaC cycle, runs own blueprint) [parallel]
+        Planner Agent → QA as primary       (testing cycle, triggered by code commit)
+        Planner Agent → Security as primary (scan cycle, triggered by code commit)
+        Each agent reads its task + context_pointers from task.md committed in Phase 1
+        Step 5b:   Post-execution audit — verifies code quality, tests, security
+        ⛔ HITL Gate 2: Human approves final PR for merge to main (after governance passes)
+
+    # ------------------------------------------------------------------
+    # PHASE 1: Planning Agent's Own Ralph Loop
+    # ------------------------------------------------------------------
+    phase_1:
+      ralph_loop:
+        # Step 1: Confirm Primary Agent
+        step_1:
+          action: "PlannerAgent → Confirm PlanningAgent as Primary"
+          input:
+            event_type: "RequirementApprovedEvent | ManualTrigger"
+            issue_id: "{issue_id}"
+            issue_type: "requirement | task"
+            gate_0_status: "approved (for RequirementApprovedEvent)"
+          output: "PlanningAgent assigned as Primary Agent"
+          decision_logic: |
+            IF event_type == "RequirementApprovedEvent" THEN PlanningAgent
+            ELSE IF issue_type == "task" AND labels contains "planning-required" THEN PlanningAgent
+            ELSE IF labels contains "security" THEN SecurityAgent (different blueprint)
+            ELSE IF labels contains "infrastructure" THEN PlatformAgent (different blueprint)
+
+        # Step 2: Load Own Context (lean and selective)
+        step_2:
+          action: "PlanningAgent → Load Rules + Context"
+          input_sources:
+            - source: "Infra Dependency Layer (Static)"
+              load: ".agentic/constraints/infra/static/technical_stack.yaml"
+              content: "Tech stack hard limits — go_version, typescript_version, framework choices"
+
+            - source: "Infra Dependency Layer (Dynamic)"
+              fetch_from: "Platform Agent API"
+              content: "Current resource quotas, deployment environment status"
+
+            - source: "Rules (.agentic/)"
+              load:
+                - ".agentic/rules/naming/general.yaml"
+                - ".agentic/rules/security/owasp_top10.yaml"
+              reason: "Naming for architecture output; security rules to inform architecture decisions"
+
+            - source: "Learning Agent"
+              query: "Historical architecture patterns, lessons learned, best practices for this feature type"
+              content:
+                - "Successful patterns from similar features"
+                - "Past architectural failures to avoid"
+                - "Recommended integration patterns"
+                - "Tech debt hotspots in current codebase"
+
+            - source: "Approved Requirements (from BA Agent)"
+              load:
+                - "requirements/brd_{issue_id}.md"
+                - "requirements/user_stories_{issue_id}.md"
+                - "requirements/acceptance_criteria_{issue_id}.md"
+              content: "Scope of work — what must be designed and decomposed"
+
+          output: "Architecture design strategy formulated with full context"
+
+        # Step 3: Phase 1 Dependency Graph — Planning Agent's Own Blocks
+        step_3:
+          action: "PlanningAgent → Execute Phase 1 Dependency Graph"
+          coordination_model: "sequential_with_parallel_output"
+          note: |
+            BlockAssignedEvent/BlockCompletedEvent coordination is used for these Phase 1 blocks.
+            This is intra-blueprint coordination — it does NOT extend to Phase 2 downstream agents.
+          description: |
+            Phase 1 execution pipeline:
+            1. Load historical context (LearningAgent + PlanningAgent)
+            2. Analyze requirements and design architecture
+            3. Generate outputs in parallel: API contract, diagrams, task breakdown
+            4. SecurityAgent conducts architecture review in parallel
+            5. Consolidate into Blueprint PR
+
+          dependency_graph:
+            execution_order: "B1 → B2 → B3 → (B4 + B5 + B6 parallel) + B7 → B8"
+            # Note: B7 (SecurityAgent) runs in parallel with B4/B5/B6, all gating B8
+
+            blocks:
+              # ── Context Loading ─────────────────────────────────────
+              - block_id: "B1"
+                name: "load_learning_context"
+                assigned_to: "PlanningAgent + LearningAgent"
+                dependencies: []
+                timeout: "20m"
+                skills:
+                  - "knowledge_base:read"
+                  - "pattern_matching"
+                  - "historical_context_retrieval"
+                output: "Historical patterns, lessons learned, and best practices loaded into Planning Agent context"
+
+              # ── Requirements Analysis ────────────────────────────────
+              - block_id: "B2"
+                name: "analyze_requirements"
+                assigned_to: "PlanningAgent"
+                dependencies: ["B1"]
+                timeout: "30m"
+                skills:
+                  - "architecture_consistency_check"
+                  - "technology_stack_selection"
+                output: "Requirements understanding: scope, constraints, integration points, risk areas identified"
+
+              # ── Architecture Design ──────────────────────────────────
+              - block_id: "B3"
+                name: "design_architecture"
+                assigned_to: "PlanningAgent"
+                dependencies: ["B2"]
+                timeout: "1h"
+                skills:
+                  - "blueprint_design"
+                  - "integration_pattern_design"
+                  - "architecture_consistency_check"
+                output: "System architecture design: components, data models, service boundaries, integration patterns"
+                note: "This block produces the design input for B4, B5, B6, and B7 in parallel"
+
+              # ── Parallel Output Generation ───────────────────────────
+              - block_id: "B4"
+                name: "design_api_contracts"
+                assigned_to: "PlanningAgent + DocAgent"
+                dependencies: ["B3"]
+                timeout: "45m"
+                skills:
+                  - "api_contract_design"
+                  - "openapi_specification_generation"
+                output: "OpenAPI 3.0 specification for all service endpoints"
+                artifact:
+                  type: "api_contract"
+                  storage_location: "docs/api/api_contract_{issue_id}.yaml"
+                  format: "OpenAPI 3.0"
+
+              - block_id: "B5"
+                name: "create_architecture_diagrams"
+                assigned_to: "PlanningAgent + DocAgent"
+                dependencies: ["B3"]
+                timeout: "30m"
+                skills:
+                  - "architecture_diagram_creation"
+                output: "Mermaid diagrams: system architecture, component interactions, data flow, deployment view"
+                artifact:
+                  type: "architecture_diagram"
+                  storage_location: "docs/diagrams/architecture_{issue_id}.mmd"
+                  format: "Mermaid"
+
+              - block_id: "B6"
+                name: "decompose_tasks"
+                assigned_to: "PlanningAgent"
+                dependencies: ["B3"]
+                timeout: "30m"
+                skills:
+                  - "task_decomposition"
+                  - "context_pointer_selection"
+                output: |
+                  task.md — hierarchical task breakdown with:
+                  - Atomic task definitions (one agent type per task)
+                  - Dependency relationships between tasks
+                  - context_pointers per task: specific .agentic/ paths each executing agent should load
+                  - Priority and estimated complexity
+                  - Agent assignment per task
+                note: |
+                  task.md is the Planning Agent's handoff document. After HITL Gate 1 approval
+                  (Blueprint PR merged to main), the Planner Agent (routing layer) reads task.md
+                  to determine what new Ralph Loop cycles to start and which agent is primary for each.
+                  context_pointers per task tell each Phase 2 agent which .agentic/ files to load
+                  in their own Step 2 — agents pull their own context; Planning Agent does not carry it.
+                artifact:
+                  type: "task_breakdown"
+                  storage_location: "docs/tasks/task_{issue_id}.md"
+                  format: "Markdown"
+
+              # ── Security Architecture Review (Consultative) ──────────
+              - block_id: "B7"
+                name: "security_architecture_review"
+                assigned_to: "SecurityAgent"
+                dependencies: ["B3"]
+                timeout: "30m"
+                coordination: "consultative"
+                # SecurityAgent reviews and reports findings — does NOT block B4/B5/B6
+                # Planning Agent incorporates findings before B8 (Blueprint PR)
+                context_pointers:
+                  - ".agentic/rules/security/owasp_top10.yaml"
+                skills:
+                  - "threat_modeling"
+                  - "security_architecture_review"
+                  - "owasp_compliance_check"
+                output: "Security architecture review: threat model, OWASP compliance status, security recommendations"
+                artifact:
+                  type: "security_review"
+                  storage_location: "docs/reviews/security_review_{issue_id}.md"
+                  format: "Markdown"
+
+              # ── Blueprint PR Creation ────────────────────────────────
+              - block_id: "B8"
+                name: "open_blueprint_pr"
+                assigned_to: "PlanningAgent"
+                dependencies: ["B4", "B5", "B6", "B7"]
+                timeout: "20m"
+                skills:
+                  - "hitl_gate_management"
+                output: |
+                  Blueprint Pull Request containing:
+                  - Architecture design document
+                  - API contract (OpenAPI 3.0)
+                  - task.md with context_pointers
+                  - Architecture diagrams (Mermaid)
+                  - Security review findings
+                  NO application code — design artifacts only.
+                pr_spec:
+                  labels: ["blueprint", "hitl-gate-1", "architecture", "ready-for-review"]
+                  reviewers: ["tech-lead", "architect-lead", "security-lead"]
+                  description_template: |
+                    ## Blueprint: {feature_name}
+                    **Blueprint ID**: bp_planning_agent_orchestration.1.0.0
+                    **Issue**: #{issue_id}
+
+                    ## Architecture Artifacts
+                    - Architecture Design: `docs/architecture/architecture_design_{issue_id}.md`
+                    - API Contract: `docs/api/api_contract_{issue_id}.yaml`
+                    - Task Breakdown: `docs/tasks/task_{issue_id}.md`
+                    - Diagrams: `docs/diagrams/architecture_{issue_id}.mmd`
+                    - Security Review: `docs/reviews/security_review_{issue_id}.md`
+
+                    ## HITL Gate 1 Checklist
+                    - [ ] Architecture design is sound and complete
+                    - [ ] Tech stack choices are within approved constraints
+                    - [ ] API contracts are consistent and complete
+                    - [ ] Task breakdown is atomic and executable
+                    - [ ] Security review findings are acceptable
+                    - [ ] Risk level and deployment strategy are agreed
+
+                    ## After Approval
+                    Merging this PR triggers downstream execution:
+                    - Builder Agent (open tasks detected via webhook)
+                    - Platform Agent (IaC shifts detected via webhook)
+
+        # Step 4: Confirm Phase 1 Completion
+        step_4:
+          action: "Confirm Phase 1 Completion + Deliver Output"
+          deliverables:
+            - type: "github_issue_update"
+              content:
+                status_transition: "In Progress → Awaiting Gate 1 Review"
+                comments:
+                  - "✅ B1: load_learning_context — Complete"
+                  - "✅ B2: analyze_requirements — Complete"
+                  - "✅ B3: design_architecture — Complete"
+                  - "✅ B4: design_api_contracts — Complete"
+                  - "✅ B5: create_architecture_diagrams — Complete"
+                  - "✅ B6: decompose_tasks (task.md generated) — Complete"
+                  - "✅ B7: security_architecture_review (consultative) — Complete"
+                  - "✅ B8: open_blueprint_pr — Complete"
+                  - ""
+                  - "⏸️ **Paused at HITL Gate 1** — Blueprint PR ready for human review"
+                  - "No implementation will begin until Blueprint PR is approved and merged."
+                labels:
+                  remove: ["in-progress"]
+                  add: ["awaiting-hitl-gate-1", "ready-for-review"]
+
+            - type: "artifact"
+              artifact_type: "phase1_execution_report"
+              storage_location: "s3://artifacts/blueprint-reports/phase1_{issue_id}.json"
+              content:
+                blueprint_id: "bp_planning_agent_orchestration.1.0.0"
+                phase: "phase_1_design"
+                blocks_executed: ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"]
+                output_artifacts:
+                  - "docs/architecture/architecture_design_{issue_id}.md"
+                  - "docs/api/api_contract_{issue_id}.yaml"
+                  - "docs/tasks/task_{issue_id}.md"
+                  - "docs/diagrams/architecture_{issue_id}.mmd"
+                  - "docs/reviews/security_review_{issue_id}.md"
+                status: "awaiting_hitl_gate_1"
+
+        # Step 5a: Pre-Gate-1 Audit (Architecture Quality)
+        step_5a:
+          action: "Audit Agents → Architecture Audit Report (Pre-Gate-1)"
+          description: |
+            Before HITL Gate 1, automated audit agents verify the architecture artifacts.
+            This checks design quality, not implementation — no code has been written yet.
+          phase_1_parallel_audits:
+            - agent: "QualityAuditAgent"
+              scope: "Architecture design quality"
+              checks:
+                - "Architecture is complete (all required sections present)"
+                - "API contract is valid OpenAPI 3.0"
+                - "Task breakdown is atomic and has no circular dependencies"
+                - "Documentation is clear and complete"
+              output: "ArchitectureQualityAuditReport"
+
+            - agent: "SecurityAuditAgent"
+              scope: "Architecture security posture"
+              checks:
+                - "Threat modeling performed"
+                - "OWASP Top 10 considerations addressed in design"
+                - "No hardcoded secrets or insecure patterns in design artifacts"
+                - "Authentication/authorization design is sound"
+              output: "ArchitectureSecurityAuditReport"
+
+            - agent: "ComplianceAuditAgent"
+              scope: "Architecture standards compliance"
+              checks:
+                - "Tech stack choices comply with .agentic/constraints/infra/static/technical_stack.yaml"
+                - "API naming follows .agentic/rules/naming/general.yaml"
+                - "Blueprint PR template is complete"
+              output: "ArchitectureComplianceAuditReport"
+
+            - agent: "CostAuditAgent"
+              scope: "Phase 1 resource usage"
+              checks:
+                - "Phase 1 token usage ≤ 50,000"
+                - "Phase 1 execution time ≤ 4h"
+              output: "Phase1CostAuditReport"
+
+          phase_2_governance_decision:
+            inputs:
+              - "ArchitectureQualityAuditReport"
+              - "ArchitectureSecurityAuditReport"
+              - "ArchitectureComplianceAuditReport"
+              - "Phase1CostAuditReport"
+
+            gates_check:
+              quality_gate:
+                condition: "all architecture quality checks passed"
+                status: "passed | failed"
+              security_gate:
+                condition: "OWASP considerations addressed AND no hardcoded secrets"
+                status: "passed | failed"
+              compliance_gate:
+                condition: "tech stack compliant AND naming compliant"
+                status: "passed | failed"
+              budget_gate:
+                condition: "phase1_tokens ≤ 50000 AND phase1_time ≤ 4h"
+                status: "passed | failed"
+
+            final_decision:
+              on_pass: "Proceed to HITL Gate 1 — notify reviewers that Blueprint PR is ready"
+              on_fail: "Block HITL Gate 1 notification; surface issues to Planning Agent for fix before human review"
+
+    # ================================================================
+    # ⛔ HITL GATE 1 — Blueprint Approval
+    # ================================================================
+    hitl_gate_1:
+      gate_id: "HITL-GATE-1"
+      gate_name: "Blueprint Approval"
+      precondition: "Phase 1 Step 5a governance decision = passed"
+      trigger: "Planning Agent opens Blueprint PR (B8)"
+      reviewers: ["tech-lead", "architect-lead", "security-lead"]
+      review_scope:
+        - "Architecture design is sound and covers all requirements"
+        - "Technology choices are within approved constraints"
+        - "API contracts are consistent, complete, and correct"
+        - "Task breakdown is executable and appropriately granular"
+        - "Security review findings are addressed or accepted"
+        - "Risk level is acknowledged and deployment strategy is agreed"
+      required: true
+      note: "NO implementation code is written until this gate is approved and merged"
+
+      on_approve:
+        action: "Human merges Blueprint PR to main"
+        mechanism: |
+          Blueprint PR merge commits task.md + architecture artifacts to Git SSOT.
+          Planner Agent (routing layer) detects the merge event, reads task.md,
+          and dispatches new Ralph Loop cycles — one per agent type listed in task.md.
+        phase_2_cycles_started:
+          - "Planner Agent → Builder as primary  (cycle: implementation, reads task.md for scope)"
+          - "Planner Agent → Platform as primary (cycle: IaC update, reads task.md for IaC tasks)"
+          # These two cycles start in parallel immediately on merge
+          # QA and Security cycles start after Builder commits code (their Ralph Loop trigger)
+        next: "Phase 2 Ralph Loop cycles begin; each agent runs independently per its own blueprint"
+
+      on_reject:
+        action: "Human comments rejection reasons on Blueprint PR"
+        mechanism: "RequirementRejectedEvent published with rejection details"
+        next: "PlanningAgent re-executes from B3 (design_architecture) incorporating feedback"
+        constraints:
+          max_rework_cycles: 1
+          # After 1 rework cycle without approval, escalate to human for manual intervention
+          escalation_on_exceeded: "EscalationRequiredEvent → create Issue for human intervention"
+
+    # ------------------------------------------------------------------
+    # PHASE 2: New Ralph Loop Cycles (Dispatched by Planner Agent)
+    # ------------------------------------------------------------------
+    phase_2:
+      description: |
+        After HITL Gate 1 (Blueprint PR merged to main), the Planner Agent (routing layer)
+        reads the committed task.md and dispatches NEW, independent Ralph Loop cycles.
+        The Planning Agent does NOT run in Phase 2 — its active role ended at Gate 1.
+
+        Each Phase 2 cycle is a full Ralph Loop with a different primary agent:
+          - Planner Agent reads task.md → determines what cycles are needed
+          - Planner Agent assigns primary agent for each cycle (Builder, Platform, QA, etc.)
+          - Each primary agent runs Steps 1-5 of their own Ralph Loop
+          - Each agent reads its tasks and context_pointers from task.md committed in Phase 1
+          - Agents communicate through Git (SSOT): outputs committed → events fire → next cycles start
+
+        The Planning Agent's indirect orchestration in Phase 2:
+          - task.md defines the work scope and sequencing the Planner Agent follows
+          - context_pointers per task specify which .agentic/ files each agent loads in their Step 2
+          - The dependency structure in task.md determines which cycles run in parallel vs. sequenced
+
+      ralph_loop_cycles:
+        # CYCLE A + CYCLE B: Start immediately in parallel on Blueprint PR merge
+        parallel_on_merge:
+          - cycle_id: "CYCLE-A"
+            dispatched_by: "Planner Agent (reads task.md on Blueprint PR merge)"
+            primary_agent: "BuilderAgent"
+            agent_blueprint: "bp_backend_coding_tdd_automation.1.0.0 (or equivalent)"
+            ralph_loop:
+              step_1: "Planner Agent assigns BuilderAgent as primary"
+              step_2: "BuilderAgent loads context from task.md context_pointers"
+              step_3: "BuilderAgent executes implementation blocks per task.md"
+              step_4: "BuilderAgent commits code, opens Implementation PR"
+              step_5: "Audit + governance on implementation quality"
+            blocks:
+              - block_id: "C1"
+                name: "backend_implementation"
+                context_pointers:
+                  # Set by Planning Agent in B6 (task.md); BuilderAgent pulls at Step 2
+                  - ".agentic/rules/naming/go.yaml"
+                  - ".agentic/constraints/infra/static/technical_stack.yaml"
+
+              - block_id: "C2"
+                name: "frontend_implementation"
+                context_pointers:
+                  - ".agentic/rules/naming/typescript.yaml"
+                  - ".agentic/constraints/infra/static/technical_stack.yaml"
+
+          - cycle_id: "CYCLE-B"
+            dispatched_by: "Planner Agent (reads task.md on Blueprint PR merge)"
+            primary_agent: "PlatformAgent"
+            agent_blueprint: "bp_deployment_monitoring_automation.1.0.0 (or equivalent)"
+            ralph_loop:
+              step_1: "Planner Agent assigns PlatformAgent as primary"
+              step_2: "PlatformAgent loads context from task.md context_pointers"
+              step_3: "PlatformAgent generates IaC (Terraform/K8s)"
+              step_4: "PlatformAgent commits IaC, opens IaC PR"
+              step_5: "Audit + governance on IaC quality"
+            blocks:
+              - block_id: "C3"
+                name: "iac_update"
+                context_pointers:
+                  - ".agentic/constraints/infra/static/technical_stack.yaml"
+                  - ".agentic/constraints/devops/cd/"
+
+        # CYCLE C + CYCLE D: Start after BuilderAgent commits code (new Git event → Planner routes)
+        on_code_committed:
+          - cycle_id: "CYCLE-C"
+            dispatched_by: "Planner Agent (triggered by code commit event)"
+            primary_agent: "QAAgent"
+            agent_blueprint: "bp_test_feature_comprehensive_testing.1.0.0"
+            ralph_loop:
+              step_1: "Planner Agent assigns QAAgent as primary"
+              step_2: "QAAgent loads context from task.md context_pointers"
+              step_3: "QAAgent runs integration, e2e, and exploratory tests"
+              step_4: "QAAgent reports Pass/Fail to Git"
+              step_5: "Audit test coverage and quality gates"
+            blocks:
+              - block_id: "C4"
+                name: "integration_and_e2e_tests"
+                context_pointers:
+                  - ".agentic/constraints/devops/ci/"
+                  - ".agentic/rules/security/owasp_top10.yaml"
+
+          - cycle_id: "CYCLE-D"
+            dispatched_by: "Planner Agent (triggered by code commit event)"
+            primary_agent: "SecurityAgent"
+            ralph_loop:
+              step_1: "Planner Agent assigns SecurityAgent as primary"
+              step_2: "SecurityAgent loads OWASP rules from task.md context_pointers"
+              step_3: "SecurityAgent runs SAST, DAST, secrets scan, dependency scan"
+              step_4: "SecurityAgent reports findings to Git"
+              step_5: "Audit security posture — hard gate on critical/high findings"
+            blocks:
+              - block_id: "C5"
+                name: "security_scan"
+                context_pointers:
+                  - ".agentic/rules/security/owasp_top10.yaml"
+
+          - cycle_id: "CYCLE-E"
+            dispatched_by: "Planner Agent (triggered by code commit event)"
+            primary_agent: "DocAgent"
+            ralph_loop:
+              step_1: "Planner Agent assigns DocAgent as primary"
+              step_2: "DocAgent reads OpenAPI spec and changelog requirements from task.md"
+              step_3: "DocAgent generates API docs, updates changelog, updates diagrams"
+              step_4: "DocAgent commits documentation"
+              step_5: "Audit documentation completeness"
+            blocks:
+              - block_id: "C6"
+                name: "api_and_changelog_documentation"
+                context_pointers: []
+                # DocAgent generates from OpenAPI spec already in repo — no .agentic/ rules needed
+
+        # CYCLE F: Starts after all C cycles + CYCLE-B complete (Planner Agent detects completion)
+        on_all_verification_complete:
+          - cycle_id: "CYCLE-F"
+            dispatched_by: "Planner Agent (triggered when C3+C4+C5+C6 all complete)"
+            primary_agent: "SREAgent"
+            agent_blueprint: "bp_deployment_monitoring_automation.1.0.0"
+            ralph_loop:
+              step_1: "Planner Agent assigns SREAgent as primary"
+              step_2: "SREAgent loads deployment constraints from task.md context_pointers"
+              step_3: "SREAgent orchestrates canary deployment, monitors health metrics"
+              step_4: "SREAgent reports deployment status to Git"
+              step_5: "Audit deployment health and rollback readiness"
+            blocks:
+              - block_id: "C7"
+                name: "canary_deployment"
+                context_pointers:
+                  - ".agentic/constraints/devops/cd/"
+
+    # ================================================================
+    # Step 5b: Post-Execution Audit + Governance (Pre-Gate-2)
+    # ================================================================
+    step_5b:
+      action: "Audit Agents → Full Execution Audit Report (Pre-Gate-2)"
+      description: |
+        After all Phase 2 cascade blocks complete, automated audit verifies
+        implementation quality before surfacing to human for Gate 2 approval.
+      trigger: "All Phase 2 blocks (C1–C8) completed"
+
+      phase_1_parallel_audits:
+        - agent: "SecurityAuditAgent"
+          scope: "Implementation security"
+          checks:
+            - "SAST scan: no critical or high vulnerabilities"
+            - "DAST scan: no exploitable vulnerabilities"
+            - "Secrets scan: no hardcoded credentials"
+            - "Dependency scan: no vulnerable third-party packages"
+          hard_gate: true
+          output: "SecurityAuditReport"
+
+        - agent: "QualityAuditAgent"
+          scope: "Implementation quality"
+          checks:
+            - "Test coverage ≥ 95%"
+            - "Code smells ≤ 5"
+            - "Code duplication ≤ 3%"
+            - "Cyclomatic complexity ≤ 10 per function"
+            - "All acceptance criteria verified"
+          hard_gate: true
+          output: "QualityAuditReport"
+
+        - agent: "ComplianceAuditAgent"
+          scope: "Standards and contract compliance"
+          checks:
+            - "Implementation matches API contract (OpenAPI 3.0)"
+            - "Documentation complete (API docs, changelog, diagrams updated)"
+            - "License compliance for all dependencies"
+            - "GDPR/data handling compliance if applicable"
+          output: "ComplianceAuditReport"
+
+        - agent: "CostAuditAgent"
+          scope: "Full lifecycle resource usage"
+          checks:
+            - "Total token usage (Phase 1 + Phase 2) ≤ budget"
+            - "Compute resource usage within quotas"
+            - "Build and test times within SLA limits"
+          output: "CostAuditReport"
+
+      phase_2_governance_decision:
+        inputs:
+          - "Phase1ExecutionReport"
+          - "SecurityAuditReport"
+          - "QualityAuditReport"
+          - "ComplianceAuditReport"
+          - "CostAuditReport"
+
+        gates_check:
+          security_gate:
+            condition: "critical_findings == 0 AND high_findings == 0"
+            threshold: "hard_gate"
+            status: "passed | failed"
+          quality_gate:
+            condition: "test_coverage ≥ 95% AND code_smells ≤ 5"
+            threshold: "hard_gate"
+            status: "passed | failed"
+          compliance_gate:
+            condition: "all_compliance_checks_passed"
+            status: "passed | failed"
+          budget_gate:
+            condition: "total_cost_usd ≤ budget_usd"
+            status: "passed | failed"
+
+        final_decision:
+          on_pass: "Notify human: 'PR ready for final review — all checks green'. Proceed to HITL Gate 2."
+          on_fail: "Block HITL Gate 2 notification; trigger fix loop. After 3 failed iterations → escalate."
+
+    # ================================================================
+    # ⛔ HITL GATE 2 — Release Approval
+    # ================================================================
+    hitl_gate_2:
+      gate_id: "HITL-GATE-2"
+      gate_name: "Release Approval"
+      precondition: "Step 5b governance decision = passed (all automated gates green)"
+      trigger: "Governance Layer notifies human: 'All checks passed — ready for final review'"
+      reviewers: ["tech-lead", "human-operator"]
+      review_scope:
+        - "Consolidated execution reports confirm implementation quality"
+        - "Security audit shows no critical or high issues"
+        - "Test coverage and quality metrics are acceptable"
+        - "Deployment strategy and rollback plan are confirmed"
+      required: true
+      note: "Governance automated pass is necessary but not sufficient — human retains final authority"
+
+      on_approve:
+        action: "Human approves and merges implementation PR to main"
+        next: "SRE Agent executes production deployment (canary → full rollout)"
+        github_operations:
+          labels:
+            remove: ["awaiting-hitl-gate-2", "in-progress"]
+            add: ["merged", "ready-for-deploy"]
+
+      on_reject:
+        action: "Human comments specific rejection reasons"
+        next: "Re-open fix loop for specific failing items; Governance re-evaluates after fix"
+        escalation: "If fix loop exceeds 3 iterations → EscalationRequiredEvent"
+
+  # ================================================================
+  # 7. Completion Criteria and Output Artifacts
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      phase_1_design:
+        - "All required architecture artifacts generated and committed"
+        - "API contract covers all user stories and acceptance criteria"
+        - "task.md contains atomic, dependency-aware tasks with context_pointers"
+        - "Security architecture review completed by SecurityAgent"
+        - "Blueprint PR opened and awaiting Gate 1 review"
+
+      phase_2_execution:
+        - "All user stories implemented and verifiable"
+        - "API contract fully implemented and tested"
+        - "Test coverage ≥ 95%"
+        - "No critical or high security vulnerabilities"
+        - "All acceptance criteria verified by QA"
+        - "Documentation updated (API docs, changelog, architecture diagrams)"
+
+      process:
+        - "HITL Gate 1 approved (Blueprint PR merged)"
+        - "HITL Gate 2 approved (implementation PR merged to main)"
+        - "Governance decision = passed (all gates green before Gate 2)"
+
+    artifacts:
+      phase_1_artifacts:
+        - artifact_type: "architecture_design"
+          name: "Architecture Design Document"
+          storage_location: "docs/architecture/architecture_design_{issue_id}.md"
+          format: "Markdown"
+
+        - artifact_type: "api_contract"
+          name: "API Contract"
+          storage_location: "docs/api/api_contract_{issue_id}.yaml"
+          format: "OpenAPI 3.0"
+
+        - artifact_type: "task_breakdown"
+          name: "Task List with Context Pointers"
+          storage_location: "docs/tasks/task_{issue_id}.md"
+          format: "Markdown"
+          note: "Contains context_pointers per task — agents pull .agentic/ files per these pointers"
+
+        - artifact_type: "architecture_diagram"
+          name: "Architecture Diagrams"
+          storage_location: "docs/diagrams/architecture_{issue_id}.mmd"
+          format: "Mermaid"
+
+        - artifact_type: "security_review"
+          name: "Security Architecture Review"
+          storage_location: "docs/reviews/security_review_{issue_id}.md"
+          format: "Markdown"
+
+        - artifact_type: "phase1_execution_report"
+          name: "Phase 1 Blueprint Execution Report"
+          storage_location: "s3://artifacts/blueprint-reports/phase1_{issue_id}.json"
+          format: "JSON"
+
+      phase_2_artifacts:
+        - artifact_type: "source_code"
+          storage_location: "github://repo/src/"
+          format: "Source files"
+
+        - artifact_type: "test_suite"
+          storage_location: "github://repo/tests/"
+          format: "Test files"
+
+        - artifact_type: "api_documentation"
+          storage_location: "docs/api/"
+          format: "OpenAPI + Markdown"
+
+        - artifact_type: "changelog"
+          storage_location: "CHANGELOG.md"
+          format: "Markdown"
+
+        - artifact_type: "deployment_manifest"
+          storage_location: "github://repo/k8s/"
+          format: "YAML"
+
+        - artifact_type: "full_execution_report"
+          name: "Full Lifecycle Blueprint Execution Report"
+          storage_location: "s3://artifacts/blueprint-reports/full_{issue_id}.json"
+          format: "JSON"
+
+        - artifact_type: "audit_report"
+          name: "Consolidated Audit Report (Governance)"
+          storage_location: "s3://artifacts/audit-reports/full_{issue_id}.json"
+          format: "JSON"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          on_phase1_complete:
+            status_transition: "In Progress → Awaiting Gate 1 Review"
+            labels:
+              add: ["awaiting-hitl-gate-1"]
+              remove: ["in-progress"]
+
+          on_gate1_approved:
+            status_transition: "Awaiting Gate 1 Review → Phase 2 In Progress"
+            labels:
+              add: ["gate-1-approved", "phase-2-in-progress"]
+              remove: ["awaiting-hitl-gate-1"]
+            comment: "Gate 1 approved. Blueprint PR merged. Downstream agents starting."
+
+          on_gate2_approved:
+            status_transition: "Phase 2 In Progress → Done"
+            labels:
+              add: ["completed", "merged"]
+              remove: ["phase-2-in-progress", "awaiting-hitl-gate-2"]
+
+      notifications:
+        on_blueprint_pr_ready:
+          channels: ["slack", "email"]
+          message: "Blueprint PR ready for HITL Gate 1 review — #{issue_id}"
+          recipients: ["tech-lead", "architect-lead", "security-lead"]
+
+        on_phase2_complete_pending_gate2:
+          channels: ["slack", "email"]
+          message: "All checks passed — PR ready for HITL Gate 2 (Release Approval) — #{issue_id}"
+          recipients: ["tech-lead", "human-operator"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    phase_1_metrics:
+      - metric_name: "phase1_design_time"
+        description: "Time from trigger to Blueprint PR open"
+        unit: "hours"
+        target: "≤ 4h"
+        threshold: "hard_gate"
+
+      - metric_name: "phase1_token_usage"
+        unit: "tokens"
+        target: "≤ 50,000"
+        threshold: "budget_gate"
+
+      - metric_name: "artifact_completeness"
+        description: "All 5 required artifacts generated"
+        unit: "boolean"
+        target: "true"
+        threshold: "hard_gate"
+
+    phase_2_metrics:
+      - metric_name: "test_coverage"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+
+      - metric_name: "security_critical_findings"
+        unit: "count"
+        target: "0"
+        threshold: "hard_gate"
+
+      - metric_name: "security_high_findings"
+        unit: "count"
+        target: "0"
+        threshold: "hard_gate"
+
+      - metric_name: "code_smells"
+        unit: "count"
+        target: "≤ 5"
+        threshold: "hard_gate"
+
+    lifecycle_metrics:
+      - metric_name: "requirement_to_production_time"
+        description: "From RequirementApprovedEvent to merge to main"
+        unit: "hours"
+        target: "≤ 48h"
+
+      - metric_name: "human_intervention_count"
+        description: "HITL gate interactions (excludes scheduled Gate 1 and Gate 2)"
+        unit: "count"
+        target: "≤ 2"
+        note: "Gate 1 and Gate 2 are expected interventions, not counted"
+
+      - metric_name: "gate1_rework_cycles"
+        description: "Times Blueprint PR was revised before Gate 1 approval"
+        unit: "count"
+        target: "0"
+        warning_threshold: 1
+        hard_limit: 1
+        # Exceeding 1 rework cycle triggers escalation
+
+      - metric_name: "fix_loop_iterations"
+        description: "Iterations after Gate 2 rejection or governance failure"
+        unit: "count"
+        target: "0"
+        hard_limit: 3
+        # Exceeding 3 iterations triggers EscalationRequiredEvent
+
+      - metric_name: "total_cost_usd"
+        unit: "USD"
+        target: "≤ budget_usd"
+        threshold: "budget_gate"
+
+    summary:
+      overall_status: "pending | phase1_in_progress | awaiting_gate1 | phase2_in_progress | awaiting_gate2 | completed | failed | escalated"
+
+  # ================================================================
+  # 9. Risk Management and Escalation
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "design"
+        description: "Architecture design may not fully capture requirements"
+        probability: "low"
+        impact: "high"
+        mitigation: "HITL Gate 1 provides human review firewall before any implementation begins"
+
+      - risk_id: "R002"
+        risk_type: "process"
+        description: "Gate 1 rejection causes significant rework delay"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "SecurityAgent early consultation in Phase 1; thorough requirements analysis in B2"
+
+      - risk_id: "R003"
+        risk_type: "coordination"
+        description: "context_pointers in task.md may reference non-existent .agentic/ paths"
+        probability: "low"
+        impact: "medium"
+        mitigation: "context_pointer_completeness validator in inline rules (Step 3)"
+
+      - risk_id: "R004"
+        risk_type: "quality"
+        description: "Phase 2 execution may produce code that fails governance gates"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Security and quality context_pointers set per-block; downstream agents run their own audit loops"
+
+      - risk_id: "R005"
+        risk_type: "resource"
+        description: "Phase 1 design may exceed token budget for complex features"
+        probability: "low"
+        impact: "low"
+        mitigation: "LearningAgent context reduces redundant analysis; budget_gate surfaces overrun early"
+
+    escalation_triggers:
+      - trigger: "hitl_gate_1_exceeded_rework"
+        condition: "gate1_rework_cycles > max_rework_cycles (1)"
+        action: "EscalationRequiredEvent → create escalation Issue → pause all execution → await human manual intervention"
+
+      - trigger: "fix_loop_non_convergence"
+        condition: "fix_loop_iterations > 3 AND unresolved governance failures remain"
+        action: "EscalationRequiredEvent → create escalation Issue with full context → await human"
+
+      - trigger: "security_gate_failure"
+        condition: "critical_findings > 0 OR high_findings > 0"
+        action: "Block HITL Gate 2 regardless of other gate status. Block merge to main. Require security fix."
+
+      - trigger: "phase1_timeout"
+        condition: "phase1_execution_time > 4h"
+        action: "Pause Phase 1. Generate timeout report. Request human guidance on whether to continue or restructure."
+
+      - trigger: "budget_exceeded"
+        condition: "total_cost_usd > budget_usd"
+        action: "Pause execution at next block boundary. Generate cost report. Require human approval to continue."
+
+      - trigger: "requirement_ambiguity_detected"
+        condition: "Planning Agent cannot resolve conflicting or insufficient requirements during B2"
+        action: "Pause at B2. Publish RequirementClarificationNeededEvent. BA Agent re-engages with stakeholder."
+
+    escalation_process:
+      step_1: "Pause automated execution at current block boundary"
+      step_2: "Publish EscalationRequiredEvent with full execution context"
+      step_3: "Create GitHub Issue with: escalation reason, current state, recommended resolution options"
+      step_4: "Notify via Slack and email with context summary"
+      step_5: "Await human resolution. Resume on human-provided directive."
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+    requires_security_review: true
+
+    parallelism:
+      phase1_max_parallel_blocks: 4
+      # B4 + B5 + B6 + B7 all run in parallel after B3
+
+    timeouts:
+      phase1_block_timeout: "1h"
+      phase1_blueprint_timeout: "4h"
+      phase2_monitoring_timeout: "24h"
+      agent_timeout: "30m"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+      backoff_multiplier: 2
+
+    notifications:
+      on_start: true
+      on_phase1_complete: true
+      on_gate1_ready: true
+      on_gate2_ready: true
+      on_failure: true
+      on_escalation: true
+      channels: ["slack", "email"]
+
+# ================================================================
+# Planning Agent — Full Lifecycle Orchestration Blueprint End
+# ================================================================

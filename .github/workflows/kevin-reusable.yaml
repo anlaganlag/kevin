@@ -12,11 +12,22 @@ on:
         required: true
         type: number
       issue_title:
-        required: true
+        required: false
         type: string
+        default: ""
       repo:
         required: true
         type: string
+      blueprint_id:
+        description: "Blueprint ID to run (overrides label classification)"
+        required: false
+        type: string
+        default: ""
+      agent_id:
+        description: "Agent identity posted in AgentCompletedEvent (e.g. ba-agent)"
+        required: false
+        type: string
+        default: ""
     # Secrets must be declared to be accessible via secrets: inherit.
     # All set to required: false — actual availability depends on org/repo config.
     secrets:
@@ -120,6 +131,8 @@ jobs:
             --issue ${{ inputs.issue_number }} \
             --repo ${{ inputs.repo }} \
             --target-repo ${{ github.workspace }}/target-repo \
+            ${{ inputs.blueprint_id != '' && format('--blueprint {0}', inputs.blueprint_id) || '' }} \
+            ${{ inputs.agent_id != '' && format('--agent-id {0}', inputs.agent_id) || '' }} \
             --verbose
 
       - name: Notify Teams — Run Completed

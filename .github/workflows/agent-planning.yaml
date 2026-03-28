@@ -1,0 +1,537 @@
+name: Planning Agent
+
+# Triggered by the EDA router via repository_dispatch.
+# Implements the state machine defined in:
+#   blueprints/planning_agent_state_machine.yaml
+#
+# The Planning Agent is stateless — it reads current state from the GitHub
+# issue body metadata, evaluates the incoming event, takes one action,
+# updates state, and exits.
+
+on:
+  repository_dispatch:
+    types: [trigger-planning-agent]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Raw payload fields — validated before use (see validate-inputs step)
+  _RAW_EVENT_TYPE:   ${{ github.event.client_payload.event_type }}
+  _RAW_ISSUE_NUM:    ${{ github.event.client_payload.issue_number }}
+  _RAW_CORR_ID:      ${{ github.event.client_payload.correlation_id }}
+  _RAW_REPO:         ${{ github.event.client_payload.repository || github.repository }}
+  _RAW_AGENT_ID:     ${{ github.event.client_payload.agent_id || '' }}
+  _RAW_AGENT_STATUS: ${{ github.event.client_payload.status || '' }}
+  _RAW_PR_MERGED:    ${{ github.event.client_payload.pr_merged || 'false' }}
+  _RAW_PR_LABELS:    ${{ github.event.client_payload.pr_labels || '' }}
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Step 0: Validate and sanitize all payload inputs ──────────────
+      # SECURITY: All values from repository_dispatch client_payload are
+      # externally supplied. Validate before exposing to shell commands.
+      - name: Validate inputs
+        id: validate
+        run: |
+          set -euo pipefail
+
+          EVENT_TYPE="$_RAW_EVENT_TYPE"
+          ISSUE_NUM="$_RAW_ISSUE_NUM"
+          CORR_ID="$_RAW_CORR_ID"
+          REPO="$_RAW_REPO"
+          AGENT_ID="$_RAW_AGENT_ID"
+          AGENT_STATUS="$_RAW_AGENT_STATUS"
+
+          # Validate ISSUE_NUM: must be a positive integer
+          if [[ ! "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: invalid issue_number: '$ISSUE_NUM'" >&2; exit 1
+          fi
+
+          # Validate REPO: must match owner/repo format
+          if [[ ! "$REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+            echo "ERROR: invalid repository: '$REPO'" >&2; exit 1
+          fi
+
+          # Validate CORR_ID: UUID format (or empty for IssueCreatedEvent)
+          if [[ -n "$CORR_ID" && ! "$CORR_ID" =~ ^[0-9a-f-]{36}$ ]]; then
+            echo "ERROR: invalid correlation_id format" >&2; exit 1
+          fi
+
+          # Validate EVENT_TYPE against known values
+          VALID_EVENTS="IssueCreatedEvent RequirementApprovedEvent AgentCompletedEvent PullRequestUpdatedEvent PlanningDirectDispatchEvent"
+          if [[ ! " $VALID_EVENTS " =~ " $EVENT_TYPE " ]]; then
+            echo "ERROR: unknown event_type: '$EVENT_TYPE'" >&2; exit 1
+          fi
+
+          # Validate AGENT_ID against known agent identifiers (whitelist)
+          if [[ -n "$AGENT_ID" ]]; then
+            VALID_AGENTS="ba-agent architect-agent fip-agent builder-agent qa-agent security-agent platform-agent doc-agent sre-agent"
+            if [[ ! " $VALID_AGENTS " =~ " $AGENT_ID " ]]; then
+              echo "ERROR: unknown agent_id: '$AGENT_ID'" >&2; exit 1
+            fi
+          fi
+
+          # Validate AGENT_STATUS
+          if [[ -n "$AGENT_STATUS" && "$AGENT_STATUS" != "success" && "$AGENT_STATUS" != "failure" ]]; then
+            echo "ERROR: invalid status: '$AGENT_STATUS'" >&2; exit 1
+          fi
+
+          # Sanitize PR_LABELS: strip anything that isn't alphanumeric, comma, dash, underscore
+          SAFE_PR_LABELS=$(echo "$_RAW_PR_LABELS" | tr -cd '[:alnum:],-_')
+
+          # Export validated values as step outputs
+          {
+            echo "event_type=$EVENT_TYPE"
+            echo "issue_num=$ISSUE_NUM"
+            echo "corr_id=$CORR_ID"
+            echo "repo=$REPO"
+            echo "agent_id=$AGENT_ID"
+            echo "agent_status=$AGENT_STATUS"
+            echo "pr_merged=$_RAW_PR_MERGED"
+            echo "pr_labels=$SAFE_PR_LABELS"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Step 1: Read current state from issue metadata ─────────────────
+      - name: Read issue metadata
+        id: meta
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+        run: |
+          set -euo pipefail
+          BODY=$(gh api "repos/$REPO/issues/$ISSUE_NUM" --jq '.body // ""')
+
+          # Extract hidden metadata — limit to the single line containing the marker
+          META_LINE=$(echo "$BODY" | grep -m1 '<!-- eda-playground-metadata:' || echo '')
+          META_JSON=$(echo "$META_LINE" | grep -oP '(?<=<!-- eda-playground-metadata:)\{[^}]*\}(?=-->)' || echo '{}')
+
+          STATE=$(echo "$META_JSON"      | jq -r '.planning_agent_state // "INITIAL"')
+          ISSUE_PATH=$(echo "$META_JSON" | jq -r '.issue_path // ""')
+          DISPATCHED=$(echo "$META_JSON" | jq -r '(.dispatched_agents // []) | join(",")')
+          COMPLETED=$(echo "$META_JSON"  | jq -r '(.completed_agents // []) | join(",")')
+
+          {
+            echo "state=$STATE"
+            echo "issue_path=$ISSUE_PATH"
+            echo "dispatched=$DISPATCHED"
+            echo "completed=$COMPLETED"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Write helper functions ────────────────────────────────
+      - name: Write helper scripts
+        env:
+          REPO: ${{ steps.validate.outputs.repo }}
+        run: |
+          cat > /tmp/pa-helpers.sh << 'HELPERS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          # Update planning_agent_state in issue body metadata.
+          # Uses explicit jq --arg flags — no raw string injection.
+          # Args: new_state issue_num repo [key=value ...]
+          update_state() {
+            local new_state="$1"
+            local issue_num="$2"
+            local repo="$3"
+            shift 3
+            # Remaining args are key=value pairs for extra metadata fields
+
+            BODY=$(gh api "repos/$repo/issues/$issue_num" --jq '.body // ""')
+
+            # Re-read live metadata at point of write to reduce stale-read window
+            META_LINE=$(echo "$BODY" | grep -m1 '<!-- eda-playground-metadata:' || echo '')
+            META_JSON=$(echo "$META_LINE" | grep -oP '(?<=<!-- eda-playground-metadata:)\{[^}]*\}(?=-->)' || echo '{}')
+
+            # Merge new state
+            NEW_META=$(echo "$META_JSON" | jq --arg s "$new_state" '. + {"planning_agent_state": $s}')
+
+            # Merge each extra key=value pair safely via --arg
+            while [[ $# -gt 0 ]]; do
+              IFS='=' read -r kkey vval <<< "$1"
+              NEW_META=$(echo "$NEW_META" | jq --arg k "$kkey" --arg v "$vval" '. + {($k): $v}')
+              shift
+            done
+
+            local MARKER='<!-- eda-playground-metadata:'
+            if echo "$BODY" | grep -q "$MARKER"; then
+              # Replace only the metadata comment line, using Python for safe replacement
+              NEW_BODY=$(python3 -c "
+          import sys, re
+          body = sys.stdin.read()
+          new_meta = sys.argv[1]
+          pattern = r'<!-- eda-playground-metadata:\{[^}]*\}-->'
+          replacement = '<!-- eda-playground-metadata:' + new_meta + '-->'
+          print(re.sub(pattern, replacement, body, count=1), end='')
+          " "$NEW_META" <<< "$BODY")
+            else
+              NEW_BODY="${BODY}
+
+          <!-- eda-playground-metadata:${NEW_META}-->"
+            fi
+
+            gh api "repos/$repo/issues/$issue_num" \
+              --method PATCH \
+              --field "body=$NEW_BODY" > /dev/null
+            echo "State updated to: $new_state"
+          }
+
+          # Post a comment on the issue
+          post_comment() {
+            local issue_num="$1"
+            local repo="$2"
+            local body="$3"
+            gh issue comment "$issue_num" --repo "$repo" --body "$body"
+          }
+
+          # Dispatch a specialist agent via repository_dispatch.
+          # Payload fields passed as separate validated args — no raw JSON injection.
+          dispatch_agent() {
+            local event_type="$1"
+            local repo="$2"
+            local issue_num="$3"
+            local corr_id="$4"
+            local blueprint_id="${5:-}"
+
+            local payload
+            payload=$(jq -n \
+              --arg et  "$event_type" \
+              --arg rep "$repo" \
+              --argjson iss "$issue_num" \
+              --arg cid "$corr_id" \
+              --arg bp  "$blueprint_id" \
+              '{event_type: $et, repository: $rep, issue_number: $iss, correlation_id: $cid, blueprint_id: $bp}')
+
+            gh api "repos/$repo/dispatches" \
+              --field event_type="$event_type" \
+              --field "client_payload=$payload"
+            echo "Dispatched: $event_type"
+          }
+          HELPERS
+          chmod +x /tmp/pa-helpers.sh
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: IssueCreatedEvent  |  STATE: INITIAL
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "IssueCreatedEvent → classify and dispatch"
+        if: steps.validate.outputs.event_type == 'IssueCreatedEvent' && steps.meta.outputs.state == 'INITIAL'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          CORR_ID: ${{ steps.validate.outputs.corr_id }}
+        run: |
+          source /tmp/pa-helpers.sh
+
+          LABELS=$(gh api "repos/$REPO/issues/$ISSUE_NUM" --jq '[.labels[].name] | join(" ")')
+          echo "Issue labels: $LABELS"
+
+          if echo "$LABELS" | grep -qiE '\b(bug|hotfix)\b'; then
+            ISSUE_TYPE="bug";      NEXT_STATE="FIP_IN_PROGRESS";       FIRST_EVENT="trigger-fip-agent"
+          elif echo "$LABELS" | grep -qiE '\bsecurity\b'; then
+            ISSUE_TYPE="security"; NEXT_STATE="SECURITY_IN_PROGRESS";  FIRST_EVENT="trigger-security-agent"
+          elif echo "$LABELS" | grep -qiE '\b(docs|documentation)\b'; then
+            ISSUE_TYPE="docs";     NEXT_STATE="DOC_IN_PROGRESS";       FIRST_EVENT="trigger-doc-agent"
+          elif echo "$LABELS" | grep -qiE '\b(infra|infrastructure)\b'; then
+            ISSUE_TYPE="infra";    NEXT_STATE="PLATFORM_IN_PROGRESS";  FIRST_EVENT="trigger-platform-agent"
+          else
+            ISSUE_TYPE="feature";  NEXT_STATE="BA_IN_PROGRESS";        FIRST_EVENT="trigger-ba-agent"
+          fi
+
+          echo "Classified as: $ISSUE_TYPE → $NEXT_STATE"
+          dispatch_agent "$FIRST_EVENT" "$REPO" "$ISSUE_NUM" "$CORR_ID"
+          update_state "$NEXT_STATE" "$ISSUE_NUM" "$REPO" "issue_path=$ISSUE_TYPE"
+
+          post_comment "$ISSUE_NUM" "$REPO" "## 🤖 Planning Agent Activated
+
+Issue classified as: \`$ISSUE_TYPE\`
+Workflow path: \`$ISSUE_TYPE\`
+Starting: **$FIRST_EVENT**
+
+_Correlation ID: \`$CORR_ID\`_"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: AgentCompletedEvent (ba-agent)  |  STATE: BA_IN_PROGRESS
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted(ba-agent) → request BA approval"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_id == 'ba-agent' &&
+          steps.validate.outputs.agent_status == 'success' &&
+          steps.meta.outputs.state == 'BA_IN_PROGRESS'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+        run: |
+          source /tmp/pa-helpers.sh
+          update_state "AWAITING_BA_APPROVAL" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 📋 BA Analysis Complete
+
+Requirements analysis is ready for review.
+
+Reply \`/eda-approve-planning\` to proceed to architecture design."
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: RequirementApprovedEvent  |  STATE: AWAITING_BA_APPROVAL
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "RequirementApproved → dispatch Architect Agent"
+        if: >
+          steps.validate.outputs.event_type == 'RequirementApprovedEvent' &&
+          steps.meta.outputs.state == 'AWAITING_BA_APPROVAL'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          CORR_ID: ${{ steps.validate.outputs.corr_id }}
+        run: |
+          source /tmp/pa-helpers.sh
+          dispatch_agent "trigger-architect-agent" "$REPO" "$ISSUE_NUM" "$CORR_ID" \
+            "bp_architecture_blueprint_design.1.0.0"
+          update_state "ARCHITECT_IN_PROGRESS" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 🏗️ Architecture Design Started
+
+Architect Agent is designing the system.
+A **Blueprint PR** will be opened for your review (HITL Gate 1)."
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: AgentCompletedEvent (architect-agent)  |  STATE: ARCHITECT_IN_PROGRESS
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted(architect-agent) → notify Gate 1"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_id == 'architect-agent' &&
+          steps.validate.outputs.agent_status == 'success' &&
+          steps.meta.outputs.state == 'ARCHITECT_IN_PROGRESS'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+        run: |
+          source /tmp/pa-helpers.sh
+          update_state "AWAITING_GATE_1" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 🏗️ Architecture Design Complete — HITL Gate 1
+
+The Architect Agent has opened a Blueprint PR containing:
+- Architecture design document
+- API contracts (OpenAPI)
+- Task breakdown (\`task.md\`)
+
+**Merge the Blueprint PR to proceed to implementation.**"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: PullRequestUpdatedEvent (blueprint PR merged)  |  STATE: AWAITING_GATE_1
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "PR merged (blueprint) → dispatch FIP Agent"
+        if: >
+          steps.validate.outputs.event_type == 'PullRequestUpdatedEvent' &&
+          steps.validate.outputs.pr_merged == 'true' &&
+          steps.meta.outputs.state == 'AWAITING_GATE_1'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          CORR_ID: ${{ steps.validate.outputs.corr_id }}
+          PR_LABELS: ${{ steps.validate.outputs.pr_labels }}
+        run: |
+          source /tmp/pa-helpers.sh
+          if ! echo "$PR_LABELS" | grep -qi "blueprint"; then
+            echo "Merged PR is not a blueprint PR — ignoring"
+            exit 0
+          fi
+          dispatch_agent "trigger-fip-agent" "$REPO" "$ISSUE_NUM" "$CORR_ID" \
+            "bp_function_implementation_fip_blueprint.1.0.0"
+          update_state "FIP_IN_PROGRESS" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 📐 Blueprint Approved — Function Implementation Planning Started
+
+FIP Agent is creating detailed implementation proposals for each task."
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: AgentCompletedEvent (fip-agent)  |  STATE: FIP_IN_PROGRESS
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted(fip-agent) → dispatch implementation agents"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_id == 'fip-agent' &&
+          steps.validate.outputs.agent_status == 'success' &&
+          steps.meta.outputs.state == 'FIP_IN_PROGRESS'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          CORR_ID: ${{ steps.validate.outputs.corr_id }}
+        run: |
+          source /tmp/pa-helpers.sh
+          dispatch_agent "trigger-builder-agent"  "$REPO" "$ISSUE_NUM" "$CORR_ID" "bp_coding_task.1.0.0"
+          dispatch_agent "trigger-qa-agent"       "$REPO" "$ISSUE_NUM" "$CORR_ID"
+          dispatch_agent "trigger-security-agent" "$REPO" "$ISSUE_NUM" "$CORR_ID"
+
+          update_state "IMPLEMENTATION_IN_PROGRESS" "$ISSUE_NUM" "$REPO" \
+            "dispatched_agents=builder-agent,qa-agent,security-agent" \
+            "completed_agents="
+
+          post_comment "$ISSUE_NUM" "$REPO" "## ⚡ Implementation Phase Started
+
+Dispatched in parallel:
+- 🔨 **Builder Agent** (\`bp_coding_task.1.0.0\`)
+- 🧪 **QA Agent**
+- 🔒 **Security Agent**"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: AgentCompletedEvent (impl agents)  |  STATE: IMPLEMENTATION_IN_PROGRESS
+      # Track parallel completion; advance to Gate 2 when all done.
+      # Note: a small race window exists if two completions arrive simultaneously.
+      # The update_state helper re-reads live metadata before writing to reduce
+      # (but not eliminate) the window. A dedicated lock is needed for full safety.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted(impl) → track and check all done"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_status == 'success' &&
+          steps.meta.outputs.state == 'IMPLEMENTATION_IN_PROGRESS'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          AGENT_ID: ${{ steps.validate.outputs.agent_id }}
+          # Use env: for step output values rather than ${{ }} inside run: scripts
+          DISPATCHED_AT_START: ${{ steps.meta.outputs.dispatched }}
+          COMPLETED_AT_START: ${{ steps.meta.outputs.completed }}
+        run: |
+          source /tmp/pa-helpers.sh
+
+          # Re-read live metadata to minimize stale-read window
+          BODY=$(gh api "repos/$REPO/issues/$ISSUE_NUM" --jq '.body // ""')
+          META_LINE=$(echo "$BODY" | grep -m1 '<!-- eda-playground-metadata:' || echo '')
+          META_JSON=$(echo "$META_LINE" | grep -oP '(?<=<!-- eda-playground-metadata:)\{[^}]*\}(?=-->)' || echo '{}')
+          LIVE_COMPLETED=$(echo "$META_JSON" | jq -r '(.completed_agents // []) | join(",")')
+          LIVE_DISPATCHED=$(echo "$META_JSON" | jq -r '(.dispatched_agents // []) | join(",")')
+
+          # Avoid duplicate recording
+          if echo "$LIVE_COMPLETED" | grep -qw "$AGENT_ID"; then
+            echo "$AGENT_ID already recorded — skipping"
+            exit 0
+          fi
+
+          NEW_COMPLETED="${LIVE_COMPLETED:+$LIVE_COMPLETED,}$AGENT_ID"
+
+          IFS=',' read -ra D_ARR <<< "$LIVE_DISPATCHED"
+          IFS=',' read -ra C_ARR <<< "$NEW_COMPLETED"
+          D_COUNT=${#D_ARR[@]}
+          C_COUNT=${#C_ARR[@]}
+          echo "Completed $C_COUNT / $D_COUNT agents"
+
+          if [[ "$C_COUNT" -ge "$D_COUNT" ]]; then
+            update_state "AWAITING_GATE_2" "$ISSUE_NUM" "$REPO" \
+              "completed_agents=$NEW_COMPLETED"
+            post_comment "$ISSUE_NUM" "$REPO" "## ✅ Implementation Complete — HITL Gate 2
+
+All implementation agents have finished:
+- ✅ Builder Agent — code PR created
+- ✅ QA Agent — tests passing
+- ✅ Security Agent — scan complete
+
+**Merge the release PR to deploy to production.**"
+          else
+            update_state "IMPLEMENTATION_IN_PROGRESS" "$ISSUE_NUM" "$REPO" \
+              "completed_agents=$NEW_COMPLETED"
+          fi
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: PullRequestUpdatedEvent (release PR merged)  |  STATE: AWAITING_GATE_2
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "PR merged (release) → dispatch SRE Agent"
+        if: >
+          steps.validate.outputs.event_type == 'PullRequestUpdatedEvent' &&
+          steps.validate.outputs.pr_merged == 'true' &&
+          steps.meta.outputs.state == 'AWAITING_GATE_2'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          CORR_ID: ${{ steps.validate.outputs.corr_id }}
+          PR_LABELS: ${{ steps.validate.outputs.pr_labels }}
+        run: |
+          source /tmp/pa-helpers.sh
+          if ! echo "$PR_LABELS" | grep -qi "release"; then
+            echo "Merged PR is not a release PR — ignoring"
+            exit 0
+          fi
+          dispatch_agent "trigger-sre-agent" "$REPO" "$ISSUE_NUM" "$CORR_ID"
+          update_state "DEPLOYING" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 🚀 Deployment Started
+
+SRE Agent is deploying to production."
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EVENT: AgentCompletedEvent (sre-agent)  |  STATE: DEPLOYING
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted(sre-agent) → complete issue"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_id == 'sre-agent' &&
+          steps.validate.outputs.agent_status == 'success' &&
+          steps.meta.outputs.state == 'DEPLOYING'
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+        run: |
+          source /tmp/pa-helpers.sh
+          update_state "COMPLETE" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 🎉 Done
+
+Workflow complete. Issue closed."
+          gh issue close "$ISSUE_NUM" --repo "$REPO"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # SHORT-CIRCUIT: Single-agent paths (security / docs / infra)
+      # Only on success — failures fall through to the failure handler below.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted (single-agent path) → complete issue"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_status == 'success' && (
+            (steps.validate.outputs.agent_id == 'security-agent' && steps.meta.outputs.state == 'SECURITY_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'doc-agent'      && steps.meta.outputs.state == 'DOC_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'platform-agent' && steps.meta.outputs.state == 'PLATFORM_IN_PROGRESS')
+          )
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          AGENT_ID: ${{ steps.validate.outputs.agent_id }}
+        run: |
+          source /tmp/pa-helpers.sh
+          update_state "COMPLETE" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## 🎉 Done
+
+\`$AGENT_ID\` completed successfully. Issue closed."
+          gh issue close "$ISSUE_NUM" --repo "$REPO"
+
+      # ─────────────────────────────────────────────────────────────────────
+      # FAILURE HANDLER: any agent failure, guarded by expected states
+      # Only fires when the failing agent is expected in the current state.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: "AgentCompleted (failure) → post alert"
+        if: >
+          steps.validate.outputs.event_type == 'AgentCompletedEvent' &&
+          steps.validate.outputs.agent_status == 'failure' && (
+            (steps.validate.outputs.agent_id == 'ba-agent'        && steps.meta.outputs.state == 'BA_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'architect-agent' && steps.meta.outputs.state == 'ARCHITECT_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'fip-agent'       && steps.meta.outputs.state == 'FIP_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'sre-agent'       && steps.meta.outputs.state == 'DEPLOYING') ||
+            (steps.validate.outputs.agent_id == 'security-agent'  && steps.meta.outputs.state == 'SECURITY_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'doc-agent'       && steps.meta.outputs.state == 'DOC_IN_PROGRESS') ||
+            (steps.validate.outputs.agent_id == 'platform-agent'  && steps.meta.outputs.state == 'PLATFORM_IN_PROGRESS') ||
+            steps.meta.outputs.state == 'IMPLEMENTATION_IN_PROGRESS'
+          )
+        env:
+          ISSUE_NUM: ${{ steps.validate.outputs.issue_num }}
+          REPO: ${{ steps.validate.outputs.repo }}
+          AGENT_ID: ${{ steps.validate.outputs.agent_id }}
+          CURRENT_STATE: ${{ steps.meta.outputs.state }}
+        run: |
+          source /tmp/pa-helpers.sh
+          update_state "FAILED" "$ISSUE_NUM" "$REPO"
+          post_comment "$ISSUE_NUM" "$REPO" "## ⚠️ Agent Failure — Manual Intervention Required
+
+\`$AGENT_ID\` failed during \`$CURRENT_STATE\`.
+
+Please investigate and use \`/eda-route-planning\` to restart."
