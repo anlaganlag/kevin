@@ -143,28 +143,31 @@ blueprint:
               runner: "claude_cli"
               runner_config:
                 cwd: "{{target_repo}}"
-              timeout: 120
+                model: ""
+              timeout: 300
               max_retries: 1
               pre_check: "rm -f .kevin/analysis.md"  # 幂等性：清理上次分析产物
               prompt_template: |
                 You are analyzing a GitHub Issue to plan an implementation.
+                You MUST create files as instructed. Do NOT ask questions. Do NOT wait for confirmation. Just execute.
 
                 ## Issue #{{issue_number}}: {{issue_title}}
 
                 {{issue_body}}
 
-                ## Instructions
+                ## Instructions (execute ALL steps)
 
                 1. Read the issue carefully
-                2. Explore the existing codebase to understand current structure
-                3. Write a brief implementation plan to `.kevin/analysis.md`:
+                2. Create directory `.kevin/` if it does not exist: `mkdir -p .kevin`
+                3. Write a brief implementation plan to `.kevin/analysis.md` containing:
                    - Summary of what needs to be built
                    - Files to create or modify
                    - Test scenarios to cover
                    - Any risks or open questions
-                4. Create a feature branch: `kevin/issue-{{issue_number}}`
+                4. Create a feature branch: `git checkout -b kevin/issue-{{issue_number}}`
 
-                Do NOT implement yet. Only analyze and plan.
+                IMPORTANT: You MUST write the file `.kevin/analysis.md` before finishing.
+                Do NOT implement the solution yet. Only analyze and plan.
               output: "Implementation plan in .kevin/analysis.md + feature branch created"
               validators:
                 - type: "file_exists"
@@ -189,6 +192,7 @@ blueprint:
               runner: "claude_cli"
               runner_config:
                 cwd: "{{target_repo}}"
+                model: ""
                 context_filter:              # 上下文预算：排除大目录
                   - "node_modules"
                   - "dist"
@@ -198,7 +202,7 @@ blueprint:
               timeout: 600
               max_retries: 2
               # 幂等性：resume 时撤销 B2 上次未完成的修改，但保留 B1 的 analysis.md
-              pre_check: "git checkout -- . && git clean -fd --exclude=.kevin/"
+              pre_check: "git diff --quiet HEAD -- . 2>/dev/null || git checkout -- . 2>/dev/null; git clean -fd --exclude=.kevin/ 2>/dev/null; true"
               prompt_template: |
                 You are implementing a coding task on branch `kevin/issue-{{issue_number}}`.
 
@@ -246,8 +250,20 @@ blueprint:
                   git push -u origin kevin/issue-{{issue_number}} && \
                   gh pr create \
                     --title "{{issue_title}}" \
-                    --body "## Summary\n\nResolves #{{issue_number}}\n\n## Changes\n\n$(git diff main...HEAD --stat)\n\n## Test Results\n\n$(cd {{target_repo}} && cat .kevin/analysis.md | head -20)\n\n---\n_Automated by Kevin Planning Agent via bp_coding_task.1.0.0_" \
-                    --label "kevin-automated"
+                    --body "## Summary
+
+                  Resolves {{repo_full}}#{{issue_number}}
+
+                  ## Changes
+
+                  $(git diff main...HEAD --stat)
+
+                  ## Test Results
+
+                  $(cat .kevin/analysis.md 2>/dev/null | head -20)
+
+                  ---
+                  _Automated by Kevin Planning Agent via bp_coding_task.1.0.0_"
               timeout: 120
               max_retries: 1
               validators:
