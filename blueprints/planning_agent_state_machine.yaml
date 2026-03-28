@@ -1,0 +1,436 @@
+# Planning Agent State Machine
+# ============================================================
+# This is the canonical orchestration config for the Planning Agent.
+#
+# The Planning Agent is a STATELESS EVENT-DRIVEN ORCHESTRATOR.
+# It does NOT do architecture, coding, or domain work itself.
+# It drives the SDLC event loop by:
+#   1. Receiving all new GitHub Issues
+#   2. Classifying the issue type and selecting a workflow path
+#   3. Dispatching specialist agents via repository_dispatch
+#   4. Re-waking on AgentCompletedEvent / PullRequestUpdatedEvent
+#   5. Advancing state and dispatching the next agent
+#
+# Execution model:
+#   - Stateless: reads/writes state via GitHub issue body metadata
+#   - Event-driven: triggered by repository_dispatch (from EDA router)
+#   - Exits after each action; re-triggered by the next event
+#
+# Specialist completion signal:
+#   Specialists post a fenced EDA JSON comment when done:
+#     ```eda
+#     {"event_type":"AgentCompletedEvent","agent_id":"ba-agent","status":"success"}
+#     ```
+#   This fires AgentCompletedEvent → routed to trigger-planning-agent.
+# ============================================================
+
+version: "1.0.0"
+agent_id: "planning-agent"
+description: "Central event-loop driver for AgenticSDLC"
+
+# ── Issue Classification ──────────────────────────────────────────────────
+# Determines the workflow path for a new issue.
+# Strategies are evaluated in priority order; first match wins.
+issue_classifier:
+  strategies:
+    # 1. GitHub issue form template name (most explicit)
+    - type: issue_template
+      mappings:
+        feature_request.yml: feature
+        bug_report.yml:      bug
+        security_report.yml: security
+        docs_update.yml:     docs
+        infra_change.yml:    infra
+
+    # 2. GitHub labels (team-applied)
+    - type: label
+      mappings:
+        feature:       feature
+        enhancement:   feature
+        bug:           bug
+        hotfix:        bug
+        security:      security
+        documentation: docs
+        docs:          docs
+        infrastructure: infra
+        infra:         infra
+
+    # 3. Body keyword fallback (least specific)
+    - type: keyword
+      case_sensitive: false
+      mappings:
+        "security vulnerability": security
+        "security issue":         security
+        "update docs":            docs
+        "update documentation":   docs
+        "infrastructure change":  infra
+        "bug fix":                bug
+        "fix bug":                bug
+
+  default: feature   # if no strategy matches, assume new feature
+
+# ── Workflow Paths ────────────────────────────────────────────────────────
+# Each path lists the states the issue will move through in order.
+paths:
+  feature:
+    description: "Full SDLC: BA → Architect → FIP → Implement → Deploy"
+    states:
+      - BA_IN_PROGRESS
+      - AWAITING_BA_APPROVAL
+      - ARCHITECT_IN_PROGRESS
+      - AWAITING_GATE_1
+      - FIP_IN_PROGRESS
+      - IMPLEMENTATION_IN_PROGRESS
+      - AWAITING_GATE_2
+      - DEPLOYING
+      - COMPLETE
+
+  bug:
+    description: "Bug short-circuit: FIP (lightweight) → Implement → Deploy"
+    notes: "Skips BA and Architect. FIP Agent uses a reduced scope for bugs."
+    states:
+      - FIP_IN_PROGRESS
+      - IMPLEMENTATION_IN_PROGRESS
+      - AWAITING_GATE_2
+      - DEPLOYING
+      - COMPLETE
+    fip_mode: lightweight
+
+  security:
+    description: "Security scan only — no implementation"
+    states:
+      - SECURITY_IN_PROGRESS
+      - COMPLETE
+
+  docs:
+    description: "Documentation update only"
+    states:
+      - DOC_IN_PROGRESS
+      - COMPLETE
+
+  infra:
+    description: "Infrastructure change only"
+    states:
+      - PLATFORM_IN_PROGRESS
+      - COMPLETE
+
+# ── State Definitions ─────────────────────────────────────────────────────
+# Each state defines which events it listens for and what to do.
+#
+# Transition fields:
+#   on:        event type that triggers this transition
+#   condition: expression evaluated against the event payload
+#   action:    name of the action to execute (see actions section)
+#   next:      state to transition to after the action
+#             (null = action determines next state dynamically)
+states:
+
+  INITIAL:
+    description: "New issue received. Classify and dispatch first agent."
+    on:
+      - event: IssueCreatedEvent
+        action: classify_and_dispatch
+        next: null   # set dynamically based on classification
+
+  BA_IN_PROGRESS:
+    description: "BA Agent is analyzing requirements."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'ba-agent' AND status == 'success'"
+        action: post_ba_approval_request
+        next: AWAITING_BA_APPROVAL
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'ba-agent' AND status == 'failure'"
+        action: handle_failure
+        next: FAILED
+
+  AWAITING_BA_APPROVAL:
+    description: "BRD ready. Waiting for human /eda-approve-planning."
+    on:
+      - event: RequirementApprovedEvent
+        action: dispatch_architect
+        next: ARCHITECT_IN_PROGRESS
+
+  ARCHITECT_IN_PROGRESS:
+    description: "Architect Agent designing the system."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'architect-agent' AND status == 'success'"
+        action: post_gate1_notice
+        next: AWAITING_GATE_1
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'architect-agent' AND status == 'failure'"
+        action: handle_failure
+        next: FAILED
+
+  AWAITING_GATE_1:
+    description: >
+      Blueprint PR is open. Waiting for human to merge (HITL Gate 1).
+      Merge = architecture approved, proceed to detailed implementation planning.
+    on:
+      - event: PullRequestUpdatedEvent
+        condition: "pr_merged == true AND 'blueprint' in pr_labels"
+        action: dispatch_fip
+        next: FIP_IN_PROGRESS
+
+  FIP_IN_PROGRESS:
+    description: "FIP Agent creating function implementation proposals."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'fip-agent' AND status == 'success'"
+        action: dispatch_implementation_agents
+        next: IMPLEMENTATION_IN_PROGRESS
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'fip-agent' AND status == 'failure'"
+        action: handle_failure
+        next: FAILED
+
+  IMPLEMENTATION_IN_PROGRESS:
+    description: >
+      Builder, QA, Security working in parallel.
+      State advances only when ALL tracked agents complete.
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id in ['builder-agent', 'qa-agent', 'security-agent']"
+        action: record_completion_and_check_all_done
+        next: null   # AWAITING_GATE_2 when all done, otherwise stays
+
+  AWAITING_GATE_2:
+    description: >
+      All implementation done. Waiting for human to merge release PR (HITL Gate 2).
+      Merge = approved to ship.
+    on:
+      - event: PullRequestUpdatedEvent
+        condition: "pr_merged == true AND 'release' in pr_labels"
+        action: dispatch_sre
+        next: DEPLOYING
+
+  DEPLOYING:
+    description: "SRE Agent deploying to production."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'sre-agent' AND status == 'success'"
+        action: complete_issue
+        next: COMPLETE
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'sre-agent' AND status == 'failure'"
+        action: handle_failure
+        next: FAILED
+
+  # ── Short-circuit terminal paths ─────────────────────────────────────
+
+  SECURITY_IN_PROGRESS:
+    description: "Security Agent running scan (no implementation follows)."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'security-agent'"
+        action: complete_issue
+        next: COMPLETE
+
+  DOC_IN_PROGRESS:
+    description: "Doc Agent updating documentation."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'doc-agent'"
+        action: complete_issue
+        next: COMPLETE
+
+  PLATFORM_IN_PROGRESS:
+    description: "Platform Agent applying infrastructure changes."
+    on:
+      - event: AgentCompletedEvent
+        condition: "agent_id == 'platform-agent'"
+        action: complete_issue
+        next: COMPLETE
+
+  # ── Terminal states ──────────────────────────────────────────────────
+
+  COMPLETE:
+    description: "Issue fully resolved and closed."
+    terminal: true
+
+  FAILED:
+    description: "A step failed. Requires human intervention."
+    terminal: true
+    on:
+      # Human can manually restart by posting /eda-route-planning
+      - event: PlanningDirectDispatchEvent
+        action: restart_from_current_state
+        next: null   # determined by restart action
+
+# ── Action Definitions ────────────────────────────────────────────────────
+# Each action maps to logic in .github/workflows/agent-planning.yaml.
+# Comment templates use {{ variable }} syntax for runtime substitution.
+actions:
+
+  classify_and_dispatch:
+    description: "Classify issue type, select path, dispatch first agent."
+    steps:
+      - classify_issue_type            # reads labels/template/keywords
+      - store_classification_in_meta   # writes issue_path to metadata
+      - dispatch_first_agent_for_path  # fires repository_dispatch
+      - post_status_comment
+    comment: |
+      ## 🤖 Planning Agent Activated
+
+      Issue classified as: `{{ issue_type }}`
+      Workflow path: `{{ path }}`
+      Starting: **{{ first_agent }}**
+
+  post_ba_approval_request:
+    description: "BRD complete. Post comment requesting human approval."
+    comment: |
+      ## 📋 BA Analysis Complete
+
+      Requirements analysis is ready for review.
+
+      Reply `/eda-approve-planning` to proceed to architecture design.
+
+  dispatch_architect:
+    description: "Dispatch Architect Agent (bp_architecture_blueprint_design)."
+    dispatch:
+      event_type: trigger-architect-agent
+      payload: [correlation_id, issue_number, blueprint_id]
+    blueprint_id: "bp_architecture_blueprint_design.1.0.0"
+    comment: |
+      ## 🏗️ Architecture Design Started
+
+      Architect Agent is designing the system.
+      A **Blueprint PR** will be opened for your review (HITL Gate 1).
+
+  post_gate1_notice:
+    description: "Architecture done. Notify human to review Blueprint PR."
+    comment: |
+      ## 🏗️ Architecture Design Complete — HITL Gate 1
+
+      The Architect Agent has opened a Blueprint PR containing:
+      - Architecture design document
+      - API contracts (OpenAPI)
+      - Task breakdown (`task.md`)
+      - Architecture diagrams
+
+      **Merge the Blueprint PR to proceed to implementation.**
+
+  dispatch_fip:
+    description: "Blueprint merged. Dispatch FIP Agent (bp_function_implementation_fip_blueprint)."
+    dispatch:
+      event_type: trigger-fip-agent
+      payload: [correlation_id, issue_number, blueprint_id]
+    blueprint_id: "bp_function_implementation_fip_blueprint.1.0.0"
+    comment: |
+      ## 📐 Blueprint Approved — Function Implementation Planning Started
+
+      FIP Agent is creating detailed implementation proposals for each task.
+
+  dispatch_implementation_agents:
+    description: "FIP done. Dispatch Builder, QA, Security in parallel."
+    dispatch_parallel:
+      - event_type: trigger-builder-agent
+        blueprint_id: "bp_coding_task.1.0.0"
+      - event_type: trigger-qa-agent
+        blueprint_id: null   # not yet defined
+      - event_type: trigger-security-agent
+        blueprint_id: null   # not yet defined
+    track_agents: [builder-agent, qa-agent, security-agent]
+    comment: |
+      ## ⚡ Implementation Phase Started
+
+      Dispatched in parallel:
+      - 🔨 **Builder Agent** (`bp_coding_task.1.0.0`)
+      - 🧪 **QA Agent**
+      - 🔒 **Security Agent**
+
+  record_completion_and_check_all_done:
+    description: "Track parallel agent completion. Advance when all done."
+    steps:
+      - record_agent_in_completed_list    # appends agent_id to completed_agents metadata
+      - check_all_tracked_complete        # compares completed_agents to dispatched_agents
+      - if_all_complete:
+          next_state: AWAITING_GATE_2
+          action: request_gate2_approval
+
+  request_gate2_approval:
+    description: "All implementation done. Post Gate 2 review request."
+    comment: |
+      ## ✅ Implementation Complete — HITL Gate 2
+
+      All implementation agents have finished:
+      - ✅ Builder Agent — code PR created
+      - ✅ QA Agent — tests passing
+      - ✅ Security Agent — scan complete
+
+      **Merge the release PR to deploy to production.**
+
+  dispatch_sre:
+    description: "Release PR merged. Dispatch SRE Agent."
+    dispatch:
+      event_type: trigger-sre-agent
+      payload: [correlation_id, issue_number]
+    comment: |
+      ## 🚀 Deployment Started
+
+      SRE Agent is deploying to production.
+
+  complete_issue:
+    description: "Close the issue and post completion summary."
+    close_issue: true
+    comment: |
+      ## 🎉 Done
+
+      Workflow complete. Issue closed.
+
+  handle_failure:
+    description: "Agent failed. Post notice and await human intervention."
+    comment: |
+      ## ⚠️ Agent Failure — Manual Intervention Required
+
+      **{{ agent_id }}** failed during `{{ current_state }}`.
+
+      Please investigate and use `/eda-route-planning` to restart.
+
+  restart_from_current_state:
+    description: "Re-dispatch the agent for the current state (manual recovery)."
+    steps:
+      - read_current_state_from_metadata
+      - dispatch_agent_for_state
+    comment: |
+      ## 🔄 Restarting from `{{ current_state }}`
+
+# ── Metadata Schema ───────────────────────────────────────────────────────
+# Fields written to the GitHub issue body as a hidden HTML comment:
+# <!-- eda-playground-metadata:{...}-->
+#
+# This is the existing pattern from the EDA playground (metadata-manager.ts).
+# Planning Agent EXTENDS this with additional fields.
+metadata_schema:
+  # Existing fields (managed by EDA playground metadata-manager.ts)
+  correlation_id:         string    # UUID, minted on first event
+  blueprint_id:           string    # active blueprint (if any)
+
+  # Planning Agent fields
+  planning_agent_state:   string    # current state name (e.g. "BA_IN_PROGRESS")
+  issue_path:             string    # selected path (e.g. "feature", "bug")
+  dispatched_agents:      array     # agent_ids dispatched in current parallel phase
+  completed_agents:       array     # agent_ids that posted AgentCompletedEvent
+  blueprint_pr_number:    integer   # PR number for HITL Gate 1 (set by Architect Agent)
+  release_pr_number:      integer   # PR number for HITL Gate 2 (set by Builder Agent)
+
+# ── Agent Completion Contract ─────────────────────────────────────────────
+# Every specialist agent MUST post this comment when it completes.
+# This fires AgentCompletedEvent → EDA router → trigger-planning-agent.
+#
+# Success:
+#   ```eda
+#   {"event_type":"AgentCompletedEvent","agent_id":"ba-agent","status":"success"}
+#   ```
+#
+# Failure:
+#   ```eda
+#   {"event_type":"AgentCompletedEvent","agent_id":"ba-agent","status":"failure","error":"reason"}
+#   ```
+agent_completion_contract:
+  required_comment_format: fenced_eda_json
+  required_fields: [event_type, agent_id, status]
+  optional_fields: [error, output_summary, artifacts]
+  event_type_value: "AgentCompletedEvent"
+  status_values: [success, failure]

@@ -1,5 +1,32 @@
 # Blueprint 模板更新日志
 
+## 2026-03-28 - Planning Agent Redesign: State Machine Orchestrator
+
+### New: `blueprints/planning_agent_state_machine.yaml`
+
+**Why**: The previous `bp_planning_agent_orchestration.1.0.0.yaml` used a linear task-blueprint
+structure (sequential block list), which is fundamentally wrong for an orchestrator. The Planning
+Agent is a stateless event-driven orchestrator — it does not execute tasks itself.
+
+**What changed**:
+- Introduced `planning_agent_state_machine.yaml` — a YAML state machine definition (not a block list)
+- Planning Agent = central event-loop driver; dispatches BA, Architect, FIP, Builder, QA, Security, Platform, Doc, SRE
+- Issue classification on `IssueCreatedEvent`: feature / bug / security / docs / infra paths
+- Short-circuit paths for bugs, security, docs, infra (skip BA and/or Architect)
+- State stored in GitHub issue body metadata (existing `correlation_id` pattern)
+- Specialist completion signal: fenced EDA JSON `AgentCompletedEvent` comment on the issue
+- HITL Gate 1: Blueprint PR merge → dispatch FIP Agent
+- HITL Gate 2: Release PR merge → dispatch SRE Agent
+
+**Related changes**:
+- `agents/agent_02_planner.md` — rewritten to reflect orchestrator role
+- `.github/workflows/agent-planning.yaml` — new GHA workflow implementing the state machine
+- `event-driven-architecture-playground/config/agent-routing.yml` — added `IssueCreatedEvent` and `AgentCompletedEvent` routes
+- `event-driven-architecture-playground/adapters/issue-comment-bus-command.ts` — added `AgentCompletedEvent` parsing
+- `bp_planning_agent_orchestration.1.0.0.yaml` — archived with deprecation notice
+
+---
+
 ## 2026-03-27 - Planning Agent Full Lifecycle Orchestration Blueprint
 
 ### New Blueprint: bp_planning_agent_orchestration.1.0.0

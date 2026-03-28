@@ -38,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--issue", type=int, required=True, help="GitHub Issue number")
     p_run.add_argument("--repo", required=True, help="GitHub repo (owner/repo)")
     p_run.add_argument("--target-repo", default="", help="Local path to target repo")
+    p_run.add_argument("--blueprint", default="", help="Blueprint ID override (skips label classification)")
+    p_run.add_argument("--agent-id", default="", help="Agent identity posted in AgentCompletedEvent signal")
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--verbose", action="store_true")
 
@@ -94,6 +96,34 @@ def main(argv: list[str] | None = None) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     """Full run: fetch issue → classify → load blueprint → execute blocks."""
+    agent_id = getattr(args, "agent_id", "").strip()
+    exit_code = 1
+    repo = args.repo
+    issue_number = args.issue
+    resolved_blueprint_id = getattr(args, "blueprint", "").strip()
+
+    try:
+        exit_code = _cmd_run_inner(args)
+    finally:
+        # Always signal completion when agent_id is set — even on early failure.
+        # This ensures the Planning Agent state machine always advances (or fails cleanly).
+        config = build_config(
+            repo=repo,
+            target_repo=getattr(args, "target_repo", ""),
+            dry_run=getattr(args, "dry_run", False),
+        )
+        if not config.dry_run and agent_id:
+            _post_agent_completed_event(
+                repo, issue_number, agent_id,
+                success=(exit_code == 0),
+                blueprint_id=resolved_blueprint_id,
+            )
+
+    return exit_code
+
+
+def _cmd_run_inner(args: argparse.Namespace) -> int:
+    """Inner implementation of cmd_run — all early returns live here."""
     config = build_config(
         repo=args.repo,
         target_repo=args.target_repo,
@@ -107,17 +137,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     _log(config, f"  Title: {issue.title}")
     _log(config, f"  Labels: {issue.labels}")
 
-    # 2. Classify intent
-    intent = classify(issue.labels, config.intent_map)
-    if intent is None:
-        _err(f"Cannot classify issue #{args.issue}. Labels: {issue.labels}")
-        _err("Ensure the issue has 'kevin' label + a task type label (coding-task, code-review, etc.)")
-        return 1
-
-    _log(config, f"  Intent: {intent.blueprint_id} (matched: {intent.matched_label})")
+    # 2. Resolve blueprint — explicit override takes priority over label classification
+    blueprint_override = getattr(args, "blueprint", "").strip()
+    if blueprint_override:
+        blueprint_id = blueprint_override
+        _log(config, f"  Blueprint override: {blueprint_id}")
+    else:
+        intent = classify(issue.labels, config.intent_map)
+        if intent is None:
+            _err(f"Cannot classify issue #{args.issue}. Labels: {issue.labels}")
+            _err("Ensure the issue has 'kevin' label + a task type label (coding-task, code-review, etc.)")
+            return 1
+        blueprint_id = intent.blueprint_id
+        _log(config, f"  Intent: {blueprint_id} (matched: {intent.matched_label})")
 
     # 3. Load blueprint
-    bp_path = find_blueprint(config.blueprints_dir, intent.blueprint_id)
+    bp_path = find_blueprint(config.blueprints_dir, blueprint_id)
     blueprint = load(bp_path)
     _log(config, f"  Blueprint: {blueprint.blueprint_name} ({len(blueprint.blocks)} blocks)")
 
@@ -424,6 +459,37 @@ def _post_completion_comment(
         post_comment(run.repo, run.issue_number, "\n".join(lines))
     except Exception:
         pass  # TODO: FIX — don't fail the run for a comment failure
+
+
+def _post_agent_completed_event(
+    repo: str,
+    issue_number: int,
+    agent_id: str,
+    *,
+    success: bool,
+    blueprint_id: str = "",
+) -> None:
+    """Post a fenced EDA JSON comment that the EDA router normalises into
+    AgentCompletedEvent and routes back to the Planning Agent.
+
+    The comment must come from github-actions[bot] — satisfied automatically
+    when running inside a GitHub Actions workflow.
+    """
+    import json
+
+    payload: dict[str, str] = {
+        "event_type": "AgentCompletedEvent",
+        "agent_id": agent_id,
+        "status": "success" if success else "failure",
+    }
+    if blueprint_id:
+        payload["blueprint_id"] = blueprint_id
+
+    body = f"```eda\n{json.dumps(payload)}\n```"
+    try:
+        post_comment(repo, issue_number, body)
+    except Exception:
+        pass  # non-fatal — Planning Agent will timeout and human can restart
 
 
 def _notify_teams(

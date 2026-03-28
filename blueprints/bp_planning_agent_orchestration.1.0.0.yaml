@@ -1,4 +1,19 @@
-# Planning Agent — Full Lifecycle Orchestration Blueprint
+# DEPRECATED — 2026-03-28
+#
+# This file used a linear task-blueprint structure (block list) which is
+# architecturally incorrect for the Planning Agent's orchestrator role.
+#
+# Replaced by: blueprints/planning_agent_state_machine.yaml
+#
+# The Planning Agent is a stateless event-driven orchestrator, not a task executor.
+# Its configuration is a state machine definition, not a sequential block list.
+# See agents/agent_02_planner.md for the updated design.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Original content preserved below for historical reference.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Planning Agent — Full Lifecycle Orchestration Blueprint (ARCHIVED)
 # Master orchestration blueprint for the Planning Agent as Ralph Loop driver.
 # This blueprint is structurally unique: it covers the full SDLC lifecycle from receiving
 # approved requirements through architecture design, HITL Gate 1, downstream cascade
