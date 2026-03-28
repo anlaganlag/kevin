@@ -731,14 +731,25 @@ def _notify_teams(
 
     try:
         data = json.dumps(payload).encode()
-        req = Request(
-            f"{teams_url}/api/notify",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
+        headers = _teams_headers(data)
+        req = Request(f"{teams_url}/api/notify", data=data, headers=headers)
         urlopen(req, timeout=10)
     except Exception as e:
         _log(config, f"  [WARN] Teams notify failed: {e}")
+
+
+def _teams_headers(body: bytes) -> dict[str, str]:
+    """Build headers for Teams Bot /api/notify, including HMAC signature if secret is set."""
+    import hashlib
+    import hmac as hmac_mod
+    import os
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    secret = os.getenv("TEAMS_BOT_SECRET", "")
+    if secret:
+        sig = hmac_mod.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        headers["X-Bot-Signature"] = sig
+    return headers
 
 
 def _notify_teams_early_failure(
@@ -785,11 +796,8 @@ def _notify_teams_early_failure(
 
     try:
         data = json.dumps(payload).encode()
-        req = Request(
-            f"{teams_url}/api/notify",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
+        headers = _teams_headers(data)
+        req = Request(f"{teams_url}/api/notify", data=data, headers=headers)
         urlopen(req, timeout=10)
     except Exception:
         pass  # Non-fatal — workflow step 9 is the backup

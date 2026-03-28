@@ -73,20 +73,30 @@ jobs:
       - name: Notify Teams — Run Started
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
-          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_started",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ github.event.issue.number }},
-              "issue_title": ${{ toJSON(github.event.issue.title) }},
-              "repo": "${{ github.repository }}",
-              "blueprint_id": "",
-              "status": "running",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          payload = json.dumps({
+            'event': 'run_started',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ github.event.issue.number }},
+            'issue_title': ${{ toJSON(github.event.issue.title) }},
+            'repo': '${{ github.repository }}',
+            'blueprint_id': '',
+            'status': 'running',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       # 7. Run Kevin
       - name: Run Kevin
@@ -104,6 +114,7 @@ jobs:
           API_TIMEOUT_MS: "600000"
           GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         working-directory: agentic-sdlc
         run: |
           python -m kevin run \
@@ -117,45 +128,67 @@ jobs:
         if: success()
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
-          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "run_completed",
-              "run_id": "gh-${{ github.run_id }}",
-              "issue_number": ${{ github.event.issue.number }},
-              "issue_title": ${{ toJSON(github.event.issue.title) }},
-              "repo": "${{ github.repository }}",
-              "status": "completed",
-              "blocks": []
-            }' || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          payload = json.dumps({
+            'event': 'run_completed',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ github.event.issue.number }},
+            'issue_title': ${{ toJSON(github.event.issue.title) }},
+            'repo': '${{ github.repository }}',
+            'status': 'completed',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       # 9. Notify Teams — Run Failed (with captured error details)
       - name: Notify Teams — Run Failed
         if: failure()
         env:
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
+          TEAMS_BOT_SECRET: ${{ secrets.TEAMS_BOT_SECRET }}
         run: |
-          if [ -z "$TEAMS_BOT_URL" ]; then exit 0; fi
-          ERROR_MSG="Check workflow logs for details"
-          if [ -f /tmp/kevin-stderr.log ]; then
-            ERROR_MSG=$(tail -5 /tmp/kevin-stderr.log | tr '\n' ' ' | head -c 400)
-          fi
-          ERROR_JSON=$(echo "$ERROR_MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
-          curl -s -X POST "$TEAMS_BOT_URL/api/notify" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"event\": \"run_failed\",
-              \"run_id\": \"gh-${{ github.run_id }}\",
-              \"issue_number\": ${{ github.event.issue.number }},
-              \"issue_title\": ${{ toJSON(github.event.issue.title) }},
-              \"repo\": \"${{ github.repository }}\",
-              \"status\": \"failed\",
-              \"error\": $ERROR_JSON,
-              \"logs_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
-              \"blocks\": []
-            }" || echo "::warning::Teams notification failed (non-fatal)"
+          python3 -c "
+          import json, hashlib, hmac, os, sys
+          from urllib.request import Request, urlopen
+          url = os.getenv('TEAMS_BOT_URL', '')
+          if not url: sys.exit(0)
+          error = 'Check workflow logs for details'
+          try:
+            with open('/tmp/kevin-stderr.log') as f:
+              lines = f.readlines()[-5:]
+              error = ' '.join(l.strip() for l in lines)[:400]
+          except FileNotFoundError:
+            pass
+          payload = json.dumps({
+            'event': 'run_failed',
+            'run_id': 'gh-${{ github.run_id }}',
+            'issue_number': ${{ github.event.issue.number }},
+            'issue_title': ${{ toJSON(github.event.issue.title) }},
+            'repo': '${{ github.repository }}',
+            'status': 'failed',
+            'error': error,
+            'logs_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+            'blocks': []
+          }).encode()
+          headers = {'Content-Type': 'application/json'}
+          secret = os.getenv('TEAMS_BOT_SECRET', '')
+          if secret:
+            headers['X-Bot-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          req = Request(f'{url}/api/notify', data=payload, headers=headers)
+          urlopen(req, timeout=10)
+          " || echo "::warning::Teams notification failed (non-fatal)"
 
       # 10. Upload run state as artifact (always, even on failure)
       - name: Upload Kevin run state
