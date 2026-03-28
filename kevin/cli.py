@@ -173,10 +173,7 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
         callback_secret=getattr(args, "callback_secret", ""),
     )
 
-    # Report: running
-    callback.report_status(run_id=args.run_id, status="running")
-
-    # Load blueprint
+    # Validate inputs before reporting "running"
     blueprint_id = getattr(args, "blueprint", "").strip()
     if not blueprint_id:
         callback.report_status(
@@ -199,9 +196,21 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Build variables from instruction + context
+    # Parse context JSON
     raw_context = getattr(args, "context", "{}") or "{}"
-    ctx: dict = _json.loads(raw_context)
+    try:
+        ctx: dict = _json.loads(raw_context)
+    except _json.JSONDecodeError as exc:
+        callback.report_status(
+            run_id=args.run_id,
+            status="failed",
+            error_code="INVALID_CONTEXT",
+            error_message=f"Malformed --context JSON: {exc}",
+        )
+        return 1
+
+    # Report: running (after input validation passes)
+    callback.report_status(run_id=args.run_id, status="running")
     repo_full = ctx.get("repo", cfg.repo_full_name)
     owner = repo_full.split("/")[0] if "/" in repo_full else cfg.repo_owner
     repo_name = repo_full.split("/")[-1] if "/" in repo_full else cfg.repo_name
