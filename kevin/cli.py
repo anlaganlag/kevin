@@ -74,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     p_debug.add_argument("--block", required=True, help="Block ID to replay (e.g. B2)")
     p_debug.add_argument("--target-repo", default="", help="Local path to target repo")
 
+    # --- harvest ---
+    p_harvest = sub.add_parser("harvest", help="Backfill knowledge.db from all historical runs")
+    p_harvest.add_argument("--target-repo", default="", help="Local path to target repo")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -89,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_list_runs(args)
     elif args.command == "debug":
         return cmd_debug(args)
+    elif args.command == "harvest":
+        return cmd_harvest(args)
     return 1
 
 
@@ -254,6 +260,15 @@ def cmd_list_runs(args: argparse.Namespace) -> int:
         total = len(run.blocks)
         print(f"  {run_id}  [{run.status}]  {run.blueprint_id}  issue#{run.issue_number}  {passed}/{total} blocks")
 
+    return 0
+
+
+def cmd_harvest(args: argparse.Namespace) -> int:
+    """Backfill knowledge.db from all historical runs in .kevin/runs/."""
+    config = build_config(target_repo=args.target_repo)
+    from kevin.learning.harvester import harvest_all
+    result = harvest_all(config.knowledge_db, config.state_dir)
+    print(f"Harvested: {result.harvested}  Skipped: {result.skipped_existing}  Failed: {result.failed_parse}")
     return 0
 
 

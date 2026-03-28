@@ -151,6 +151,8 @@ blueprint:
                 You are analyzing a GitHub Issue to plan an implementation.
                 You MUST create files as instructed. Do NOT ask questions. Do NOT wait for confirmation. Just execute.
 
+                {{learning_context}}
+
                 ## Issue #{{issue_number}}: {{issue_title}}
 
                 {{issue_body}}
@@ -205,6 +207,8 @@ blueprint:
               pre_check: "git diff --quiet HEAD -- . 2>/dev/null || git checkout -- . 2>/dev/null; git clean -fd --exclude=.kevin/ 2>/dev/null; true"
               prompt_template: |
                 You are implementing a coding task on branch `kevin/issue-{{issue_number}}`.
+
+                {{learning_context}}
 
                 ## Context
 
