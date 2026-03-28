@@ -101,8 +101,8 @@ jobs:
       # are not configured.
       - name: Generate GitHub App token
         id: app-token
-        if: secrets.APP_ID != '' && secrets.APP_PRIVATE_KEY != ''
         uses: actions/create-github-app-token@v1
+        continue-on-error: true
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
