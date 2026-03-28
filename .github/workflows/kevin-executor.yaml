@@ -1,0 +1,63 @@
+# .github/workflows/kevin-executor.yaml
+name: Kevin Executor
+
+on:
+  repository_dispatch:
+    types: [executor-run]
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout AgenticSDLC
+        uses: actions/checkout@v4
+
+      - name: Checkout target repo
+        if: github.event.client_payload.context != ''
+        run: |
+          CONTEXT='${{ github.event.client_payload.context }}'
+          REPO=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('repo',''))" 2>/dev/null || echo "")
+          REF=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ref','main'))" 2>/dev/null || echo "main")
+          if [ -n "$REPO" ]; then
+            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${REPO}.git" target-repo
+            cd target-repo && git checkout "$REF"
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kevin
+        run: pip install -e .
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Kevin Executor
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_DIR="."
+          if [ -d "target-repo" ]; then TARGET_DIR="target-repo"; fi
+
+          python -m kevin run \
+            --run-id "${{ github.event.client_payload.run_id }}" \
+            --blueprint "${{ github.event.client_payload.blueprint_id }}" \
+            --instruction "${{ github.event.client_payload.instruction }}" \
+            --context '${{ github.event.client_payload.context }}' \
+            --callback-url "${{ github.event.client_payload.callback_url }}" \
+            --callback-secret "${{ secrets.CALLBACK_HMAC_SECRET }}" \
+            --target-repo "$TARGET_DIR"
+
+      - name: Upload run state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kevin-run-${{ github.event.client_payload.run_id }}
+          path: |
+            .kevin/runs/
+            target-repo/.kevin/runs/
+          retention-days: 30
