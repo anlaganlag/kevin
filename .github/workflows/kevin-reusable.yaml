@@ -17,27 +17,8 @@ on:
       repo:
         required: true
         type: string
-    secrets:
-      CHECKOUT_TOKEN:
-        required: true
-      ANTHROPIC_API_KEY:
-        required: true
-      ANTHROPIC_BASE_URL:
-        required: false
-      ANTHROPIC_MODEL:
-        required: false
-      ANTHROPIC_SMALL_FAST_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_HAIKU_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_SONNET_MODEL:
-        required: false
-      ANTHROPIC_DEFAULT_OPUS_MODEL:
-        required: false
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
-        required: false
-      TEAMS_BOT_URL:
-        required: false
+    # Secrets are passed via `secrets: inherit` from callers.
+    # No explicit declaration needed — all org + repo secrets flow through.
 
 permissions:
   issues: write

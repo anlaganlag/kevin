@@ -20,6 +20,11 @@ concurrency:
   group: kevin-issue-${{ github.event.issue.number }}
   cancel-in-progress: true
 
+permissions:
+  issues: write
+  pull-requests: write
+  contents: write
+
 jobs:
   kevin:
     if: github.event.label.name == 'kevin'
