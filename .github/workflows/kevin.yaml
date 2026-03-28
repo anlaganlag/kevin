@@ -92,7 +92,15 @@ jobs:
       - name: Run Kevin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+          ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_OPUS_MODEL }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ secrets.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC }}
+          API_TIMEOUT_MS: "600000"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         working-directory: agentic-sdlc
