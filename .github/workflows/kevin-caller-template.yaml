@@ -3,11 +3,13 @@
 # Copy this file to your repo as .github/workflows/kevin.yaml
 # Then configure org-level or repo-level secrets (see below).
 #
-# Required secrets:
+# Required secrets (repo-level):
 #   CHECKOUT_TOKEN     — GitHub PAT with repo access
+#
+# Required secrets (org-level, via centific-cn org settings):
 #   ANTHROPIC_API_KEY  — Anthropic API key (or Qianfan key)
 #
-# Optional secrets (for Qianfan / Teams):
+# Optional secrets (org-level):
 #   ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, TEAMS_BOT_URL, etc.
 
 name: Kevin Planning Agent
@@ -33,4 +35,14 @@ jobs:
       issue_number: ${{ github.event.issue.number }}
       issue_title: ${{ github.event.issue.title }}
       repo: ${{ github.repository }}
-    secrets: inherit
+    secrets:
+      CHECKOUT_TOKEN: ${{ secrets.CHECKOUT_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+      ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+      ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+      ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+      ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_OPUS_MODEL }}
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ secrets.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC }}
+      TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
