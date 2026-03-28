@@ -416,10 +416,29 @@ async def _execute_blocks_async(
         for block in wave.blocks:
             _log(config, f"  Block {block.block_id}: {block.name} (runner: {block.runner})")
 
-        results = await asyncio.gather(*[_run_single(b) for b in wave.blocks])
+        raw_results = await asyncio.gather(
+            *[_run_single(b) for b in wave.blocks],
+            return_exceptions=True,
+        )
 
-        # Check for failures in this wave
-        wave_failed = any(not ok for _, ok in results)
+        # Normalize: exceptions become failures for the corresponding block
+        wave_failed = False
+        for i, raw in enumerate(raw_results):
+            if isinstance(raw, BaseException):
+                # Unexpected exception — record as block failure
+                block = wave.blocks[i]
+                bs = run.blocks.get(block.block_id, BlockState(block_id=block.block_id))
+                bs.status = "failed"
+                bs.completed_at = _now()
+                bs.error = f"Unexpected error: {raw}"[:500]
+                state_mgr.update_block(run, bs)
+                _err(f"Block {block.block_id} raised exception: {raw}")
+                wave_failed = True
+            else:
+                _, ok = raw
+                if not ok:
+                    wave_failed = True
+
         if wave_failed:
             all_passed = False
             break  # Stop subsequent waves
