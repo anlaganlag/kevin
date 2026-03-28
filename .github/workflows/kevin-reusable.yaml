@@ -31,6 +31,10 @@ on:
     # Secrets must be declared to be accessible via secrets: inherit.
     # All set to required: false — actual availability depends on org/repo config.
     secrets:
+      APP_ID:
+        required: false
+      APP_PRIVATE_KEY:
+        required: false
       CHECKOUT_TOKEN:
         required: false
       ANTHROPIC_API_KEY:
@@ -91,18 +95,31 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # Generate a short-lived GitHub App installation token so that Kevin's
+      # cross-repo operations (issue comments, PRs) appear as kevinkantkode[bot]
+      # rather than as a personal account. Falls back gracefully if App credentials
+      # are not configured.
+      - name: Generate GitHub App token
+        id: app-token
+        if: secrets.APP_ID != '' && secrets.APP_PRIVATE_KEY != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "AgenticSDLC,event-driven-architecture-playground"
+
       - name: Checkout AgenticSDLC
         uses: actions/checkout@v4
         with:
           repository: centific-cn/AgenticSDLC
-          token: ${{ secrets.CHECKOUT_TOKEN || secrets.PAT_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.CHECKOUT_TOKEN || github.token }}
           path: agentic-sdlc
 
       - name: Checkout target repo
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
-          token: ${{ secrets.CHECKOUT_TOKEN || secrets.PAT_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.CHECKOUT_TOKEN || github.token }}
           path: target-repo
 
       - name: Setup Python
@@ -151,7 +168,7 @@ jobs:
           ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_OPUS_MODEL }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ secrets.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC }}
           API_TIMEOUT_MS: "600000"
-          GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN || secrets.PAT_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.CHECKOUT_TOKEN || github.token }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         working-directory: agentic-sdlc
         run: |
@@ -209,7 +226,7 @@ jobs:
       - name: Post failure comment
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN || secrets.PAT_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.CHECKOUT_TOKEN || github.token }}
         run: |
           gh issue comment ${{ inputs.issue_number }} \
             --repo ${{ inputs.repo }} \
