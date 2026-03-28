@@ -500,6 +500,17 @@ def _post_agent_completed_event(
         pass  # non-fatal — Planning Agent will timeout and human can restart
 
 
+def _extract_pr_number(run: RunState) -> int | None:
+    """Extract PR number from B3 output_summary (gh pr create URL)."""
+    import re
+
+    b3 = run.blocks.get("B3")
+    if not b3 or not b3.output_summary:
+        return None
+    match = re.search(r"github\.com/[^/]+/[^/]+/pull/(\d+)", b3.output_summary)
+    return int(match.group(1)) if match else None
+
+
 def _notify_teams(
     config: KevinConfig,
     run: RunState,
@@ -567,6 +578,13 @@ def _notify_teams(
         payload["error"] = error[:500]
     if logs_url:
         payload["logs_url"] = logs_url
+
+    # Include PR info on completion events
+    if status in ("completed", "failed"):
+        pr_number = _extract_pr_number(run)
+        if pr_number:
+            payload["pr_number"] = pr_number
+            payload["pr_url"] = f"https://github.com/{run.repo}/pull/{pr_number}"
 
     try:
         data = json.dumps(payload).encode()

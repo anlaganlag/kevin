@@ -83,6 +83,77 @@ def _capture_payload(
 # Tests
 # ---------------------------------------------------------------------------
 
+class TestNotifyPayloadPrNumber:
+    """_notify_teams() includes pr_number and pr_url when B3 output has a GitHub PR URL."""
+
+    def test_should_extract_pr_number_from_b3_output(self) -> None:
+        """B3 output_summary is a PR URL → payload has pr_number=7 and pr_url."""
+        b3 = BlockState(
+            block_id="B3",
+            status="passed",
+            started_at="2026-03-28T10:00:00+00:00",
+            completed_at="2026-03-28T10:00:10+00:00",
+            output_summary="https://github.com/centific-cn/kevin-test-target/pull/7",
+        )
+        run = _make_run(blocks={"B3": b3})
+        block = _make_block("B3", "Create PR")
+
+        payload = _capture_payload(_make_config(), run, [block])
+
+        assert payload["pr_number"] == 7
+        assert payload["pr_url"] == "https://github.com/owner/repo/pull/7"
+
+    def test_should_handle_gh_pr_create_output_format(self) -> None:
+        """B3 output has multiline text with PR URL embedded → extracts pr_number=42."""
+        b3 = BlockState(
+            block_id="B3",
+            status="passed",
+            started_at="2026-03-28T10:00:00+00:00",
+            completed_at="2026-03-28T10:00:10+00:00",
+            output_summary="Creating pull request...\nhttps://github.com/owner/repo/pull/42\nDone.",
+        )
+        run = _make_run(blocks={"B3": b3})
+        block = _make_block("B3", "Create PR")
+
+        payload = _capture_payload(_make_config(), run, [block])
+
+        assert payload["pr_number"] == 42
+
+    def test_should_not_include_pr_number_when_no_pr_url_in_output(self) -> None:
+        """B3 output_summary has no PR URL → no pr_number or pr_url in payload."""
+        b3 = BlockState(
+            block_id="B3",
+            status="passed",
+            started_at="2026-03-28T10:00:00+00:00",
+            completed_at="2026-03-28T10:00:10+00:00",
+            output_summary="All checks passed",
+        )
+        run = _make_run(blocks={"B3": b3})
+        block = _make_block("B3", "Create PR")
+
+        payload = _capture_payload(_make_config(), run, [block])
+
+        assert "pr_number" not in payload
+        assert "pr_url" not in payload
+
+    def test_should_not_include_pr_number_when_status_is_running(self) -> None:
+        """Even if B3 has PR URL, status='running' → no pr_number in payload."""
+        b3 = BlockState(
+            block_id="B3",
+            status="passed",
+            started_at="2026-03-28T10:00:00+00:00",
+            completed_at="2026-03-28T10:00:10+00:00",
+            output_summary="https://github.com/owner/repo/pull/99",
+        )
+        run = _make_run(blocks={"B3": b3})
+        block = _make_block("B3", "Create PR")
+
+        payload = _capture_payload(_make_config(), run, [block], status="running")
+
+        assert "pr_number" not in payload
+        assert "pr_url" not in payload
+
+
 class TestNotifyTeamsDurationSeconds:
     """_notify_teams() block payload includes correct duration_seconds."""
 
