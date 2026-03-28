@@ -247,9 +247,23 @@ blueprint:
               runner_config:
                 cwd: "{{target_repo}}"
                 command: |
-                  git push --force-with-lease -u origin kevin/issue-{{issue_number}} && \
-                  EXISTING_PR=$(gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number' 2>/dev/null) && \
-                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR already exists"; exit 0; fi && \
+                  BRANCH="kevin/issue-{{issue_number}}"
+
+                  # Check if PR is already merged → skip entirely
+                  MERGED_PR=$(gh pr list --head "$BRANCH" --state merged --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$MERGED_PR" ]; then echo "PR #$MERGED_PR already merged — skipping B3"; exit 0; fi
+
+                  # Fetch remote refs so --force-with-lease knows the expected state
+                  git fetch origin "$BRANCH" 2>/dev/null || true
+
+                  # Push (force-with-lease to safely update existing branch)
+                  git push --force-with-lease -u origin "$BRANCH"
+
+                  # If open PR exists → just update it (push already did), done
+                  EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR updated"; exit 0; fi
+
+                  # Create new PR
                   gh pr create \
                     --title "{{issue_title}}" \
                     --body "## Summary
