@@ -48,7 +48,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           path: target-repo
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CHECKOUT_TOKEN }}
 
       # 3. Setup Python
       - name: Setup Python
@@ -101,7 +101,7 @@ jobs:
           ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_OPUS_MODEL }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: ${{ secrets.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC }}
           API_TIMEOUT_MS: "600000"
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CHECKOUT_TOKEN }}
           TEAMS_BOT_URL: ${{ secrets.TEAMS_BOT_URL }}
         working-directory: agentic-sdlc
         run: |
