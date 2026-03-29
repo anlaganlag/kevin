@@ -4,143 +4,143 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**AgenticSDLC** is a next-generation framework for autonomous software engineering using coordinated AI agents. The project treats Git Repository as the Single Source of Truth (SSOT) and implements GitOps with Human-in-the-Loop (HITL) checkpoints.
+**AgenticSDLC** (codename: **Kevin**) is a blueprint-driven orchestrator that turns GitHub Issues into autonomous AI agent workflows. It classifies issues by label, selects a Blueprint YAML, and executes Blocks via Claude Code CLI, shell commands, or HTTP calls — with wave-based parallel scheduling, validation, and Teams notifications.
 
-**Important Context**: This is a design documentation and architecture project, not an implemented system. The codebase contains specifications, agent definitions, and architectural documentation for a proposed framework.
+The repo has two layers:
+- **Design docs & architecture specs** (`design_doc.md`, `agents/`, `agentic_sdlc_*.md`) — the original v2.0 vision
+- **Working implementation** (`kevin/`, `blueprints/`, `.github/workflows/`) — the Kevin Planning Agent
 
-## Architecture Fundamentals
+## Build & Development Commands
 
-### Five-Layer EDA Architecture
+```bash
+# CLI commands (run from repo root)
+python -m kevin run --issue 42 --repo owner/repo [--target-repo ./path] [--dry-run]
+python -m kevin run-block --block B2 --run-id <id>
+python -m kevin resume --run-id <id>
+python -m kevin list-runs
+python -m kevin debug --run-id <id> --block B2    # Replay failed prompt in interactive Claude CLI
+python -m kevin harvest                           # Backfill knowledge.db from historical runs
 
-The system is built on an Event-Driven Architecture with five layers (from bottom to top):
+# Executor-as-a-Service mode
+python -m kevin run --run-id <id> --instruction <task> --blueprint <id> --context <json>
 
-1. **Infra Dependency Layer (EEF)**: Static + dynamic constraints that shape all agent behavior
-2. **Standard Interfaces Layer**: Issues, Tasks, Commits, Pipelines, Artifacts
-3. **Event-Driven Architecture (EDA)**: Event bus, routing, pub/sub
-4. **Agent Orchestration Layer**: Ralph Loop event processing framework
-5. **Governance & Audit Layer**: Cross-cutting oversight (monitors all layers)
+# Tests (uses pytest)
+python -m pytest kevin/tests/ -v                  # Run all tests
+python -m pytest kevin/tests/test_cli_executor.py -v  # Single test file
+python -m pytest kevin/tests/ -k "test_executor" -v   # Run tests matching name
 
-### The Ralph Loop
+# Dashboard (optional deps)
+pip install -e ".[dashboard]"
+streamlit run kevin/dashboard/app.py
 
-Universal 5-step event processing framework:
-1. **Planner Agent → Confirm Primary Agent**: Based on Issue labels + complex rules
-2. **Primary Agent → Load Rules + Context**: From Infra Layer + Learning Agent
-3. **Primary Agent → Coordinate Sub-Agents**: Parse Blueprint Block dependency graph
-4. **Confirm Completion + Deliver Output**: Update GitHub Issues + Generate Artifacts
-5. **Audit Agents → Generate Audit Report**: Governance Layer → Decision (Pass/Fail)
+# E2E test for Supabase executor service
+bash scripts/test_executor_e2e.sh  # Requires EXECUTOR_API_KEY, EXECUTOR_BASE_URL
 
-### Core Entities
-
-- **Blueprint**: End-to-end executable plan composed of reusable blocks (not just feature dev - also bug fix, incident response, data analysis)
-- **Event**: Internal EDA message with type-specific payload (independent from GitHub Issues)
-- **Issue**: GitHub entity representing requirement/task/bug based on labels
-- **Task**: Independent GitHub Issue (atomic work unit, not checkbox)
-- **Artifact**: Traceable work product with unified structure
-- **Commit**: Dual role as code delivery载体 AND event trigger
-
-### Governance Model
-
-**Critical**: Governance & Audit operates as a cross-cutting concern with multiple monitoring points:
-- Real-time agent execution monitoring
-- Event validation and routing
-- Interface compliance checks
-- Infrastructure constraint enforcement
-- Final gate enforcement (Ralph Step 5)
-
-**Separation of Concerns**:
-- Execution Agents → Create changes
-- Audit Agents → Report facts (no decisions)
-- Governance Layer → Make decisions
-- Humans → Resolve ambiguity
-
-## Repository Structure
-
-```
-AgenticSDLC/
-├── agents/              # AI Agent definitions and profiles (11 agents)
-├── .claude/             # Claude Code project configuration
-├── requirements/        # Managed by BA Agent (when implemented)
-├── design_doc.md        # Comprehensive design documentation (v2.0)
-├── agentic_sdlc_architecture.md  # Mermaid diagrams, architecture views
-├── agentic_sdlc_concept.md        # High-level concept
-└── agentic_sdlc_workflow.md       # End-to-end workflow sequences
+# Python version: >=3.11
+# Core dependency: pyyaml>=6.0
 ```
 
-## Agent Roster
+## Kevin Architecture
 
-| Agent | Type | Primary Responsibility |
-|-------|------|----------------------|
-| BA Agent | Strategy | Requirement analysis and structuring |
-| Planning Agent | Architecture | Blueprint design and task decomposition |
-| Builder Agent | Implementation | Code generation and unit tests |
-| Platform Agent | Infrastructure | IaC management and infra sync |
-| QA Agent | Verification | Testing and RL-style exploration |
-| Security Agent | Security | Security auditing and vulnerability management |
-| SRE Agent | Operations | Deployment and incident response |
-| PM Agent | Coordination | Progress tracking and visibility |
-| Doc Agent | Documentation | Documentation generation |
-| Learning Agent | Knowledge | Historical context and patterns |
-| Governance Agent | Governance | Gate enforcement and decisions |
+### Execution Flow
 
-## Key Architectural Patterns
+```
+GitHub Issue (label: "kevin") → GitHub Actions → kevin run
+  → classify labels → select Blueprint → create Run state
+  → compute dependency waves → execute Blocks (parallel within waves)
+  → validate each Block → harvest learning → post results
+```
 
-### Primary Agent Selection Logic
+### Key Modules
 
-Complex rules based on Issue labels, type, and metadata:
-- Label priority: `security` → SecurityAgent, `infrastructure` → PlatformAgent, etc.
-- Issue type defaults: `requirement` → BA_Agent, `task` → PlanningAgent
-- Composite rules handle complex scenarios with multiple agents
+| Module | Purpose |
+|--------|---------|
+| `kevin/cli.py` | CLI entry point; orchestrates the full run lifecycle |
+| `kevin/agent_runner.py` | Block execution via pluggable runners + validators |
+| `kevin/blueprint_loader.py` | Parses Blueprint YAML, resolves dependencies, topological sort |
+| `kevin/scheduler.py` | Groups Blocks into parallel execution waves (by dependency level + cwd conflict) |
+| `kevin/state.py` | File-based run state persistence in `.kevin/runs/{run_id}/` |
+| `kevin/config.py` | Runtime config; label→blueprint intent map with aliases |
+| `kevin/intent.py` | Classifies GitHub labels to Blueprint IDs |
+| `kevin/learning/` | SQLite knowledge base; harvests run data, advises future runs |
+| `kevin/teams_bot/cards.py` | Microsoft Teams Adaptive Cards for real-time notifications |
+| `kevin/dashboard/` | Streamlit monitoring dashboard |
 
-### Blueprint Block Composition
+### Three Runner Types
 
-Blueprints are assembled from reusable blocks:
-- Development: `block_code_analysis`, `block_unit_test`, `block_code_review`
-- Verification: `block_security_scan`, `block_qa_validation`, `block_contract_check`
-- Deployment: `block_build`, `block_canary_deploy`, `block_rollback`
-- Documentation: `block_api_doc`, `block_changelog`, `block_diagram_update`
-- Operations: `block_monitoring`, `block_incident_response`, `block_postmortem`
+- **`claude_cli`** (default): Invokes `claude -p <prompt> --cwd <dir>` with a rendered prompt template
+- **`shell`**: Runs a shell command; exit code 0 = success
+- **`api_call`**: HTTP request via urllib; status 2xx = success
 
-### Hybrid Coordination Model
+### Three Validator Types
 
-Combines dependency graph execution with event-driven communication:
-- Blueprint Blocks have dependency relationships
-- Primary Agent publishes Events to drive sub-agent execution
-- Sub-Agents execute autonomously and publish completion Events
-- Parallel execution when dependencies are satisfied
+- **`git_diff_check`**: Confirms Block produced file changes (min_files_changed)
+- **`command`**: Runs shell command; exit 0 = pass
+- **`file_exists`**: Checks file/glob exists
 
-## Human-in-the-Loop Checkpoints
+### State Management
 
-**HITL Gate 1**: Blueprint Approval
-- Human reviews and approves technical architecture before implementation
-- Located at end of Blueprint Design phase
+Each run creates `.kevin/runs/{run_id}/` containing:
+- `run.yaml` — overall run metadata and block states
+- `{B1,B2,...}.yaml` — per-block execution state
+- `blueprint_snapshot.yaml` — immutable copy for reproducibility
+- `logs/{block_id}.log` — full prompt + stdout + stderr per block
 
-**HITL Gate 2**: Release Approval
-- Human reviews consolidated reports before merge to main
-- Final review after all governance gates pass
+### Template Variables
 
-## Document References
+Prompt templates use `{{variable}}` syntax. Available variables include:
+`issue_number`, `issue_title`, `issue_body`, `issue_labels`, `target_repo`, `owner`, `repo`, `repo_full`, `pr_number`, `learning_context`
 
-When working with different aspects:
+### Intent Classification
 
-- **Agent Definitions**: `agents/agent_*.md` - Individual agent specifications
-- **System Architecture**: `agentic_sdlc_architecture.md` - Mermaid diagrams, dual-view architecture
-- **Workflow Sequences**: `agentic_sdlc_workflow.md` - Complete sequence diagrams
-- **Complete Design**: `design_doc.md` - Full v2.0 design document with all details
+GitHub labels map to Blueprints via `kevin/config.py:DEFAULT_INTENT_MAP`. Alias labels (e.g., "enhancement"→"coding-task") resolve first through the exact map, then through aliases. The `kevin` label triggers execution.
 
-## Git Workflow
+### Wave-Based Scheduling
 
-- All changes require feature branches
-- PRs must reference relevant agent definitions
-- Maintain clear commit messages linking to agents
-- Repository is the SSOT - GitHub Projects are derived views only
+Blocks are grouped by dependency level (topological sort), then split within each level by resolved `cwd` to prevent parallel writes to the same directory. Blocks in the same wave with different cwds run concurrently.
 
-## Development Considerations
+## Blueprint Structure
 
-When proposing changes or enhancements:
+Blueprints live in `blueprints/` as YAML files named `bp_{domain}_{type}_{name}.{version}.yaml`.
 
-1. **Maintain the five-layer architecture** - Don't collapse layers
-2. **Preserve event-driven design** - Events are internal entities, separate from Issues
-3. **Respect governance separation** - Audit agents report facts, Governance decides
-4. **Keep cross-cutting governance** - Oversight happens at multiple points, not just end
-5. **Support blueprint composition** - Blueprints are assembled from reusable blocks
-6. **Maintain HITL gates** - No autonomous progression past human checkpoints
+Each Blueprint contains ordered Blocks with:
+- `block_id` (B1, B2, ...), `dependencies`, `runner`, `runner_config`
+- `timeout` (seconds), `max_retries`, `pre_check` (shell command for idempotent reset on retry)
+- `validators` (machine-checkable), `acceptance_criteria` (human-readable)
+- `prompt_file` or inline `prompt_template` (Jinja-style `{{var}}` substitution)
+
+Templates: `blueprints/templates/blueprint_template.yaml`, `blueprints/blocks/block_template.yaml`
+
+## Design Architecture (v2.0 Spec)
+
+The design documents describe a five-layer EDA architecture:
+1. **Infra Dependency Layer (EEF)** — static/dynamic constraints shaping agent behavior
+2. **Standard Interfaces** — Issues, Tasks, Commits, Pipelines, Artifacts
+3. **Event-Driven Architecture** — event bus, routing, pub/sub
+4. **Agent Orchestration** — Ralph Loop 5-step framework
+5. **Governance & Audit** — cross-cutting oversight at multiple points
+
+Governance separation: execution agents create changes, audit agents report facts, governance layer decides, humans resolve ambiguity.
+
+Two HITL gates: Blueprint Approval (before implementation), Release Approval (before merge to main).
+
+Key design docs: `design_doc.md` (comprehensive), `agentic_sdlc_architecture.md` (diagrams), `agentic_sdlc_workflow.md` (sequences), `agents/agent_*.md` (11 agent specs).
+
+## CI/CD
+
+GitHub Actions workflows (`.github/workflows/`):
+- **kevin.yaml**: Triggered by adding "kevin" label to any Issue
+- **kevin-executor.yaml**: Executor-as-a-Service for external callers
+- **kevin-dispatch.yaml**: Manual workflow dispatch
+- **kevin-reusable.yaml**: Reusable workflow template
+
+Required secrets: `ANTHROPIC_API_KEY`, `CHECKOUT_TOKEN`. Optional: `TEAMS_BOT_URL`, `TEAMS_BOT_SECRET`.
+
+## Conventions
+
+- State directories (`.kevin/`, `knowledge.db`) are gitignored — never commit run state
+- Learning system degrades silently — never let knowledge DB issues block execution
+- Blueprint snapshots are immutable after run creation — ensures reproducibility
+- All GitHub operations use the `gh` CLI (no token management in code)
+- Agent-completed events use fenced ` ```eda ` JSON blocks in issue comments
+- Chinese comments are used throughout design docs and blueprint templates
