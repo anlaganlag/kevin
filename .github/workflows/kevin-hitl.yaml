@@ -1,0 +1,70 @@
+# Kevin HITL Continuation — Async Human-in-the-Loop
+#
+# When Kevin creates a PR (Block B3), execution stops and Kevin exits cleanly.
+# A human reviews and approves the PR. This workflow picks up from there:
+#   PR approved → merge → post-merge tasks (if any remaining blocks).
+#
+# Architecture: Kevin is stateless. State lives in:
+#   - GitHub PR status (approved / changes_requested)
+#   - .kevin/runs/{run_id}/ artifacts from the original run
+#
+# This avoids blocking a GHA runner while waiting for human approval.
+
+name: Kevin HITL Continuation
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+# Only one continuation per PR at a time
+concurrency:
+  group: kevin-hitl-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: write
+
+jobs:
+  kevin-continue:
+    # Only trigger on approval of Kevin-created PRs
+    if: >
+      github.event.review.state == 'approved' &&
+      contains(github.event.pull_request.labels.*.name, 'kevin')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Checkout target repo (with the approved PR branch)
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Merge the PR (squash merge for clean history)
+      - name: Merge approved PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash \
+            --delete-branch \
+            --repo ${{ github.repository }}
+
+      # 3. Post completion on linked issue
+      - name: Post HITL completion comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract issue number from PR body (Kevin includes "Closes #N")
+          ISSUE_NUM=$(gh pr view ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --json body -q '.body' | grep -oP 'Closes #\K\d+' | head -1)
+
+          if [ -n "$ISSUE_NUM" ]; then
+            gh issue comment "$ISSUE_NUM" \
+              --repo ${{ github.repository }} \
+              --body "Kevin HITL gate **passed**. PR #${{ github.event.pull_request.number }} merged after human approval."
+          fi
