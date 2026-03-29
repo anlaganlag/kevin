@@ -22,7 +22,7 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "AgenticSDLC,event-driven-architecture-playground"
+          repositories: "AgenticSDLC,event-driven-architecture-playground,kevin-test-target"
 
       - name: Checkout AgenticSDLC
         uses: actions/checkout@v4
