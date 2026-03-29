@@ -20,7 +20,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
   -d '{
     "blueprint_id": "bp_coding_task.1.0.0",
     "instruction": "Add a /health endpoint that returns {\"status\": \"ok\"}",
-    "context": {"repo": "anlaganlag/test-repo", "ref": "main"}
+    "context": {"repo": "centific-cn/kevin-test-target", "ref": "main"}
   }')
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
