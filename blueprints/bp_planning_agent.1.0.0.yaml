@@ -1,0 +1,679 @@
+# Planning Agent Blueprint
+# ============================================================
+# Orchestrator blueprint for the Planning Agent.
+# This is a NEW blueprint type: "orchestrator" — fundamentally different
+# from execution blueprints (feature/implementation) used by specialists.
+#
+# The Planning Agent is the brain of AgenticSDLC:
+#   - It wakes on every significant GitHub event (IssueCreatedEvent,
+#     AgentCompletedEvent, PullRequestUpdatedEvent, etc.)
+#   - It uses Claude SDK to perform AGENTIC intent recognition —
+#     reasoning about what needs to happen next and who should do it
+#   - It dispatches specialist agents with precisely packaged context
+#   - It then sleeps (stateless execution ends)
+#
+# Execution model:
+#   - STATELESS: reads all state from GitHub issue body metadata
+#   - AGENTIC: uses Claude SDK for intent recognition (not a fixed state machine)
+#   - EVENT-DRIVEN: woken by EDA router → Azure Function → Supabase Executor
+#
+# How it runs:
+#   Azure Function (webhook pre-check)
+#     → POST /execute { blueprint_id: "bp_planning_agent.1.0.0", context: {...}, sync: true }
+#     → Executor runs Claude with this blueprint as system context
+#     → Returns structured action list { actions: [...], new_state, rationale }
+#     → Azure Function executes actions (GitHub API, dispatch specialists)
+#
+# The executor is a pure Claude runner — it does NOT execute actions.
+# The Azure Function handles all GitHub API calls and specialist dispatch.
+# ============================================================
+
+blueprint:
+
+  # ================================================================
+  # 1. Metadata
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_planning_agent.1.0.0"
+    blueprint_name: "Planning Agent — Central SDLC Orchestrator"
+    blueprint_type: "orchestrator"    # New type: distinct from feature/implementation
+    version: "1.0.0"
+    created_at: "2026-03-29T00:00:00Z"
+    created_by: "Planning_Agent"
+    tags:
+      - "orchestrator"
+      - "ralph-loop"
+      - "intent-recognition"
+      - "event-driven"
+      - "stateless"
+      - "agentic"
+
+  # ================================================================
+  # 2. Configuration
+  # ================================================================
+  configuration:
+    profile:
+      name: "orchestrator_profile"
+      description: |
+        Stateless event-driven orchestrator for AgenticSDLC.
+        Wakes on GitHub events, reasons about issue state using Claude SDK,
+        and dispatches specialist agents with precisely packaged context.
+        Does NOT implement features — delegates all domain work to specialists.
+
+    rules:
+      inline:
+        - name: "stateless_execution"
+          rule: |
+            Never assume prior context. Always read the full issue state from
+            metadata before making any decision. The previous execution is gone.
+          enforcement: strict
+
+        - name: "no_domain_work"
+          rule: |
+            Never write code, design architecture, analyze requirements, or
+            perform any domain-specific work. All such work belongs to specialists.
+            Your only job is: understand the situation, decide who acts next, dispatch.
+          enforcement: strict
+
+        - name: "explicit_rationale"
+          rule: |
+            Every action decision must include a rationale explaining why
+            this action was chosen given the current state and triggering event.
+          enforcement: strict
+
+        - name: "conservative_on_ambiguity"
+          rule: |
+            When the correct next step is genuinely unclear, prefer posting a
+            comment requesting clarification (or a no_op) over dispatching
+            an agent that might do the wrong thing.
+          enforcement: soft
+
+        - name: "single_wakeup_single_decision"
+          rule: |
+            Each wakeup corresponds to exactly one decision cycle.
+            Make the decision, record it, dispatch if needed, then stop.
+            Do not try to look ahead multiple steps.
+          enforcement: strict
+
+        - name: "gate_respect"
+          rule: |
+            HITL gates are human checkpoints. Never auto-advance past a gate.
+            If a gate is pending, do nothing and wait. Only advance when the
+            gate-unblocking event arrives (e.g., PR merge with the correct label).
+          enforcement: strict
+
+  # ================================================================
+  # 3. Input: What wakes the Planning Agent
+  # ================================================================
+  input:
+    trigger:
+      event_types:
+        - IssueCreatedEvent           # New GitHub issue → classify and dispatch first agent
+        - AgentCompletedEvent         # Specialist posted completion signal → advance workflow
+        - PullRequestUpdatedEvent     # PR merged → check if it unblocks a HITL gate
+        - RequirementApprovedEvent    # Human posted /eda-approve-planning → advance from BA
+        - PlanningDirectDispatchEvent # Human posted /eda-route-planning → manual restart
+
+      source: "EDA router (event-driven-architecture-playground)"
+      delivery: "Azure Function inline call → Supabase Executor → Claude SDK"
+
+    context:
+      # The executor assembles this context before calling Claude.
+      # All sources are read fresh on each wakeup (stateless).
+      sources:
+
+        - name: triggering_event
+          description: "The normalized event that woke the planning agent this cycle"
+          fields:
+            - event_type      # IssueCreatedEvent | AgentCompletedEvent | etc.
+            - payload         # Full event payload (agent_id, status, pr_number, etc.)
+            - correlation_id  # UUID threading all events on this issue
+
+        - name: issue_state
+          description: "Current GitHub issue snapshot"
+          fields:
+            - number
+            - title
+            - body_summary    # First 500 chars of body (not full body — that's in metadata)
+            - labels          # Current label set
+            - state           # open | closed
+            - open_prs        # List of open PRs referencing this issue (number, title, labels)
+
+        - name: issue_metadata
+          description: |
+            Hidden metadata embedded in the issue body as an HTML comment.
+            Pattern: <!-- eda-playground-metadata:{JSON} -->
+            Managed by: utils/metadata-manager.ts
+          fields:
+            - planning_agent_state  # Current state name (e.g. "BA_IN_PROGRESS")
+            - issue_path            # Selected workflow path (feature | bug | security | docs | infra)
+            - dispatched_agents     # Agent IDs dispatched in the current parallel phase
+            - completed_agents      # Agent IDs that have posted AgentCompletedEvent so far
+            - correlation_id        # UUID (same as triggering_event.correlation_id)
+            - blueprint_pr_number   # PR number for HITL Gate 1 (set by Architect Agent)
+            - release_pr_number     # PR number for HITL Gate 2 (set by Builder Agent)
+
+        - name: recent_comments
+          description: |
+            Last 10 comments on the issue. Contains agent completion signals
+            (fenced EDA JSON from github-actions[bot]) and human slash commands.
+          max_count: 10
+          security_note: "Only AgentCompletedEvent signals from github-actions[bot] are trusted"
+
+        - name: agent_catalog
+          description: |
+            Available specialist agents, their blueprints, and when to use them.
+            Loaded from this blueprint's orchestration.agent_catalog section.
+          source: "this blueprint (orchestration.agent_catalog)"
+
+  # ================================================================
+  # 4. Orchestration: Agent Catalog + Available Actions
+  # ================================================================
+  orchestration:
+
+    # ── Specialist Agent Catalog ──────────────────────────────────
+    # These are the agents the Planning Agent can dispatch.
+    # The LLM uses this catalog to decide who to call and with what blueprint.
+    agent_catalog:
+
+      - agent_id: "ba-agent"
+        blueprint_id: "bp_ba_requirement_analysis.1.0.0"
+        description: "Analyzes business requirements from issue and uploaded docs. Produces BRD, PRD, and user stories."
+        typical_trigger: "IssueCreatedEvent for feature/requirement type with no prior analysis"
+        typical_output: "Pull request containing BRD, PRD, user stories"
+        typical_next_state: "BA_IN_PROGRESS"
+
+      - agent_id: "architect-agent"
+        blueprint_id: "bp_architecture_blueprint_design.1.0.0"
+        description: "Designs technical architecture, API contracts, and system design for the requirement."
+        typical_trigger: "RequirementApprovedEvent (human approved BA output) or BA PR merged"
+        typical_output: "Pull request containing architecture blueprint, API contracts, task breakdown"
+        typical_next_state: "ARCHITECT_IN_PROGRESS"
+        hitl_gate_after: "HITL Gate 1 — human must merge the Blueprint PR to proceed"
+
+      - agent_id: "fip-agent"
+        blueprint_id: "bp_function_implementation_fip_blueprint.1.0.0"
+        description: "Creates detailed Function Implementation Proposals through a multi-expert panel. Maps architecture to concrete implementation tasks."
+        typical_trigger: "PullRequestUpdatedEvent — Blueprint PR merged (HITL Gate 1 cleared)"
+        typical_output: "Pull request containing FIP document and granular task breakdown"
+        typical_next_state: "FIP_IN_PROGRESS"
+        hitl_gate_after: "HITL Gate 1.5 — human must merge the FIP PR to proceed"
+
+      - agent_id: "builder-agent"
+        blueprint_id: "bp_coding_task.1.0.0"
+        description: "Implements the feature based on FIP. Writes code and unit tests on a feature branch."
+        typical_trigger: "PullRequestUpdatedEvent — FIP PR merged (HITL Gate 1.5 cleared), dispatched in parallel with qa-agent and security-agent"
+        typical_output: "Pull request containing feature implementation and tests"
+        typical_next_state: "IMPLEMENTATION_IN_PROGRESS"
+
+      - agent_id: "qa-agent"
+        blueprint_id: null   # TODO: bp_test_feature_comprehensive_testing.1.0.0
+        description: "Writes and executes comprehensive test suite for the feature."
+        typical_trigger: "FIP PR merged — dispatched in parallel with builder-agent and security-agent"
+        typical_output: "Pull request containing test suite"
+        typical_next_state: "IMPLEMENTATION_IN_PROGRESS"
+
+      - agent_id: "security-agent"
+        blueprint_id: null   # TODO: create security scanning blueprint
+        description: "Performs SAST/DAST security scan and vulnerability assessment."
+        typical_trigger: "FIP PR merged — dispatched in parallel with builder-agent and qa-agent"
+        typical_output: "Pull request or comment containing security report"
+        typical_next_state: "IMPLEMENTATION_IN_PROGRESS"
+
+      - agent_id: "sre-agent"
+        blueprint_id: "bp_deployment_monitoring_automation.1.0.0"
+        description: "Deploys the feature to production and sets up monitoring."
+        typical_trigger: "PullRequestUpdatedEvent — Release PR merged (HITL Gate 2 cleared)"
+        typical_output: "Deployment confirmation, monitoring dashboards"
+        typical_next_state: "DEPLOYING"
+
+      - agent_id: "doc-agent"
+        blueprint_id: null   # TODO: create documentation blueprint
+        description: "Updates API documentation, changelogs, and architecture diagrams."
+        typical_trigger: "Doc-type issue, or post-deployment documentation update"
+        typical_output: "Pull request containing updated documentation"
+        typical_next_state: "DOC_IN_PROGRESS"
+
+      - agent_id: "platform-agent"
+        blueprint_id: "bp_deployment_monitoring_automation.1.0.0"
+        description: "Applies infrastructure changes via IaC (Terraform/K8s)."
+        typical_trigger: "Infra-type issue"
+        typical_output: "Pull request containing IaC changes"
+        typical_next_state: "PLATFORM_IN_PROGRESS"
+
+    # ── Available Actions ─────────────────────────────────────────
+    # These are the concrete actions Claude can include in its action list.
+    # The Azure Function executes these actions via GitHub API / Executor calls.
+    available_actions:
+
+      - name: dispatch_agent
+        description: |
+          Invoke a single specialist agent via the Supabase Executor (async, fire-and-forget).
+          The Azure Function POSTs to the executor and does NOT wait for completion.
+          The specialist will signal back via AgentCompletedEvent comment when done.
+        executor_api:
+          endpoint: "POST https://yldkolafvxgolwtthguo.supabase.co/functions/v1/execute"
+          auth: "Authorization: Bearer <KEVIN_EXECUTOR_API_KEY>"
+          request_shape:
+            blueprint_id: "<from agent_catalog>"
+            instruction: "<natural language task description — the richer the better>"
+            context:
+              repo: "<owner/repo of the target repository>"
+              ref: "main"
+          response: "HTTP 202 + { run_id, status: 'dispatched' } — async, takes 3-5 min"
+          output: "Executor auto-creates a PR in the target repo when complete"
+          note: "Do NOT poll. Specialist signals completion via AgentCompletedEvent comment."
+        parameters:
+          agent_id:
+            type: string
+            description: "From agent_catalog (e.g. 'ba-agent') — for metadata tracking only"
+          blueprint_id:
+            type: string
+            description: "Blueprint to run (from agent_catalog.blueprint_id)"
+          instruction:
+            type: string
+            description: |
+              Natural language task description for the specialist. Include:
+              - The GitHub issue number and title
+              - What specifically needs to be done
+              - Any relevant upstream context (e.g. 'BA analysis is in PR #12')
+              - The correlation_id for event threading
+          context:
+            type: object
+            required: [repo]
+            properties:
+              repo:
+                type: string
+                description: "Target repository in owner/repo format (e.g. 'centific-cn/AgenticSDLC')"
+              ref:
+                type: string
+                description: "Target branch (default: main)"
+
+      - name: dispatch_parallel
+        description: |
+          Invoke multiple specialist agents simultaneously (e.g. builder + qa + security).
+          Each agent gets its own executor POST — all fire-and-forget.
+          Track dispatched_agents in metadata; advance state when all have completed.
+        parameters:
+          agents:
+            type: array
+            items: "dispatch_agent parameters"
+            description: "Each item is a full dispatch_agent parameter set"
+
+      - name: post_comment
+        description: "Post a status or informational comment to the GitHub issue"
+        github_api: "POST /repos/{owner}/{repo}/issues/{issue_number}/comments"
+        parameters:
+          body:
+            type: markdown
+            description: "Comment body. Should clearly communicate what just happened and what's next."
+
+      - name: request_hitl
+        description: "Notify humans that a HITL gate is now active and how to unblock it"
+        parameters:
+          gate_name:
+            type: string
+            description: "Human-readable gate name (e.g. 'HITL Gate 1 — Blueprint Review')"
+          message:
+            type: markdown
+            description: "Clear instructions: what to review, where to find it, how to approve"
+          unblock_via:
+            type: string
+            description: "How the human unblocks this gate (e.g. 'Merge the Blueprint PR #42')"
+
+      - name: update_state
+        description: "Write new planning agent state and optional metadata to the GitHub issue body"
+        implementation: "utils/metadata-manager.ts (existing, reuse as-is)"
+        parameters:
+          new_state:
+            type: string
+            enum: [
+              INITIAL, BA_IN_PROGRESS, AWAITING_BA_APPROVAL,
+              ARCHITECT_IN_PROGRESS, AWAITING_GATE_1,
+              FIP_IN_PROGRESS, AWAITING_GATE_1_5,
+              IMPLEMENTATION_IN_PROGRESS, AWAITING_GATE_2,
+              DEPLOYING, SECURITY_IN_PROGRESS, DOC_IN_PROGRESS,
+              PLATFORM_IN_PROGRESS, COMPLETE, FAILED
+            ]
+            description: "New value for planning_agent_state in issue metadata"
+          metadata_delta:
+            type: object
+            description: "Additional metadata fields to merge (e.g. dispatched_agents, completed_agents, blueprint_pr_number)"
+
+      - name: mark_complete
+        description: "Close the GitHub issue and post a completion summary"
+        parameters:
+          summary:
+            type: markdown
+            description: "Brief summary of what was accomplished"
+
+      - name: handle_failure
+        description: "Record failure state, post a clear notice, and wait for human intervention"
+        parameters:
+          failed_agent_id:
+            type: string
+          error_summary:
+            type: string
+          recovery_suggestion:
+            type: string
+            description: "e.g. 'Check the BA Agent logs. Use /eda-route-planning to restart.'"
+
+      - name: no_op
+        description: "This wakeup requires no action (duplicate event, nothing to do, already handled)"
+        parameters:
+          reason:
+            type: string
+            description: "Why no action is needed (for audit trail)"
+
+  # ================================================================
+  # 5. Intent Recognition
+  # ================================================================
+  # This section defines how Claude reasons about each wakeup.
+  # The Azure Function calls the Anthropic SDK directly using this blueprint
+  # as the system context — synchronous, inline, within the webhook execution.
+  #
+  # Q2 (detailed prompt engineering) is deferred.
+  # This section defines the SCHEMA and REASONING FRAMEWORK.
+  # ================================================================
+  intent_recognition:
+    model: "claude-opus-4-6"    # Orchestration deserves the strongest reasoning model
+    thinking: true              # Enable extended thinking for complex multi-step decisions
+    execution_mode: "sync"      # Anthropic SDK call is synchronous — must complete within webhook timeout
+
+    reasoning_framework:
+      # Step 1: Ground yourself in what just happened and where things stand
+      step_1_understand: |
+        Read the triggering event carefully:
+          - What event type is this? (IssueCreatedEvent, AgentCompletedEvent, etc.)
+          - What specific payload does it carry? (agent_id, status, pr_number, etc.)
+
+        Read the current issue state:
+          - What is planning_agent_state in the metadata?
+          - What agents have been dispatched? Which have completed?
+          - Are there open PRs? What labels do they have?
+          - What do the recent comments say?
+
+        Summarize: "I was woken because X happened. The issue is currently in state Y.
+        Z agents have been dispatched and Z' have completed."
+
+      # Step 2: Figure out what type of issue this is and what workflow applies
+      step_2_classify: |
+        If planning_agent_state is INITIAL (first wakeup):
+          Classify the issue type based on labels, title, and body:
+            - feature/requirement → Full SDLC path (BA → Architect → FIP → Impl → Deploy)
+            - bug/hotfix → Short-circuit path (FIP lightweight → Impl → Deploy)
+            - security → Security scan only
+            - docs → Documentation update only
+            - infra → Infrastructure change only
+
+        If NOT INITIAL: The path is already set in issue_path metadata.
+        Confirm the current state is consistent with the path.
+
+      # Step 3: Decide what the next action should be
+      step_3_decide: |
+        Given the triggering event and current state, what is the next logical step?
+
+        Common decision patterns:
+          IssueCreatedEvent → classify issue type → dispatch first agent
+          AgentCompletedEvent (success) → check if HITL gate needed → dispatch next agent or post gate notice
+          AgentCompletedEvent (failure) → call handle_failure
+          AgentCompletedEvent (partial, parallel phase) → check if ALL parallel agents done → if yes, advance; if no, no_op
+          PullRequestUpdatedEvent (merge) → check PR labels to identify which gate was cleared → dispatch next agent
+          RequirementApprovedEvent → dispatch architect-agent
+          PlanningDirectDispatchEvent → re-dispatch the agent for the current state (manual recovery)
+
+        Ask yourself:
+          - Is there a HITL gate pending? If yes, do NOT dispatch — wait.
+          - Are all required parallel agents complete? If not, no_op.
+          - Is there a natural next step? Dispatch with precise context.
+          - Is anything ambiguous? Post a comment to clarify.
+
+      # Step 4: Produce the structured action list
+      step_4_act: |
+        Output a JSON object with:
+          - actions: ordered list of actions to execute
+          - new_state: the state to write to issue metadata
+          - rationale: one paragraph explaining the decision
+          - metadata_delta: any metadata fields to update (dispatched_agents, etc.)
+
+        Important:
+          - Always include an update_state action to persist the new state
+          - Always include a post_comment action to keep humans informed
+          - When dispatching agents, include precise instruction and context
+          - Include rationale — this is the audit trail for why this decision was made
+
+    output_schema:
+      # Structured JSON returned by the executor to the Azure Function
+      type: object
+      required:
+        - actions
+        - new_state
+        - rationale
+      properties:
+        actions:
+          type: array
+          description: "Ordered list of actions for the Azure Function to execute"
+          items:
+            type: object
+            required: [action_name, parameters]
+            properties:
+              action_name:
+                type: string
+                enum: [dispatch_agent, dispatch_parallel, post_comment, request_hitl,
+                        update_state, mark_complete, handle_failure, no_op]
+              parameters:
+                type: object
+                description: "Action-specific parameters (see available_actions above)"
+        new_state:
+          type: string
+          description: "New planning_agent_state to persist in issue metadata"
+        rationale:
+          type: string
+          description: "Why these actions were chosen — the audit trail"
+        metadata_delta:
+          type: object
+          description: "Additional issue metadata fields to update (merged with existing)"
+
+  # ================================================================
+  # 6. State Management Contract
+  # ================================================================
+  state_management:
+    storage: "github_issue_body"
+    format: "<!-- eda-playground-metadata:{JSON} -->"
+    implementation: "utils/metadata-manager.ts"   # Existing utility — reuse as-is
+    note: |
+      All state is stored in the GitHub issue body as a hidden HTML comment.
+      This makes the Planning Agent fully stateless — no database, no external store.
+      Any crash or cold start is fully recoverable by reading the issue body.
+
+    # Known states (suggestions to the LLM, not hardcoded transitions)
+    # The LLM MAY use different states for novel situations not covered here.
+    known_states:
+      INITIAL:
+        description: "New issue received, classification pending"
+        entry_event: IssueCreatedEvent
+
+      BA_IN_PROGRESS:
+        description: "BA Agent is analyzing requirements"
+        entry_action: dispatch_agent(ba-agent)
+
+      AWAITING_BA_APPROVAL:
+        description: "BRD PR open. Waiting for human /eda-approve-planning or auto-advance."
+        entry_action: request_hitl(HITL Gate 0)
+        unblocked_by: RequirementApprovedEvent
+
+      ARCHITECT_IN_PROGRESS:
+        description: "Architect Agent designing the system"
+        entry_action: dispatch_agent(architect-agent)
+
+      AWAITING_GATE_1:
+        description: "Blueprint PR open. Waiting for human to review and merge."
+        entry_action: request_hitl(HITL Gate 1)
+        unblocked_by: "PullRequestUpdatedEvent where PR has 'blueprint' label and is merged"
+
+      FIP_IN_PROGRESS:
+        description: "FIP Agent creating Function Implementation Proposals"
+        entry_action: dispatch_agent(fip-agent)
+
+      AWAITING_GATE_1_5:
+        description: "FIP PR open. Waiting for human to review and merge."
+        entry_action: request_hitl(HITL Gate 1.5)
+        unblocked_by: "PullRequestUpdatedEvent where PR has 'fip' label and is merged"
+
+      IMPLEMENTATION_IN_PROGRESS:
+        description: "Builder, QA, Security running in parallel. Advances when ALL complete."
+        entry_action: dispatch_parallel([builder-agent, qa-agent, security-agent])
+        parallel_tracking: "Use dispatched_agents + completed_agents in metadata"
+
+      AWAITING_GATE_2:
+        description: "Release PR open. Waiting for final human review and merge."
+        entry_action: request_hitl(HITL Gate 2)
+        unblocked_by: "PullRequestUpdatedEvent where PR has 'release' label and is merged"
+
+      DEPLOYING:
+        description: "SRE Agent deploying to production"
+        entry_action: dispatch_agent(sre-agent)
+
+      # Short-circuit terminal paths
+      SECURITY_IN_PROGRESS:
+        description: "Security scan only (no implementation follows)"
+        entry_action: dispatch_agent(security-agent)
+
+      DOC_IN_PROGRESS:
+        description: "Documentation update only"
+        entry_action: dispatch_agent(doc-agent)
+
+      PLATFORM_IN_PROGRESS:
+        description: "Infrastructure change only"
+        entry_action: dispatch_agent(platform-agent)
+
+      # Terminal states
+      COMPLETE:
+        description: "Issue fully resolved and closed"
+        terminal: true
+
+      FAILED:
+        description: "An agent failed. Requires human intervention."
+        terminal: false
+        recovery: "Human posts /eda-route-planning → triggers PlanningDirectDispatchEvent"
+
+  # ================================================================
+  # 7. Specialist Agent Completion Contract
+  # ================================================================
+  # How specialists signal back to the Planning Agent.
+  # Unchanged from current implementation — this is the existing EDA contract.
+  completion_contract:
+    description: |
+      Every specialist agent MUST post this comment on the GitHub issue when done.
+      The EDA router detects this comment, normalizes it to AgentCompletedEvent,
+      and routes it to the Planning Agent, waking it for the next decision cycle.
+
+    format: "fenced eda JSON block in GitHub issue comment"
+
+    success_example: |
+      ```eda
+      {
+        "event_type": "AgentCompletedEvent",
+        "agent_id": "ba-agent",
+        "status": "success",
+        "pr_number": 42
+      }
+      ```
+
+    failure_example: |
+      ```eda
+      {
+        "event_type": "AgentCompletedEvent",
+        "agent_id": "ba-agent",
+        "status": "failure",
+        "error": "Could not parse uploaded document: unsupported format"
+      }
+      ```
+
+    required_fields: [event_type, agent_id, status]
+    optional_fields: [pr_number, error, output_summary, artifacts]
+
+    security:
+      rule: "Only github-actions[bot] posts are trusted as AgentCompletedEvent signals"
+      reason: "Prevents humans from spoofing agent completion to skip steps"
+      enforcement: "EDA router checks comment author before normalizing"
+
+  # ================================================================
+  # 8. Execution Architecture (Q3 Decision — REVISED)
+  # ================================================================
+  execution_architecture:
+    decision: "Claude SDK directly in Azure Function (Option B)"
+
+    why_not_supabase_executor: |
+      The Supabase Executor is an async GitHub Actions dispatcher:
+        - Takes 3-5 minutes (polling required: pending → dispatched → running → completed)
+        - Output is always a PR created in a target repo
+        - No synchronous mode
+        - Expects context.repo (a coding target) — not applicable for orchestration
+
+      The Planning Agent needs to respond within the Azure Function's webhook lifetime,
+      return structured JSON (not create a PR), and act on GitHub issues — not repos.
+      The Executor model is fundamentally incompatible with orchestration.
+
+    decision_rationale: |
+      The Planning Agent calls the Anthropic SDK (Claude) directly inside the Azure Function.
+      This is synchronous, completes in seconds, and returns a structured action list.
+      The Azure Function then executes those actions, using the Executor only for
+      dispatching specialist agents (which IS the executor's intended use case).
+
+    supabase_executor:
+      role: "Specialist agent dispatcher ONLY — not used for the planning agent itself"
+      base_url: "https://yldkolafvxgolwtthguo.supabase.co/functions/v1"
+      auth_header: "Authorization: Bearer <KEVIN_EXECUTOR_API_KEY>"
+      available_blueprints:
+        - bp_coding_task.1.0.0
+        - bp_code_review.1.0.0
+        - bp_backend_coding_tdd_automation.1.0.0
+        - bp_function_implementation_fip_blueprint.1.0.0
+        - bp_test_feature_comprehensive_testing.1.0.0
+      usage: "POST /execute { blueprint_id, instruction, context: { repo, ref } } → 202 + run_id"
+      model: "Async, fire-and-forget. Planning Agent does NOT poll. Specialists signal back via AgentCompletedEvent."
+
+    full_execution_flow: |
+      1. GitHub Webhook → Azure Function (githubWebhook.ts)
+            - Verify HMAC-SHA256 signature
+            - Normalize event via event-router
+            - Deduplicate via Azure Table Storage
+
+      2. Azure Function loads bp_planning_agent.1.0.0.yaml
+            - Assembles system prompt from blueprint sections:
+                configuration.profile + configuration.rules
+                orchestration.agent_catalog
+                orchestration.available_actions
+                intent_recognition.reasoning_framework
+            - Assembles user message from issue context:
+                triggering_event + issue_state + issue_metadata + recent_comments
+
+      3. Azure Function calls Anthropic SDK directly (synchronous)
+            - Model: claude-opus-4-6
+            - Extended thinking: enabled
+            - Structured output enforced via output_schema
+
+      4. Claude returns { actions, new_state, rationale, metadata_delta }
+
+      5. Azure Function executes each action:
+            dispatch_agent    → POST /execute to Supabase Executor (async, fire-and-forget)
+            dispatch_parallel → Multiple POST /execute calls (all fire-and-forget)
+            post_comment      → GitHub API: POST /repos/.../issues/.../comments
+            request_hitl      → GitHub API: POST comment with gate instructions
+            update_state      → GitHub API: PATCH issue body via metadata-manager.ts
+            mark_complete     → GitHub API: POST comment + PATCH issue state=closed
+            handle_failure    → GitHub API: POST comment + update_state(FAILED)
+            no_op             → Log reason, return
+
+      6. Azure Function returns HTTP 200 to GitHub webhook → execution ends (sleeps)
+
+      7. Specialist finishes 3-5 min later → creates PR in target repo
+            → Posts AgentCompletedEvent fenced JSON comment on the issue
+            → GitHub webhook fires → Planning Agent wakes for next decision cycle
+
+    anthropic_sdk_integration:
+      package: "@anthropic-ai/sdk"
+      env_var: "ANTHROPIC_API_KEY"
+      call_site: "azure-functions/src/planningAgent.ts (to be refactored)"
+      replaces: "hardcoded 567-line TypeScript state machine"

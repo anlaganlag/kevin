@@ -1,5 +1,83 @@
 # Blueprint 模板更新日志
 
+## 2026-03-29 - Executor blueprint availability gaps (temporary fallbacks)
+
+### Context
+The Supabase Executor currently only has 5 blueprints deployed. Several specialist agents
+in `bp_planning_agent.1.0.0.yaml` reference blueprints that exist in this repo but are
+not yet deployed to the executor. As a temporary measure, those agents fall back to
+`bp_coding_task.1.0.0` with a detailed `instruction` string to guide Kevin.
+
+### Blueprints that exist here but are NOT yet on the executor
+
+| Blueprint file | Blocks who | Temporary fallback |
+|---|---|---|
+| `bp_ba_requirement_analysis.1.0.0.yaml` | ba-agent | `bp_coding_task.1.0.0` + instruction_hint |
+| `bp_architecture_blueprint_design.1.0.0.yaml` | architect-agent | `bp_coding_task.1.0.0` + instruction_hint |
+| `bp_deployment_monitoring_automation.1.0.0.yaml` | sre-agent, platform-agent | `bp_coding_task.1.0.0` + instruction_hint |
+| *(not yet created)* | security-agent | `bp_code_review.1.0.0` + instruction_hint |
+| *(not yet created)* | doc-agent | `bp_coding_task.1.0.0` + instruction_hint |
+
+### What needs to happen to revert
+
+1. Deploy the missing blueprints to the Supabase Executor
+2. In `event-driven-architecture-playground/azure-functions/src/blueprintLoader.ts`,
+   update each agent's `blueprint_id` back to the proper value (search for `TODO — revert`)
+3. Remove the `instruction_hint` fields for those agents (they compensate for the fallback)
+4. Redeploy the CF Worker: `npx wrangler deploy`
+
+### Blueprints already on the executor (no action needed)
+
+| Blueprint file | Used by |
+|---|---|
+| `bp_coding_task.1.0.0.yaml` | builder-agent (proper), others (fallback) |
+| `bp_code_review.1.0.0.yaml` | security-agent (fallback) |
+| `bp_backend_coding_tdd_automation.1.0.0.yaml` | (available, not currently assigned) |
+| `bp_function_implementation_fip_blueprint.1.0.0.yaml` | fip-agent ✓ |
+| `bp_test_feature_comprehensive_testing.1.0.0.yaml` | qa-agent ✓ |
+
+---
+
+## 2026-03-29 - Planning Agent Agentic Blueprint (replaces hardcoded state machine)
+
+### New: `blueprints/bp_planning_agent.1.0.0.yaml`
+
+**Why**: The previous implementation encoded the Planning Agent as a hardcoded TypeScript
+state machine (`planningAgent.ts`, 567 lines). Every workflow change required a code deploy.
+The manager requires all agents — including the Planning Agent — to be described as blueprints,
+making behavior evolvable without code changes.
+
+**What's new**:
+- Introduced `blueprint_type: "orchestrator"` — a new blueprint type distinct from
+  `feature` / `implementation` blueprints used by specialists
+- The Planning Agent is now **agentic**: uses Claude SDK (Opus 4.6 with extended thinking)
+  to perform intent recognition and decide the next action
+- Three-phase execution model: pre-check → intent recognition → agent assembly
+- **Agent catalog**: full registry of specialist agents and their blueprint IDs, embedded in
+  the blueprint so the LLM knows who it can dispatch and when
+- **Action vocabulary**: 8 explicit actions (dispatch_agent, dispatch_parallel, post_comment,
+  request_hitl, update_state, mark_complete, handle_failure, no_op)
+- **Intent recognition framework**: 4-step reasoning framework for Claude (understand →
+  classify → decide → act), produces structured JSON action list
+- **State management contract**: 15 known states documented as LLM suggestions (not hardcoded
+  transitions — LLM may adapt for novel situations)
+- **Q3 decision documented**: Executor is a pure Claude runner; Azure Function executes actions
+
+**Execution platform (Q3 — revised after reviewing Executor API)**:
+- Planning Agent calls **Anthropic SDK directly** inside the Azure Function (synchronous, seconds)
+- Supabase Executor is used only for **dispatching specialist agents** (async, fire-and-forget)
+- Executor is an async GitHub Actions dispatcher (3-5 min, creates PRs) — incompatible with
+  synchronous orchestration. Planning agent cannot run on it.
+- Executor available blueprints: bp_coding_task, bp_code_review, bp_backend_coding_tdd_automation,
+  bp_function_implementation_fip_blueprint, bp_test_feature_comprehensive_testing
+
+**Related files**:
+- `blueprints/planning_agent_state_machine.yaml` — preserved as reference / rough spec
+- `azure-functions/src/planningAgent.ts` — to be refactored (Phase 3, pending Q2 prompt design)
+- `azure-functions/src/githubWebhook.ts` — to be updated to call Executor instead of inline TS
+
+---
+
 ## 2026-03-28 - Planning Agent Redesign: State Machine Orchestrator
 
 ### New: `blueprints/planning_agent_state_machine.yaml`
