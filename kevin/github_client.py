@@ -52,14 +52,24 @@ def post_comment(repo: str, issue_number: int, body: str) -> None:
 
 
 def add_labels(repo: str, issue_number: int, labels: list[str]) -> None:
-    """Add labels to a GitHub Issue."""
+    """Add labels to a GitHub Issue, creating missing labels automatically."""
     if not labels:
         return
+    for label in labels:
+        ensure_label_exists(repo, label)
     _gh(
         "issue", "edit", str(issue_number),
         "--repo", repo,
         *[arg for label in labels for arg in ("--add-label", label)],
     )
+
+
+def ensure_label_exists(repo: str, label: str) -> None:
+    """Create a label if it doesn't exist. Silently succeeds if it already exists."""
+    try:
+        _gh("label", "create", label, "--repo", repo, "--color", "5319e7", "--force")
+    except RuntimeError:
+        pass  # Label already exists or other non-critical error
 
 
 def remove_labels(repo: str, issue_number: int, labels: list[str]) -> None:
