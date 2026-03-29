@@ -230,6 +230,10 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
         "issue_labels": "",
         "learning_context": "",
     }
+    # Pass through all context fields as template variables (e.g. pr_number, issue_number)
+    for k, v in ctx.items():
+        if k not in variables:
+            variables[k] = str(v)
 
     # Create local run state
     state_mgr = StateManager(cfg.state_dir)
