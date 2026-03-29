@@ -11,9 +11,6 @@ const CALLBACK_BASE_URL = Deno.env.get("CALLBACK_BASE_URL") ?? "";
 const KNOWN_BLUEPRINTS = [
   "bp_coding_task.1.0.0",
   "bp_code_review.1.0.0",
-  "bp_backend_coding_tdd_automation.1.0.0",
-  "bp_function_implementation_fip_blueprint.1.0.0",
-  "bp_test_feature_comprehensive_testing.1.0.0",
 ];
 
 Deno.serve(async (req) => {
