@@ -54,12 +54,16 @@ def run_block(
     *,
     dry_run: bool = False,
     is_retry: bool = False,
+    previous_result: BlockResult | None = None,
 ) -> BlockResult:
     """Execute a block using the appropriate runner, then validate.
 
     Args:
         is_retry: If True, run pre_check before execution to reset workspace.
                   First attempt skips pre_check to preserve prior block outputs.
+        previous_result: Result from the previous failed attempt. When provided
+                         and runner is claude_cli, error context is appended to
+                         the prompt so the agent can adapt its strategy.
     """
     runner = block.runner or "claude_cli"
 
@@ -85,7 +89,13 @@ def run_block(
             stderr=f"Unknown runner: {runner}",
         )
 
-    result = runner_fn(block, variables)
+    # Adaptive retry: inject previous failure context for claude_cli runner
+    if previous_result is not None and runner == "claude_cli":
+        retry_vars = {**variables}
+        retry_vars["_previous_error"] = _build_retry_context(previous_result)
+        result = runner_fn(block, retry_vars)
+    else:
+        result = runner_fn(block, variables)
 
     # Run validators if block execution succeeded
     if result.success and block.validators:
@@ -104,6 +114,20 @@ def run_block(
 # Runner implementations
 # ---------------------------------------------------------------------------
 
+def _build_retry_context(previous_result: BlockResult) -> str:
+    """Build a concise error summary from a failed BlockResult for adaptive retry."""
+    parts: list[str] = []
+    if previous_result.exit_code is not None:
+        parts.append(f"Exit code: {previous_result.exit_code}")
+    if previous_result.stderr:
+        parts.append(f"Error:\n{previous_result.stderr[-500:]}")
+    if previous_result.validator_results:
+        failed = [v for v in previous_result.validator_results if not v.get("passed")]
+        if failed:
+            parts.append(f"Validator failures: {failed}")
+    return "\n".join(parts)
+
+
 def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
     """Execute a block via `claude -p <prompt> --cwd <dir>`.
 
@@ -113,6 +137,14 @@ def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
     execution and cleaned up afterward.
     """
     prompt = render(block.prompt_template, variables)
+
+    # Adaptive retry: append previous failure context so the agent can adjust
+    retry_ctx = variables.get("_previous_error", "")
+    if retry_ctx:
+        prompt += (
+            "\n\n⚠️ PREVIOUS ATTEMPT FAILED — analyse the error and use a different strategy:\n"
+            + retry_ctx
+        )
     cwd = _resolve_cwd(block.runner_config, variables)
     model = block.runner_config.get("model", "")
     context_filter: list[str] = block.runner_config.get("context_filter", [])
@@ -476,6 +508,7 @@ async def run_block_async(
     *,
     dry_run: bool = False,
     is_retry: bool = False,
+    previous_result: BlockResult | None = None,
 ) -> BlockResult:
     """Async wrapper — runs synchronous run_block in a thread pool.
 
@@ -484,5 +517,6 @@ async def run_block_async(
     """
     import asyncio
     return await asyncio.to_thread(
-        run_block, block, variables, dry_run=dry_run, is_retry=is_retry,
+        run_block, block, variables,
+        dry_run=dry_run, is_retry=is_retry, previous_result=previous_result,
     )

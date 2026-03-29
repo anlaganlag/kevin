@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kevin import __version__
-from kevin.agent_runner import run_block, run_block_async
+from kevin.agent_runner import BlockResult, run_block, run_block_async
 from kevin.blueprint_loader import Block, find_blueprint, load
 from kevin.config import KevinConfig, build_config
 from kevin.github_client import Issue, add_labels, fetch_issue, post_comment, remove_labels
@@ -570,11 +570,17 @@ async def _execute_blocks_async(
         if not config.dry_run:
             _notify_teams(config, run, blocks, issue, "running")
 
+        result: BlockResult | None = None
         for attempt in range(block.max_retries + 1):
             if attempt > 0:
                 _log(config, f"  {block.block_id}: Retry {attempt}/{block.max_retries}...")
 
-            result = await run_block_async(block, variables, dry_run=config.dry_run, is_retry=attempt > 0)
+            result = await run_block_async(
+                block, variables,
+                dry_run=config.dry_run,
+                is_retry=attempt > 0,
+                previous_result=result if attempt > 0 else None,
+            )
 
             # Save logs
             log_id = f"{block.block_id}.attempt-{attempt}" if attempt > 0 else block.block_id
