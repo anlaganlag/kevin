@@ -20,7 +20,7 @@ jobs:
           REPO=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('repo',''))" 2>/dev/null || echo "")
           REF=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ref','main'))" 2>/dev/null || echo "main")
           if [ -n "$REPO" ]; then
-            git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${REPO}.git" target-repo
+            git clone "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${REPO}.git" target-repo
             cd target-repo && git checkout "$REF"
           fi
 
@@ -46,7 +46,7 @@ jobs:
           ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
           API_TIMEOUT_MS: "600000"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           TARGET_DIR="."
           if [ -d "target-repo" ]; then TARGET_DIR="target-repo"; fi
