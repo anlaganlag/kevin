@@ -10,3 +10,12 @@ knowledge.db
 
 # Git worktrees
 .worktrees/
+
+# Build artifacts
+*.egg-info/
+
+# Supabase temp
+supabase/.temp/
+
+# Runtime data
+kevin/teams_bot/.conversation_references.json
