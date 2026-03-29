@@ -1,12 +1,15 @@
 import { verifyHmac } from "../_shared/hmac.ts";
 import { isValidTransition } from "../_shared/transitions.ts";
 import { getSupabase } from "../_shared/supabase.ts";
+import { corsOptions, json } from "../_shared/cors.ts";
 
 const HMAC_SECRET = Deno.env.get("CALLBACK_HMAC_SECRET") ?? "";
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return corsOptions();
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return json({ error: "Method not allowed" }, 405);
   }
 
   // Read body as text for HMAC verification
