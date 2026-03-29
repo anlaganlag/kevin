@@ -2,28 +2,86 @@
 
 import { validateApiKey } from "../_shared/auth.ts";
 import { getSupabase } from "../_shared/supabase.ts";
+import { corsOptions, json, CORS_HEADERS } from "../_shared/cors.ts";
 
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") ?? "";
-const DISPATCH_REPO = Deno.env.get("DISPATCH_REPO") ?? "anlaganlag/AgenticSDLC";
+const DISPATCH_REPO = Deno.env.get("DISPATCH_REPO") ?? "centific-cn/AgenticSDLC";
 const CALLBACK_BASE_URL = Deno.env.get("CALLBACK_BASE_URL") ?? "";
 
+const KNOWN_BLUEPRINTS = [
+  "bp_coding_task.1.0.0",
+  "bp_code_review.1.0.0",
+  "bp_backend_coding_tdd_automation.1.0.0",
+  "bp_function_implementation_fip_blueprint.1.0.0",
+  "bp_test_feature_comprehensive_testing.1.0.0",
+];
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return corsOptions();
+
+  // Health check
+  if (req.method === "GET") {
+    return json({
+      status: "ok",
+      service: "kevin-executor",
+      available_blueprints: KNOWN_BLUEPRINTS,
+    });
+  }
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return json({ error: "Method not allowed" }, 405);
   }
 
   if (!validateApiKey(req)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    return json({
+      error: "Unauthorized",
+      hint: "Add header: Authorization: Bearer <your-api-key>",
+    }, 401);
   }
 
-  const body = await req.json();
-  const { blueprint_id, instruction, context, callback_url } = body;
+  // Safe JSON parse
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return json({
+      error: "Invalid JSON body",
+      hint: "Check for unescaped quotes or trailing commas in your JSON",
+    }, 400);
+  }
+
+  const { blueprint_id, instruction, context, callback_url } = body as {
+    blueprint_id?: string;
+    instruction?: string;
+    context?: Record<string, unknown>;
+    callback_url?: string;
+  };
 
   if (!blueprint_id || !instruction) {
-    return new Response(
-      JSON.stringify({ error: "blueprint_id and instruction are required" }),
-      { status: 400 },
-    );
+    return json({
+      error: "blueprint_id and instruction are required",
+      example: {
+        blueprint_id: "bp_coding_task.1.0.0",
+        instruction: "Add a /health endpoint",
+        context: { repo: "owner/repo", ref: "main" },
+      },
+    }, 400);
+  }
+
+  if (!KNOWN_BLUEPRINTS.includes(blueprint_id)) {
+    return json({
+      error: `Unknown blueprint_id: ${blueprint_id}`,
+      available: KNOWN_BLUEPRINTS,
+    }, 400);
+  }
+
+  // Validate context.repo format if provided
+  const repo = (context as Record<string, string>)?.repo;
+  if (repo && !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo)) {
+    return json({
+      error: "Invalid context.repo format",
+      hint: "Use owner/repo format, e.g. anlaganlag/test-repo",
+    }, 400);
   }
 
   const db = getSupabase();
@@ -42,17 +100,17 @@ Deno.serve(async (req) => {
     .single();
 
   if (insertErr || !run) {
-    return new Response(
-      JSON.stringify({ error: "Failed to create run", detail: insertErr?.message }),
-      { status: 500 },
+    return json(
+      { error: "Failed to create run", detail: insertErr?.message },
+      500,
     );
   }
 
   // Dispatch to GitHub Actions
   const callbackUrl = `${CALLBACK_BASE_URL}/callback`;
   const dispatchOk = await triggerDispatch(run.run_id, {
-    blueprint_id,
-    instruction,
+    blueprint_id: blueprint_id as string,
+    instruction: instruction as string,
     context: JSON.stringify(context ?? {}),
     callback_url: callbackUrl,
   });
@@ -63,19 +121,16 @@ Deno.serve(async (req) => {
       .update({ status: "dispatch_failed", error_code: "DISPATCH_FAILED" })
       .eq("run_id", run.run_id);
 
-    return new Response(
-      JSON.stringify({ run_id: run.run_id, status: "dispatch_failed" }),
-      { status: 502 },
+    return json(
+      { run_id: run.run_id, status: "dispatch_failed" },
+      502,
     );
   }
 
   // Mark as dispatched
   await db.from("runs").update({ status: "dispatched" }).eq("run_id", run.run_id);
 
-  return new Response(
-    JSON.stringify({ run_id: run.run_id, status: "dispatched" }),
-    { status: 202 },
-  );
+  return json({ run_id: run.run_id, status: "dispatched" }, 202);
 });
 
 async function triggerDispatch(
