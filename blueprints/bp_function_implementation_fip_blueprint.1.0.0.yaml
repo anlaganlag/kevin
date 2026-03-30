@@ -412,108 +412,169 @@ blueprint:
 
         dependency_graph:
           blocks:
-            # Phase 1: Context Loading and Architecture Review
+            # --------------------------------------------------------
+            # B1: Analyze Requirements + Load Architecture Context
+            # --------------------------------------------------------
             - block_id: "B1"
-              name: "load_context_and_architecture"
-              assigned_to: "PlanningAgent (Architecture Expert)"
-              dependencies: []
-              skills: ["architecture_review", "context_loading", "compliance_check"]
-              output: "Architecture constraints and existing patterns loaded"
-
-            # Phase 2: Requirements Analysis
-            - block_id: "B2"
               name: "analyze_requirements"
-              assigned_to: "PlanningAgent"
+              assigned_to: "BuilderAgent"
+              dependencies: []
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: ""
+              timeout: 300
+              max_retries: 1
+              pre_check: "rm -f .kevin/analysis.md"
+              prompt_template: |
+                You are a Planning Agent / Architecture Expert creating a Function Implementation Proposal (FIP).
+                You MUST create files as instructed. Do NOT ask questions. Just execute.
+
+                {{learning_context}}
+
+                ## Issue #{{issue_number}}: {{issue_title}}
+
+                {{issue_body}}
+
+                ## Instructions (execute ALL steps)
+
+                1. Read the issue carefully and understand the feature/function requirements
+                2. Create directory `.kevin/` if it does not exist: `mkdir -p .kevin`
+                3. Explore the existing codebase to understand:
+                   - Project architecture (monolith, microservices, modules)
+                   - Tech stack (languages, frameworks, databases)
+                   - Existing patterns (API design, data models, error handling)
+                   - Deployment approach (Docker, K8s, serverless)
+                   - Test setup and conventions
+                4. Write an analysis to `.kevin/analysis.md` containing:
+                   - Summary of what needs to be implemented
+                   - Architecture context: how this fits into existing system
+                   - Affected components / services / modules
+                   - API design (endpoints, request/response schemas) if applicable
+                   - Data model changes if applicable
+                   - Security considerations
+                   - Risk assessment (complexity, dependencies, breaking changes)
+                5. Create a feature branch: `git checkout -b kevin/issue-{{issue_number}}`
+
+                IMPORTANT: You MUST write `.kevin/analysis.md` before finishing.
+                Do NOT implement anything yet. Only analyze.
+              output: "Architecture analysis in .kevin/analysis.md + feature branch"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/analysis.md"
+              acceptance_criteria:
+                - "Requirements understood and architecture context loaded"
+                - "Feature branch created"
+
+            # --------------------------------------------------------
+            # B2: Generate FIP Document + Task Breakdown + Implement
+            # --------------------------------------------------------
+            - block_id: "B2"
+              name: "generate_fip_and_implement"
+              assigned_to: "BuilderAgent"
               dependencies: ["B1"]
-              skills: ["requirement_analysis", "technical_analysis"]
-              output: "Requirements understanding and technical implications"
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: ""
+              timeout: 600
+              max_retries: 2
+              pre_check: "git diff --quiet HEAD -- . 2>/dev/null || git checkout -- . 2>/dev/null; git clean -fd --exclude=.kevin/ 2>/dev/null; true"
+              prompt_template: |
+                You are implementing a feature based on the architecture analysis on branch `kevin/issue-{{issue_number}}`.
 
-            # Phase 3: Parallel Expert Inputs (Architecture-led, others in parallel)
+                {{learning_context}}
+
+                ## Context
+
+                Read the analysis from `.kevin/analysis.md`.
+
+                ## Instructions
+
+                1. Read `.kevin/analysis.md` for architecture context and requirements
+                2. Create `.kevin/fip.md` — the Function Implementation Proposal containing:
+                   - Architecture design decisions
+                   - Backend design: API endpoints, data models, service layer
+                   - Frontend design (if applicable): components, state management
+                   - Infrastructure considerations: deployment, monitoring
+                   - QA strategy: test types needed, coverage targets
+                   - Task breakdown: ordered list of implementation tasks with dependencies
+                3. Implement the solution following the FIP:
+                   - Write tests first for core functionality
+                   - Implement the feature
+                   - Ensure all tests pass
+                   - Follow existing code patterns and conventions
+                4. Commit with message: `feat: {{issue_title}} (resolves #{{issue_number}})`
+
+                Follow existing code style and patterns in the repo.
+              output: "FIP document + implementation committed to feature branch"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/fip.md"
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "command"
+                  run: "git log --oneline -1 | grep -q 'feat:'"
+              acceptance_criteria:
+                - "FIP document generated"
+                - "Feature implemented with tests"
+                - "Code committed to feature branch"
+
+            # --------------------------------------------------------
+            # B3: Create Pull Request
+            # --------------------------------------------------------
             - block_id: "B3"
-              name: "architecture_design"
-              assigned_to: "PlanningAgent (Architecture Expert)"
+              name: "create_pull_request"
+              assigned_to: "BuilderAgent"
               dependencies: ["B2"]
-              skills: ["architecture_design", "component_design", "interface_design"]
-              output: "Technical architecture design"
-              coordination_role: "lead"
+              runner: "shell"
+              pre_check: ""
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  BRANCH="kevin/issue-{{issue_number}}"
 
-            - block_id: "B4"
-              name: "rnd_leadership_review"
-              assigned_to: "BuilderAgent (R&D Leader)"
-              dependencies: ["B2"]
-              skills: ["technical_leadership", "feasibility_analysis", "risk_assessment"]
-              output: "Technical leadership review and validation"
-              coordination_role: "consult"
+                  # Check if PR is already merged → skip entirely
+                  MERGED_PR=$(gh pr list --head "$BRANCH" --state merged --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$MERGED_PR" ]; then echo "PR #$MERGED_PR already merged — skipping B3"; exit 0; fi
 
-            - block_id: "B5"
-              name: "backend_design"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B2"]
-              skills: ["backend_api_design", "data_modeling", "service_design"]
-              output: "Backend design and implementation approach"
-              coordination_role: "parallel"
+                  # Fetch remote refs
+                  git fetch origin "$BRANCH" 2>/dev/null || true
 
-            - block_id: "B6"
-              name: "frontend_design"
-              assigned_to: "BuilderAgent (Frontend Expert)"
-              dependencies: ["B2"]
-              skills: ["frontend_ui_design", "state_management", "ux_design"]
-              output: "Frontend design and user interaction approach"
-              coordination_role: "parallel"
+                  # Push
+                  git push --force-with-lease -u origin "$BRANCH"
 
-            - block_id: "B7"
-              name: "devops_design"
-              assigned_to: "PlatformAgent (DevOps Expert)"
-              dependencies: ["B2"]
-              skills: ["infrastructure_design", "deployment_strategy", "ci_cd_design"]
-              output: "DevOps and infrastructure approach"
-              coordination_role: "parallel"
+                  # If open PR exists → just update it
+                  EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR updated"; exit 0; fi
 
-            - block_id: "B8"
-              name: "qa_strategy"
-              assigned_to: "QAAgent (QA Expert)"
-              dependencies: ["B2"]
-              skills: ["test_strategy_design", "coverage_analysis", "acceptance_criteria"]
-              output: "Testing strategy and quality approach"
-              coordination_role: "parallel"
+                  # Create new PR
+                  gh pr create \
+                    --title "{{issue_title}}" \
+                    --body "## Summary
 
-            # Phase 4: Architecture Compliance Check
-            - block_id: "B9"
-              name: "architecture_compliance_check"
-              assigned_to: "PlanningAgent (Architecture Expert)"
-              dependencies: ["B3", "B4", "B5", "B6", "B7", "B8"]
-              skills: ["architecture_compliance", "rule_validation", "consistency_check"]
-              output: "Architecture compliance validation report"
-              validation: "Ensures no architecture rules are broken"
+                  Resolves {{repo_full}}#{{issue_number}}
 
-            # Phase 5: FIP Consolidation
-            - block_id: "B10"
-              name: "consolidate_fip"
-              assigned_to: "PlanningAgent"
-              dependencies: ["B9"]
-              skills: ["fip_generation", "document_consolidation", "technical_writing"]
-              output: "Comprehensive FIP document"
-              consolidation: "Merges all expert inputs into cohesive proposal"
+                  ## Function Implementation Proposal
 
-            # Phase 6: Task Breakdown Generation
-            - block_id: "B11"
-              name: "generate_task_breakdown"
-              assigned_to: "PlanningAgent"
-              dependencies: ["B10"]
-              skills: ["task_decomposition", "dependency_analysis", "estimation"]
-              output: "Detailed task breakdown for implementation"
-              breakdown: "Creates actionable tasks from FIP"
+                  $(cat .kevin/fip.md 2>/dev/null | head -40)
 
-            # Phase 7: Final Review and Output Generation
-            - block_id: "B12"
-              name: "final_review_and_output"
-              assigned_to: "PlanningAgent"
-              dependencies: ["B11"]
-              skills: ["quality_review", "validation", "documentation"]
-              output: "Final FIP document with all artifacts"
-              final_check: "Completeness, consistency, and readiness validation"
+                  ## Changes
 
-          execution_order: "B1 → B2 → (B3 lead + B4 consult + B5-B8 parallel) → B9 → B10 → B11 → B12"
+                  $(git diff main...HEAD --stat)
+
+                  ---
+                  _Automated by Kevin via bp_function_implementation_fip_blueprint.1.0.0_"
+              timeout: 120
+              max_retries: 1
+              validators:
+                - type: "command"
+                  run: "gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number'"
+              acceptance_criteria:
+                - "PR created with FIP summary"
+                - "PR linked to original issue"
+
+          execution_order: "B1 → B2 → B3"
 
       # Step 4: Confirm Completion and Deliver Output
       step_4:
