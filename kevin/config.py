@@ -87,6 +87,12 @@ def build_config(
     kevin_root = Path(__file__).resolve().parent.parent
     blueprints_dir = kevin_root / "blueprints"
     target = Path(target_repo) if target_repo else Path.cwd()
+
+    if not target.is_dir():
+        raise FileNotFoundError(
+            f"target_repo '{target}' does not exist or is not a directory"
+        )
+
     state_dir = target / ".kevin" / "runs"
 
     owner, name = "", ""
