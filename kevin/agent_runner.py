@@ -14,7 +14,6 @@ Validators (run after block execution):
 from __future__ import annotations
 
 import glob as glob_mod
-import selectors
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -22,13 +21,13 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-# Seconds of silence before the heartbeat watchdog kills a subprocess.
-# Claude CLI can think for a while (extended thinking), so this needs to be generous.
-HEARTBEAT_TIMEOUT_SECONDS = 600
-
 from kevin.blueprint_loader import Block, Validator
 from kevin.prompt_template import render
+from kevin.subprocess_utils import DEFAULT_HEARTBEAT_TIMEOUT, run_with_heartbeat
 from kevin.utils import resolve_cwd
+
+# Re-export for backward compatibility (used by tests)
+HEARTBEAT_TIMEOUT_SECONDS = DEFAULT_HEARTBEAT_TIMEOUT
 
 
 @dataclass
@@ -407,95 +406,22 @@ def _subprocess_run(
 ) -> BlockResult:
     """Run a subprocess with non-blocking I/O and heartbeat watchdog.
 
-    Uses selectors to monitor both stdout and stderr without blocking.
-    If no output on either stream for HEARTBEAT_TIMEOUT_SECONDS, the process
-    is killed (prevents "fake death" in CI environments like GHA).
+    Delegates to subprocess_utils.run_with_heartbeat and maps the result
+    back to a BlockResult.
     """
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=str(cwd),
-        )
-    except FileNotFoundError as exc:
-        return BlockResult(
-            block_id=block_id,
-            success=False,
-            stderr=f"Command not found: {exc}",
-        )
-
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
-    start_time = time.monotonic()
-    last_output_time = start_time
-    heartbeat_limit = min(HEARTBEAT_TIMEOUT_SECONDS, timeout)
-
-    # Register both stdout and stderr for non-blocking reads
-    sel = selectors.DefaultSelector()
-    try:
-        if proc.stdout:
-            sel.register(proc.stdout, selectors.EVENT_READ, "stdout")
-        if proc.stderr:
-            sel.register(proc.stderr, selectors.EVENT_READ, "stderr")
-
-        while sel.get_map():
-            elapsed = time.monotonic() - start_time
-            if elapsed > timeout:
-                proc.kill()
-                proc.wait()
-                return BlockResult(
-                    block_id=block_id,
-                    success=False,
-                    stdout="".join(stdout_chunks),
-                    stderr=f"Timeout after {timeout}s\n{''.join(stderr_chunks)}",
-                )
-
-            silence = time.monotonic() - last_output_time
-            if silence > heartbeat_limit:
-                proc.kill()
-                proc.wait()
-                return BlockResult(
-                    block_id=block_id,
-                    success=False,
-                    stdout="".join(stdout_chunks),
-                    stderr=f"Heartbeat timeout: no output for {heartbeat_limit}s\n{''.join(stderr_chunks)}",
-                )
-
-            # Wait up to 1s for data on either stream
-            ready = sel.select(timeout=1.0)
-            for key, _ in ready:
-                chunk = key.fileobj.read1(8192) if hasattr(key.fileobj, "read1") else key.fileobj.readline()
-                if chunk:
-                    if key.data == "stdout":
-                        stdout_chunks.append(chunk)
-                    else:
-                        stderr_chunks.append(chunk)
-                    last_output_time = time.monotonic()
-                else:
-                    # EOF on this stream
-                    sel.unregister(key.fileobj)
-
-        proc.wait()
-        return BlockResult(
-            block_id=block_id,
-            success=proc.returncode == 0,
-            exit_code=proc.returncode,
-            stdout="".join(stdout_chunks),
-            stderr="".join(stderr_chunks),
-        )
-
-    except Exception as exc:
-        proc.kill()
-        proc.wait()
-        return BlockResult(
-            block_id=block_id,
-            success=False,
-            stderr=f"Unexpected error: {exc}",
-        )
-    finally:
-        sel.close()
+    result = run_with_heartbeat(
+        cmd,
+        cwd=cwd,
+        timeout=timeout,
+        heartbeat_timeout=DEFAULT_HEARTBEAT_TIMEOUT,
+    )
+    return BlockResult(
+        block_id=block_id,
+        success=result.success,
+        exit_code=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
 
 
 # ---------------------------------------------------------------------------
