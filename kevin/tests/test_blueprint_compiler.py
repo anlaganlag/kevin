@@ -7,10 +7,12 @@ import pytest
 import yaml
 
 from kevin.blueprint_compiler import (
+    BlueprintValidation,
     SemanticBlueprint,
     compile,
     compile_task,
     load_semantic,
+    validate_for_execution,
 )
 from kevin.workers.interface import WorkerTask
 
@@ -517,3 +519,201 @@ class TestCompileTask:
         task = compile_task(semantic, variables, task_id="t1", cwd=Path("/tmp"))
         assert task.metadata["blueprint_id"] == "bp_coding_task.1.0.0"
         assert task.metadata["issue_number"] == "42"
+
+
+# ---------------------------------------------------------------------------
+# validate_for_execution tests
+# ---------------------------------------------------------------------------
+
+
+class TestValidateForExecution:
+    """Test blueprint validation for agentic execution."""
+
+    @staticmethod
+    def _minimal_semantic(**overrides: Any) -> SemanticBlueprint:
+        defaults = {
+            "blueprint_id": "test",
+            "blueprint_name": "Test",
+            "goal": "Build a feature",
+            "acceptance_criteria": ["Feature works"],
+            "constraints": ["No external deps"],
+            "context_sources": [],
+            "sub_agents": [],
+            "verification_commands": ["Run: pytest"],
+            "workflow_steps": ["Analyze", "Implement"],
+            "artifacts": [],
+            "task_timeout": 300,
+            "raw": {},
+        }
+        defaults.update(overrides)
+        return SemanticBlueprint(**defaults)
+
+    def test_should_pass_valid_blueprint(self) -> None:
+        sem = self._minimal_semantic()
+        v = validate_for_execution(sem)
+        assert v.valid is True
+        assert v.prompt_chars > 0
+        assert v.criteria_count == 1
+        assert v.step_count == 2
+
+    def test_should_fail_empty_blueprint(self) -> None:
+        sem = self._minimal_semantic(
+            goal="Test",
+            blueprint_name="Test",
+            acceptance_criteria=[],
+            workflow_steps=[],
+            constraints=[],
+            verification_commands=[],
+        )
+        v = validate_for_execution(sem)
+        assert v.valid is False
+        assert len(v.warnings) >= 3
+
+    def test_should_warn_on_missing_verification(self) -> None:
+        sem = self._minimal_semantic(verification_commands=[])
+        v = validate_for_execution(sem)
+        assert v.valid is True  # still valid — has goal + criteria
+        assert any("verification" in w for w in v.warnings)
+
+    def test_should_pass_blueprint_with_criteria_but_no_steps(self) -> None:
+        sem = self._minimal_semantic(workflow_steps=[])
+        v = validate_for_execution(sem)
+        assert v.valid is True  # criteria alone is sufficient
+
+
+# ---------------------------------------------------------------------------
+# Full pipeline: all blueprints → load → compile → validate
+# ---------------------------------------------------------------------------
+
+# Blueprints that are NOT intended for agentic execution
+_NON_EXECUTABLE_BLUEPRINTS = {
+    "planning_agent_state_machine.yaml",  # deprecated legacy config
+    "bp_planning_agent.1.0.0.yaml",       # orchestrator — uses Claude SDK, not executor
+}
+
+# Blueprints with execution-ready blocks (have prompt_template)
+_EXECUTION_READY_BLUEPRINTS = {
+    "bp_coding_task.1.0.0.yaml",
+    "bp_code_review.1.0.0.yaml",
+    "bp_backend_coding_tdd_automation.1.0.0.yaml",
+    "bp_frontend_feature_ui_design.1.0.0.yaml",
+    "bp_function_implementation_fip_blueprint.1.0.0.yaml",
+}
+
+# Executable blueprint files (excluding known non-executable)
+_EXECUTABLE_BP_FILES = [
+    p for p in _ALL_BP_FILES if p.name not in _NON_EXECUTABLE_BLUEPRINTS
+]
+
+
+class TestFullPipelineAllBlueprints:
+    """End-to-end: every executable blueprint passes load → compile → validate."""
+
+    _VARIABLES = {
+        "issue_number": "99",
+        "issue_title": "Integration test issue",
+        "issue_body": "Verify all blueprints compile correctly.",
+        "repo": "test/repo",
+        "target_repo": "/tmp/test",
+        "branch_name": "test-branch",
+        "learning_context": "",
+    }
+
+    @pytest.mark.parametrize(
+        "bp_file",
+        _EXECUTABLE_BP_FILES,
+        ids=[p.name for p in _EXECUTABLE_BP_FILES],
+    )
+    def test_should_load_compile_and_validate(self, bp_file: Path) -> None:
+        """Each executable blueprint must pass the full pipeline."""
+        semantic = load_semantic(bp_file)
+
+        # compile must not raise
+        prompt = compile(semantic, self._VARIABLES)
+        assert len(prompt) > 200, f"{bp_file.name}: prompt too short ({len(prompt)} chars)"
+        assert "GOAL" in prompt
+
+        # compile_task must produce WorkerTask
+        task = compile_task(
+            semantic, self._VARIABLES, task_id="test-run", cwd=Path("/tmp/test"),
+        )
+        assert isinstance(task, WorkerTask)
+        assert task.timeout > 0
+
+        # validate must pass
+        v = validate_for_execution(semantic)
+        assert v.valid is True, (
+            f"{bp_file.name}: validation failed — {v.warnings}"
+        )
+
+    @pytest.mark.parametrize(
+        "bp_file",
+        [p for p in _ALL_BP_FILES if p.name in _EXECUTION_READY_BLUEPRINTS],
+        ids=[p.name for p in _ALL_BP_FILES if p.name in _EXECUTION_READY_BLUEPRINTS],
+    )
+    def test_execution_ready_blueprints_should_have_rich_prompts(
+        self, bp_file: Path
+    ) -> None:
+        """Execution-ready blueprints should produce prompts with workflow guidance."""
+        semantic = load_semantic(bp_file)
+        prompt = compile(semantic, self._VARIABLES)
+
+        assert "WORKFLOW GUIDANCE" in prompt, f"{bp_file.name}: missing workflow guidance"
+        assert "ACCEPTANCE CRITERIA" in prompt, f"{bp_file.name}: missing criteria"
+        assert len(semantic.workflow_steps) >= 2, f"{bp_file.name}: too few steps"
+
+    @pytest.mark.parametrize(
+        "bp_name",
+        sorted(_NON_EXECUTABLE_BLUEPRINTS),
+        ids=sorted(_NON_EXECUTABLE_BLUEPRINTS),
+    )
+    def test_non_executable_blueprints_should_fail_validation(self, bp_name: str) -> None:
+        """Non-executable blueprints must be flagged by validate_for_execution."""
+        bp_path = BLUEPRINTS_DIR / bp_name
+        if not bp_path.exists():
+            pytest.skip(f"{bp_name} not found")
+        semantic = load_semantic(bp_path)
+        v = validate_for_execution(semantic)
+        assert v.valid is False, f"{bp_name} should not be valid for execution"
+
+
+class TestDesignSpecBlocks:
+    """Test that design-spec blocks (skills/output pattern) produce useful workflow steps."""
+
+    @pytest.mark.parametrize(
+        "bp_name",
+        [
+            "bp_deployment_monitoring_automation.1.0.0.yaml",
+            "bp_test_feature_comprehensive_testing.1.0.0.yaml",
+            "bp_architecture_blueprint_design.1.0.0.yaml",
+            "bp_ba_requirement_analysis.1.0.0.yaml",
+        ],
+    )
+    def test_should_extract_steps_from_design_spec_blocks(self, bp_name: str) -> None:
+        bp_path = BLUEPRINTS_DIR / bp_name
+        if not bp_path.exists():
+            pytest.skip(f"{bp_name} not found")
+
+        semantic = load_semantic(bp_path)
+
+        assert len(semantic.workflow_steps) > 0, (
+            f"{bp_name}: no workflow steps extracted from design-spec blocks"
+        )
+        # Each step should be more than just a bare name
+        for step in semantic.workflow_steps:
+            assert len(step) > 20, (
+                f"{bp_name}: step too terse — '{step[:50]}...'"
+            )
+
+    def test_deployment_blueprint_should_extract_success_criteria(self) -> None:
+        bp_path = BLUEPRINTS_DIR / "bp_deployment_monitoring_automation.1.0.0.yaml"
+        if not bp_path.exists():
+            pytest.skip("File not found")
+
+        semantic = load_semantic(bp_path)
+
+        # B10 has success_criteria like "All pods healthy"
+        all_criteria = " ".join(semantic.acceptance_criteria).lower()
+        assert "healthy" in all_criteria or "health" in all_criteria or "error rate" in all_criteria, (
+            "success_criteria from deployment blocks should be extracted"
+        )

@@ -259,12 +259,14 @@ class TestAgenticWorkerIntegration:
 
     @patch("kevin.workers.registry.WorkerRegistry", autospec=True)
     @patch("kevin.blueprint_compiler.compile_task")
+    @patch("kevin.blueprint_compiler.validate_for_execution")
     @patch("kevin.blueprint_compiler.load_semantic")
     def test_agentic_uses_worker_registry(
-        self, mock_load_semantic, mock_compile_task, mock_registry_cls,
+        self, mock_load_semantic, mock_validate, mock_compile_task, mock_registry_cls,
     ) -> None:
         """should resolve a worker from WorkerRegistry and call execute()."""
         from kevin.cli import _execute_agentic
+        from kevin.blueprint_compiler import BlueprintValidation
         from kevin.workers.interface import WorkerResult, WorkerTask
 
         # Arrange: semantic blueprint
@@ -274,6 +276,12 @@ class TestAgenticWorkerIntegration:
         mock_semantic.constraints = ["k1"]
         mock_semantic.task_timeout = 300
         mock_load_semantic.return_value = mock_semantic
+
+        # Arrange: validation passes
+        mock_validate.return_value = BlueprintValidation(
+            valid=True, warnings=[], blueprint_id="test",
+            prompt_chars=500, criteria_count=1, step_count=1,
+        )
 
         # Arrange: compiled task
         mock_task = MagicMock(spec=WorkerTask)
@@ -301,14 +309,16 @@ class TestAgenticWorkerIntegration:
         bp_path = MagicMock()
 
         # Act
-        with patch("kevin.executor.run_post_validators", return_value=[]):
-            with patch("kevin.cli._notify_teams"):
-                with patch("kevin.cli._post_completion_comment_agentic"):
-                    with patch("kevin.cli.remove_labels"):
-                        with patch("kevin.cli.add_labels"):
-                            exit_code = _execute_agentic(
-                                config, state_mgr, run, bp_path, {}, issue=None,
-                            )
+        with patch("kevin.executor.run_post_validators", return_value=[]), \
+             patch("kevin.cli._notify_teams"), \
+             patch("kevin.cli._post_completion_comment_agentic"), \
+             patch("kevin.cli.remove_labels"), \
+             patch("kevin.cli.add_labels"), \
+             patch("kevin.cli.close_issue"), \
+             patch("kevin.learning.harvest_run"):
+            exit_code = _execute_agentic(
+                config, state_mgr, run, bp_path, {}, issue=None,
+            )
 
         # Assert
         assert exit_code == 0
@@ -318,12 +328,14 @@ class TestAgenticWorkerIntegration:
 
     @patch("kevin.workers.registry.WorkerRegistry", autospec=True)
     @patch("kevin.blueprint_compiler.compile_task")
+    @patch("kevin.blueprint_compiler.validate_for_execution")
     @patch("kevin.blueprint_compiler.load_semantic")
     def test_agentic_dry_run_skips_worker_execute(
-        self, mock_load_semantic, mock_compile_task, mock_registry_cls,
+        self, mock_load_semantic, mock_validate, mock_compile_task, mock_registry_cls,
     ) -> None:
         """should return a dry-run WorkerResult instead of calling worker.execute()."""
         from kevin.cli import _execute_agentic
+        from kevin.blueprint_compiler import BlueprintValidation
 
         mock_semantic = MagicMock()
         mock_semantic.blueprint_name = "Dry BP"
@@ -331,6 +343,12 @@ class TestAgenticWorkerIntegration:
         mock_semantic.constraints = []
         mock_semantic.task_timeout = 60
         mock_load_semantic.return_value = mock_semantic
+
+        # Arrange: validation passes (dry-run should still work)
+        mock_validate.return_value = BlueprintValidation(
+            valid=True, warnings=[], blueprint_id="dry",
+            prompt_chars=200, criteria_count=0, step_count=0,
+        )
 
         mock_task = MagicMock()
         mock_task.instruction = "dry instruction"
