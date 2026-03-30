@@ -83,6 +83,14 @@ def remove_labels(repo: str, issue_number: int, labels: list[str]) -> None:
     )
 
 
+def close_issue(repo: str, issue_number: int) -> None:
+    """Close a GitHub Issue."""
+    _gh(
+        "issue", "close", str(issue_number),
+        "--repo", repo,
+    )
+
+
 def _gh(*args: str) -> str:
     """Run a gh CLI command and return stdout."""
     result = subprocess.run(
