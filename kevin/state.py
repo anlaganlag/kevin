@@ -48,6 +48,12 @@ class RunState:
     blocks: dict[str, BlockState] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
 
+    # E3: Task completion tracking
+    verification_summary: dict[str, Any] = field(default_factory=dict)
+    completion_status: str = ""  # "" | "all_passed" | "validators_failed" | "worker_failed"
+    pr_number: int | None = None
+    issue_closed: bool = False
+
 
 class StateManager:
     """Read/write run state to .kevin/runs/{run_id}/."""
@@ -131,6 +137,32 @@ class StateManager:
         sections = []
         if prompt:
             sections.append(f"=== PROMPT ===\n{prompt}")
+        if stdout:
+            sections.append(f"=== STDOUT ===\n{stdout}")
+        if stderr:
+            sections.append(f"=== STDERR ===\n{stderr}")
+        log_path.write_text("\n\n".join(sections), encoding="utf-8")
+        return log_path
+
+    def save_executor_logs(
+        self,
+        run_id: str,
+        *,
+        prompt: str = "",
+        stdout: str = "",
+        stderr: str = "",
+    ) -> Path:
+        """Save full execution logs for agentic mode (single file).
+
+        Unlike save_block_logs which creates per-block files, this saves
+        a single executor.log for the entire agentic run.
+        """
+        logs_dir = self._run_dir(run_id) / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / "executor.log"
+        sections = []
+        if prompt:
+            sections.append(f"=== COMPILED PROMPT ===\n{prompt}")
         if stdout:
             sections.append(f"=== STDOUT ===\n{stdout}")
         if stderr:
