@@ -48,6 +48,13 @@ class Blueprint:
     raw: dict[str, Any]
 
 
+def load_raw(blueprint_path: Path) -> dict[str, Any]:
+    """Load Blueprint YAML and return raw dict (for blueprint_compiler)."""
+    with blueprint_path.open() as f:
+        data = yaml.safe_load(f)
+    return data.get("blueprint", data)
+
+
 def load(blueprint_path: Path) -> Blueprint:
     """Load a Blueprint YAML file and return a parsed Blueprint."""
     with blueprint_path.open() as f:
