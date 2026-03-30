@@ -144,17 +144,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     finally:
         # Always signal completion when agent_id is set — even on early failure.
         # This ensures the Planning Agent state machine always advances (or fails cleanly).
-        config = build_config(
-            repo=repo,
-            target_repo=getattr(args, "target_repo", ""),
-            dry_run=getattr(args, "dry_run", False),
-        )
-        if not config.dry_run and agent_id:
-            _post_agent_completed_event(
-                repo, issue_number, agent_id,
-                success=(exit_code == 0),
-                blueprint_id=resolved_blueprint_id,
-            )
+        if agent_id:
+            try:
+                config = build_config(
+                    repo=repo,
+                    target_repo=getattr(args, "target_repo", ""),
+                    dry_run=getattr(args, "dry_run", False),
+                )
+                if not config.dry_run:
+                    _post_agent_completed_event(
+                        repo, issue_number, agent_id,
+                        success=(exit_code == 0),
+                        blueprint_id=resolved_blueprint_id,
+                    )
+            except Exception:
+                pass  # best-effort signaling — don't mask the original error
 
     return exit_code
 
@@ -300,16 +304,25 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
 
 def _cmd_run_inner(args: argparse.Namespace) -> int:
     """Inner implementation of cmd_run — all early returns live here."""
-    config = build_config(
-        repo=args.repo,
-        target_repo=args.target_repo,
-        dry_run=getattr(args, "dry_run", False),
-        verbose=args.verbose,
-    )
+    try:
+        config = build_config(
+            repo=args.repo,
+            target_repo=args.target_repo,
+            dry_run=getattr(args, "dry_run", False),
+            verbose=args.verbose,
+        )
+    except FileNotFoundError as exc:
+        _err(f"Configuration error: {exc}")
+        return 1
 
     # 1. Fetch issue
     _log(config, f"Fetching issue #{args.issue} from {args.repo}...")
-    issue = fetch_issue(args.repo, args.issue)
+    try:
+        issue = fetch_issue(args.repo, args.issue)
+    except (RuntimeError, FileNotFoundError) as exc:
+        _err(f"Failed to fetch issue #{args.issue}: {exc}")
+        _err("Check: gh auth status, network connectivity, repo access.")
+        return 1
     _log(config, f"  Title: {issue.title}")
     _log(config, f"  Labels: {issue.labels}")
 
