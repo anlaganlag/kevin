@@ -704,15 +704,22 @@ def _execute_agentic(
     if not config.dry_run:
         _post_completion_comment_agentic(config, run, pr_number=pr_number)
         _notify_teams(config, run, [], issue, final_status, error=error_summary)
+        # Each GitHub operation is independent — don't let one failure block the rest
         try:
             remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
-            if all_passed:
+        except Exception as exc:
+            _log(config, f"  ⚠️  remove_labels failed (non-fatal): {exc}")
+        if all_passed:
+            try:
                 add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+            except Exception as exc:
+                _log(config, f"  ⚠️  add_labels failed (non-fatal): {exc}")
+            try:
                 close_issue(run.repo, run.issue_number)
                 run.issue_closed = True
-                state_mgr.complete_run(run, final_status)  # persist issue_closed flag
-        except Exception as exc:
-            _log(config, f"  ⚠️  Label/issue update failed: {exc}")
+                state_mgr.complete_run(run, final_status)
+            except Exception as exc:
+                _log(config, f"  ⚠️  close_issue failed (non-fatal): {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status} (worker={worker.worker_id})")
     return 0 if all_passed else 1
@@ -895,11 +902,17 @@ async def _execute_blocks_async(
         _notify_teams(config, run, blocks, issue, final_status, error=error_summary)
         try:
             remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
-            if all_passed:
-                add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
-                close_issue(run.repo, run.issue_number)
         except Exception as exc:
-            _log(config, f"  ⚠️  Label/issue update failed: {exc}")
+            _log(config, f"  ⚠️  remove_labels failed (non-fatal): {exc}")
+        if all_passed:
+            try:
+                add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+            except Exception as exc:
+                _log(config, f"  ⚠️  add_labels failed (non-fatal): {exc}")
+            try:
+                close_issue(run.repo, run.issue_number)
+            except Exception as exc:
+                _log(config, f"  ⚠️  close_issue failed (non-fatal): {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status}")
     return 0 if all_passed else 1
