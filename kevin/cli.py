@@ -565,7 +565,7 @@ def _execute_agentic(
     Replaces the block-by-block execution with a single autonomous invocation.
     Post-execution validators serve as a quality gate.
     """
-    from kevin.blueprint_compiler import compile_task, load_semantic
+    from kevin.blueprint_compiler import compile_task, load_semantic, validate_for_execution
     from kevin.executor import extract_pr_number, run_post_validators
     from kevin.workers.interface import ArtifactType, WorkerResult
     from kevin.workers.registry import WorkerRegistry
@@ -576,6 +576,17 @@ def _execute_agentic(
     _log(config, f"  Criteria: {len(semantic.acceptance_criteria)}, "
                  f"Constraints: {len(semantic.constraints)}, "
                  f"Timeout: {semantic.task_timeout}s")
+
+    # 1b. Validate blueprint is executable
+    validation = validate_for_execution(semantic)
+    if validation.warnings:
+        for w in validation.warnings:
+            _log(config, f"  ⚠️  {w}")
+    if not validation.valid:
+        _log(config, f"  ❌ Blueprint '{semantic.blueprint_id}' is not executable "
+                     f"(no goal, criteria, or steps). Aborting.")
+        state_mgr.complete_run(run, "failed")
+        return 1
 
     # 2. Compile to WorkerTask
     task = compile_task(
@@ -630,7 +641,7 @@ def _execute_agentic(
 
     # 8. Extract PR number — check worker artifacts first, then fallback
     pr_number: int | None = None
-    if all_passed:
+    if all_passed and not config.dry_run:
         for artifact in result.artifacts:
             if artifact.artifact_type == ArtifactType.PR_URL:
                 import re as _re
@@ -659,11 +670,12 @@ def _execute_agentic(
     }
     state_mgr.complete_run(run, final_status)
 
-    try:
-        from kevin.learning import harvest_run
-        harvest_run(config.knowledge_db, config.state_dir, run.run_id)
-    except Exception:
-        pass
+    if not config.dry_run:
+        try:
+            from kevin.learning import harvest_run
+            harvest_run(config.knowledge_db, config.state_dir, run.run_id)
+        except Exception:
+            pass
 
     # 10. Post completion comment + update labels
     error_summary = ""

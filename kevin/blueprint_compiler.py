@@ -53,12 +53,13 @@ def load_semantic(bp_path: Path) -> SemanticBlueprint:
     execution = bp.get("execution", {})
     completion = bp.get("completion", {})
     config = bp.get("config", {})
+    workflow = bp.get("workflow", {})
     blocks = _extract_blocks_raw(bp)
 
     return SemanticBlueprint(
         blueprint_id=metadata.get("blueprint_id", ""),
         blueprint_name=metadata.get("blueprint_name", ""),
-        goal=_extract_goal(metadata, execution),
+        goal=_extract_goal(metadata, execution, workflow),
         acceptance_criteria=_extract_acceptance_criteria(blocks, completion),
         constraints=_extract_constraints(configuration),
         context_sources=_extract_context_sources(input_sec),
@@ -68,6 +69,63 @@ def load_semantic(bp_path: Path) -> SemanticBlueprint:
         artifacts=_extract_artifacts(completion),
         task_timeout=_extract_timeout(blocks, config),
         raw=bp,
+    )
+
+
+@dataclass(frozen=True)
+class BlueprintValidation:
+    """Result of validating a blueprint for agentic execution."""
+
+    valid: bool
+    warnings: list[str]
+    blueprint_id: str
+    prompt_chars: int
+    criteria_count: int
+    step_count: int
+
+
+def validate_for_execution(semantic: SemanticBlueprint) -> BlueprintValidation:
+    """Check if a SemanticBlueprint has enough content for agentic execution.
+
+    Returns validation result with warnings for thin/empty sections.
+    A blueprint is invalid only if it has no goal AND no criteria AND no steps.
+    """
+    warnings: list[str] = []
+
+    if not semantic.goal or semantic.goal == semantic.blueprint_name:
+        warnings.append("goal: no actionable goal extracted (only blueprint name)")
+    if not semantic.acceptance_criteria:
+        warnings.append("criteria: no acceptance criteria found")
+    if not semantic.workflow_steps:
+        warnings.append("steps: no workflow steps extracted")
+    if not semantic.constraints:
+        warnings.append("constraints: no constraints found")
+    if not semantic.verification_commands:
+        warnings.append("verification: no verification commands found")
+
+    has_substance = bool(
+        semantic.acceptance_criteria or semantic.workflow_steps
+    )
+    has_goal = bool(semantic.goal and semantic.goal != semantic.blueprint_name)
+    valid = has_goal or has_substance
+
+    # Estimate prompt size
+    test_vars = {"issue_number": "0", "issue_title": "test", "issue_body": ""}
+    try:
+        prompt = compile(semantic, test_vars)
+        prompt_chars = len(prompt)
+    except Exception:
+        prompt_chars = 0
+        warnings.append("compile: failed to compile prompt")
+        valid = False
+
+    return BlueprintValidation(
+        valid=valid,
+        warnings=warnings,
+        blueprint_id=semantic.blueprint_id,
+        prompt_chars=prompt_chars,
+        criteria_count=len(semantic.acceptance_criteria),
+        step_count=len(semantic.workflow_steps),
     )
 
 
@@ -217,15 +275,29 @@ def _extract_blocks_raw(bp: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _extract_goal(
-    metadata: dict[str, Any], execution: dict[str, Any]
+    metadata: dict[str, Any],
+    execution: dict[str, Any],
+    workflow: dict[str, Any] | None = None,
 ) -> str:
-    """Synthesize goal from metadata and execution sections."""
+    """Synthesize goal from metadata, execution, and workflow sections.
+
+    Tries (in order): execution.primary_agent.responsibilities,
+    workflow.ralph_loop.step_3.description, then falls back to blueprint_name.
+    """
     name = metadata.get("blueprint_name", "")
     primary = execution.get("primary_agent", {})
     responsibilities = primary.get("responsibilities", [])
     if responsibilities:
         resp_str = "; ".join(responsibilities)
         return f"{name}: {resp_str}"
+
+    # Fallback: workflow step_3 description (common in design-spec blueprints)
+    if workflow:
+        step_3 = workflow.get("ralph_loop", {}).get("step_3", {})
+        description = step_3.get("description", "").strip()
+        if description:
+            return f"{name}: {description}"
+
     return name
 
 
@@ -236,13 +308,14 @@ def _extract_acceptance_criteria(
     criteria: list[str] = []
     seen: set[str] = set()
 
-    # Block-level criteria
+    # Block-level criteria (acceptance_criteria + success_criteria)
     for block in blocks:
-        for c in block.get("acceptance_criteria", []):
-            normalized = c.strip()
-            if normalized and normalized not in seen:
-                criteria.append(normalized)
-                seen.add(normalized)
+        for key in ("acceptance_criteria", "success_criteria"):
+            for c in block.get(key, []):
+                normalized = c.strip()
+                if normalized and normalized not in seen:
+                    criteria.append(normalized)
+                    seen.add(normalized)
 
     # Completion-level criteria (can be nested dict or list)
     completion_ac = completion.get("acceptance_criteria", {})
@@ -362,11 +435,13 @@ def _extract_verification_commands(blocks: list[dict[str, Any]]) -> list[str]:
 
 
 def _extract_workflow_steps(blocks: list[dict[str, Any]]) -> list[str]:
-    """Extract actionable workflow steps from block prompt_templates.
+    """Extract actionable workflow steps from blocks.
 
-    For claude_cli blocks: extracts the Instructions section from prompt_template.
-    For shell blocks: extracts the key operations from the command.
-    Falls back to acceptance criteria if no instructions found.
+    Handles two block patterns:
+    1. Execution-ready blocks: have runner + prompt_template → extract Instructions section.
+    2. Design-spec blocks: have skills + output (no prompt_template) → synthesize from metadata.
+
+    For shell blocks: extracts key operations from the command.
     """
     steps: list[str] = []
     for block in blocks:
@@ -378,20 +453,61 @@ def _extract_workflow_steps(blocks: list[dict[str, Any]]) -> list[str]:
             steps.append(_summarize_shell_block(name, block))
             continue
 
-        # For claude_cli blocks: extract Instructions section from prompt
+        # Path 1: execution-ready blocks with prompt_template
         instructions = _extract_instructions_from_prompt(prompt)
         if instructions:
             steps.append(f"**{name}**:\n{instructions}")
+            continue
+
+        # Path 2: design-spec blocks — synthesize from skills/output/criteria
+        summary = _summarize_design_spec_block(name, block)
+        if summary:
+            steps.append(summary)
+            continue
+
+        # Path 3: bare minimum fallback
+        criteria = block.get("acceptance_criteria", [])
+        if criteria:
+            criteria_summary = "; ".join(criteria[:2])
+            steps.append(f"**{name}**: {criteria_summary}")
         else:
-            # Fallback to acceptance criteria
-            criteria = block.get("acceptance_criteria", [])
-            if criteria:
-                criteria_summary = "; ".join(criteria[:2])
-                steps.append(f"**{name}**: {criteria_summary}")
-            else:
-                steps.append(name)
+            steps.append(name)
 
     return steps
+
+
+def _summarize_design_spec_block(name: str, block: dict[str, Any]) -> str:
+    """Synthesize a workflow step from a design-spec block (skills + output pattern).
+
+    Design-spec blocks lack prompt_template but carry rich metadata:
+    skills, output, assigned_to, success_criteria, environments, etc.
+    """
+    parts: list[str] = []
+
+    # Agent assignment provides role context
+    assigned_to = block.get("assigned_to", "")
+    if assigned_to:
+        parts.append(f"Agent: {assigned_to}")
+
+    # Skills describe capabilities needed
+    skills: list[str] = block.get("skills", [])
+    if skills:
+        parts.append(f"Skills: {', '.join(skills)}")
+
+    # Output describes the expected deliverable
+    output = block.get("output", "")
+    if output:
+        parts.append(f"Deliverable: {output}")
+
+    # success_criteria provides pass/fail conditions
+    success_criteria: list[str] = block.get("success_criteria", [])
+    if success_criteria:
+        parts.append(f"Success: {'; '.join(success_criteria[:3])}")
+
+    if not parts:
+        return ""
+
+    return f"**{name}**:\n" + "\n".join(f"  - {p}" for p in parts)
 
 
 def _extract_instructions_from_prompt(prompt: str) -> str:
