@@ -47,43 +47,20 @@ blueprint:
         - ".agentic/rules/naming/general.yaml"
         - ".agentic/rules/security/owasp_top10.yaml"
 
-      # Frontend-specific inline rules
+      # Frontend-specific inline rules (compact)
       inline:
         custom_rules:
-          - name: "component_naming_convention"
-            rule: "React/Vue components must use PascalCase; filenames must match component name exactly"
-            enforcement: "strict"
-            validator: "component_name_validator"
+          - name: "naming_and_structure"
+            rule: "PascalCase components, filename matches component name, single responsibility, max 200 lines per component"
 
-          - name: "component_single_responsibility"
-            rule: "Each component must have a single, clearly defined responsibility; no component exceeds 200 lines"
-            enforcement: "strict"
-            validator: "complexity_checker"
+          - name: "accessibility"
+            rule: "WCAG 2.1 Level AA compliance for all interactive components"
 
-          - name: "accessibility_compliance"
-            rule: "All interactive components must achieve WCAG 2.1 Level AA compliance"
-            enforcement: "strict"
-            validator: "axe_accessibility_validator"
+          - name: "styling"
+            rule: "Design tokens only (no hardcoded values), no inline styles, use CSS modules or utility classes"
 
-          - name: "design_token_usage"
-            rule: "Components must consume design tokens (colors, spacing, typography) from the design system; no hardcoded values"
-            enforcement: "strict"
-            validator: "design_token_linter"
-
-          - name: "storybook_story_required"
-            rule: "Every public-facing component must have a corresponding Storybook story with at least: Default, Loading, Error states"
-            enforcement: "strict"
-            validator: "storybook_coverage_checker"
-
-          - name: "no_inline_styles"
-            rule: "No inline style attributes on JSX/TSX elements; use CSS modules or design system utility classes"
-            enforcement: "strict"
-            validator: "eslint_no_inline_style"
-
-          - name: "xss_prevention"
-            rule: "No use of dangerouslySetInnerHTML or equivalent without explicit SecurityAgent approval; all user-supplied content must be sanitized"
-            enforcement: "strict"
-            validator: "xss_static_analyzer"
+          - name: "security"
+            rule: "No dangerouslySetInnerHTML without SecurityAgent approval, sanitize all user content"
 
     # Constraints Loading
     constraints:
@@ -97,40 +74,12 @@ blueprint:
         - ".agentic/constraints/infra/static/technical_stack.yaml"
         - ".agentic/constraints/devops/ci/quality_gates.yaml"
 
-      # Frontend-specific inline constraints
+      # Frontend-specific inline constraints (compact)
       inline:
-        technical_stack:
-          typescript_version: ">= 5.0"
-          node_version: ">= 20.x"
-          framework:
-            primary: "React >= 18.0"
-            alternative: "Vue >= 3.3"
-            selection_rule: "Follow existing project convention from Learning Agent; default to React"
-          styling:
-            approach: "CSS Modules or TailwindCSS (as defined in project config)"
-            preprocessor: "PostCSS"
-          component_library:
-            storybook_version: ">= 7.6"
-            testing_library: "React Testing Library >= 14 / Vue Test Utils >= 2"
-            unit_test_runner: "Vitest >= 1.0"
-            e2e_framework: "Playwright >= 1.40 (visual regression via Chromatic)"
-
-        architecture_constraints:
-          component_max_lines: 200
-          component_max_props: 12
-          max_nesting_depth: 4
-          state_management: "Local state preferred; global state (Zustand/Pinia) only when explicitly required"
-          preferred_patterns:
-            - "Compound Component Pattern"
-            - "Render Props (when needed)"
-            - "Custom Hooks for logic reuse"
-            - "Context API for theme/config injection"
-
-        resource_quotas:
-          max_design_time: "6h"
-          max_bundle_size_per_component: "50KB (gzipped)"
-          max_render_time_ms: 16  # 60fps threshold
-          max_token_usage: 60000
+        technical_stack: "React 18+ (or Vue 3.3+), TypeScript 5+, Node 20+, CSS Modules/Tailwind, Vitest 1+, Playwright 1.40+"
+        architecture: "Max 200 lines/component, max 12 props, max 4 nesting depth, local state preferred (Zustand/Pinia only when required)"
+        patterns: "Compound Component, Custom Hooks for logic reuse, Context API for theme/config"
+        resource_quotas: "Max 50KB gzipped per component, 16ms render target (60fps)"
 
   # ================================================================
   # 3. Input Definition

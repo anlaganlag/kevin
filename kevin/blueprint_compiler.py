@@ -456,6 +456,20 @@ def _extract_workflow_steps(blocks: list[dict[str, Any]]) -> list[str]:
         # Path 1: execution-ready blocks with prompt_template
         instructions = _extract_instructions_from_prompt(prompt)
         if instructions:
+            # Cap per-step length to keep compiled prompt under budget.
+            # Full prompt_template is still available to the worker via WorkerTask;
+            # workflow guidance is just a summary for the agentic prompt.
+            if len(instructions) > 400:
+                lines = instructions.split("\n")
+                truncated: list[str] = []
+                char_count = 0
+                for line in lines:
+                    if char_count + len(line) > 380:
+                        truncated.append("  ...")
+                        break
+                    truncated.append(line)
+                    char_count += len(line) + 1
+                instructions = "\n".join(truncated)
             steps.append(f"**{name}**:\n{instructions}")
             continue
 
