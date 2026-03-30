@@ -711,8 +711,8 @@ def _execute_agentic(
                 close_issue(run.repo, run.issue_number)
                 run.issue_closed = True
                 state_mgr.complete_run(run, final_status)  # persist issue_closed flag
-        except Exception:
-            pass
+        except Exception as exc:
+            _log(config, f"  ⚠️  Label/issue update failed: {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status} (worker={worker.worker_id})")
     return 0 if all_passed else 1
@@ -898,8 +898,8 @@ async def _execute_blocks_async(
             if all_passed:
                 add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
                 close_issue(run.repo, run.issue_number)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log(config, f"  ⚠️  Label/issue update failed: {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status}")
     return 0 if all_passed else 1
@@ -911,10 +911,14 @@ async def _execute_blocks_async(
 
 def _build_variables(config: KevinConfig, issue: Issue) -> dict[str, str]:
     """Build the variable dictionary for template rendering."""
+    body = issue.body.strip() if issue.body else ""
+    if not body:
+        body = f"(No description provided for issue #{issue.number}: {issue.title})"
+
     variables = {
         "issue_number": str(issue.number),
         "issue_title": issue.title,
-        "issue_body": issue.body,
+        "issue_body": body,
         "issue_labels": ", ".join(issue.labels),
         "target_repo": str(config.target_repo),
         "owner": config.repo_owner,
