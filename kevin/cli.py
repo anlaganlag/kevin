@@ -723,10 +723,18 @@ def _execute_agentic(
         state_mgr.complete_run(run, "failed")
         return 1
 
-    # 2. Compile to WorkerTask
+    # 2. Determine execution directory (worktree isolation if needed)
+    from kevin.worktree import isolated_worktree, should_isolate
+
+    use_worktree = should_isolate(config.target_repo, config.kevin_root) and not config.dry_run
+    exec_cwd = config.target_repo
+    if use_worktree:
+        _log(config, f"  Worktree isolation: enabled (agent operates on isolated copy)")
+
+    # 2b. Compile to WorkerTask
     try:
         task = compile_task(
-            semantic, variables, task_id=run.run_id, cwd=config.target_repo,
+            semantic, variables, task_id=run.run_id, cwd=exec_cwd,
         )
     except Exception as exc:
         _err(f"Blueprint compilation failed: {exc}")
@@ -752,6 +760,12 @@ def _execute_agentic(
             success=True,
             stdout=f"[dry-run] Would execute via {worker.worker_id} ({len(task.instruction)} chars)",
         )
+    elif use_worktree:
+        from dataclasses import replace as dc_replace
+        with isolated_worktree(config.target_repo, run.run_id) as wt_path:
+            _log(config, f"  Worktree: {wt_path}")
+            task = dc_replace(task, workspace=dc_replace(task.workspace, cwd=wt_path))
+            result = worker.execute(task)
     else:
         result = worker.execute(task)
 
