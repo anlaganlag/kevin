@@ -128,7 +128,14 @@ Deno.serve(async (req) => {
   }
 
   // Mark as dispatched
-  await db.from("runs").update({ status: "dispatched" }).eq("run_id", run.run_id);
+  const { error: updateErr } = await db
+    .from("runs")
+    .update({ status: "dispatched" })
+    .eq("run_id", run.run_id);
+
+  if (updateErr) {
+    console.error(`Failed to mark run ${run.run_id} as dispatched:`, updateErr.message);
+  }
 
   return json({ run_id: run.run_id, status: "dispatched" }, 202);
 });
@@ -138,6 +145,8 @@ async function triggerDispatch(
   payload: Record<string, string>,
 ): Promise<boolean> {
   const url = `https://api.github.com/repos/${DISPATCH_REPO}/dispatches`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const resp = await fetch(url, {
       method: "POST",
@@ -150,9 +159,12 @@ async function triggerDispatch(
         event_type: "executor-run",
         client_payload: { run_id: runId, ...payload },
       }),
+      signal: controller.signal,
     });
     return resp.status === 204;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }

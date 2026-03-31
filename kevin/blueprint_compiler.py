@@ -216,6 +216,14 @@ def compile(semantic: SemanticBlueprint, variables: dict[str, str]) -> str:
         sections.append(f"# EXPECTED ARTIFACTS\n\n{artifact_lines}")
 
     prompt = render("\n\n---\n\n".join(sections), variables)
+
+    MAX_PROMPT_CHARS = 100_000
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise ValueError(
+            f"Compiled prompt too large: {len(prompt)} chars "
+            f"(max {MAX_PROMPT_CHARS}). Reduce issue_body or blueprint complexity."
+        )
+
     return prompt
 
 

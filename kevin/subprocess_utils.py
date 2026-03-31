@@ -26,6 +26,19 @@ class SubprocessResult:
     stderr: str = ""
 
 
+_SIGTERM_GRACE_SECONDS = 5
+
+
+def _graceful_kill(proc: subprocess.Popen) -> None:
+    """SIGTERM first, fallback to SIGKILL after grace period."""
+    try:
+        proc.terminate()
+        proc.wait(timeout=_SIGTERM_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
 def run_with_heartbeat(
     cmd: list[str],
     *,
@@ -69,8 +82,7 @@ def run_with_heartbeat(
         while sel.get_map():
             elapsed = time.monotonic() - start_time
             if elapsed > timeout:
-                proc.kill()
-                proc.wait()
+                _graceful_kill(proc)
                 return SubprocessResult(
                     success=False,
                     stdout="".join(stdout_chunks),
@@ -79,8 +91,7 @@ def run_with_heartbeat(
 
             silence = time.monotonic() - last_output_time
             if silence > heartbeat_limit:
-                proc.kill()
-                proc.wait()
+                _graceful_kill(proc)
                 return SubprocessResult(
                     success=False,
                     stdout="".join(stdout_chunks),
@@ -112,8 +123,7 @@ def run_with_heartbeat(
         )
 
     except Exception as exc:
-        proc.kill()
-        proc.wait()
+        _graceful_kill(proc)
         return SubprocessResult(
             success=False,
             stderr=f"Unexpected error: {exc}",
