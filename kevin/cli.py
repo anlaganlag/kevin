@@ -495,20 +495,19 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 def cmd_validate(args: argparse.Namespace) -> int:
     """Validate all (or one) blueprints for executor compatibility."""
     from kevin.blueprint_compiler import compile, load_semantic
-    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS, build_config
 
-    kevin_root = Path(__file__).resolve().parent.parent
-    blueprints_dir = kevin_root / "blueprints"
+    config = build_config()
 
     if args.blueprint:
         try:
-            bp_path = find_blueprint(blueprints_dir, args.blueprint)
+            bp_path = find_blueprint(config.blueprints_dir, args.blueprint)
             bp_files = [bp_path]
         except FileNotFoundError:
             _err(f"Blueprint not found: {args.blueprint}")
             return 1
     else:
-        bp_files = sorted(blueprints_dir.glob("bp_*.yaml"))
+        bp_files = sorted(config.blueprints_dir.glob("bp_*.yaml"))
 
     if not bp_files:
         _err("No blueprints found")
@@ -526,9 +525,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print("\u2500" * 70)
 
     failures = 0
+    non_exec = 0
     for bp_path in bp_files:
         name = bp_path.stem
-        is_non_exec = any(ne in bp_path.name for ne in NON_EXECUTABLE_BLUEPRINTS)
 
         try:
             semantic = load_semantic(bp_path)
@@ -539,7 +538,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
             failures += 1
             continue
 
-        if is_non_exec:
+        if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
+            non_exec += 1
             print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'(orchestrator)':>8}")
             continue
 
@@ -556,9 +556,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
         print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}")
 
-    total = len(bp_files)
-    non_exec = sum(1 for f in bp_files if any(ne in f.name for ne in NON_EXECUTABLE_BLUEPRINTS))
-    executable = total - non_exec
+    executable = len(bp_files) - non_exec
 
     print("\u2500" * 70)
     print(f"Result: {executable - failures}/{executable} executor-ready, "
@@ -685,7 +683,7 @@ def _execute_agentic(
                  f"Constraints: {len(semantic.constraints)}, "
                  f"Timeout: {semantic.task_timeout}s")
 
-    # 1b. Validate blueprint is executable
+    # 1c. Validate blueprint is executable
     validation = validate_for_execution(semantic)
     if validation.warnings:
         for w in validation.warnings:
@@ -718,7 +716,7 @@ def _execute_agentic(
 
     # 5. Execute via worker
     run.status = "running"
-    state_mgr.complete_run(run, "running")
+    state_mgr.save_run(run)
 
     if config.dry_run:
         result = WorkerResult(

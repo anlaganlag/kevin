@@ -139,6 +139,10 @@ class StateManager:
         self._save_run(run)
         self._save_block(run.run_id, block_state)
 
+    def save_run(self, run: RunState) -> None:
+        """Persist current run state without modifying timestamps."""
+        self._save_run(run)
+
     def complete_run(self, run: RunState, status: str = "completed") -> None:
         """Mark the run as completed/failed and persist."""
         run.status = status

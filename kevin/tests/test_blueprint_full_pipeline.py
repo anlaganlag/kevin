@@ -16,7 +16,7 @@ _ALL_BP_FILES = sorted(BLUEPRINTS_DIR.glob("bp_*.yaml")) if BLUEPRINTS_DIR.exist
 
 _EXECUTABLE_BP_FILES = [
     p for p in _ALL_BP_FILES
-    if not any(ne in p.name for ne in NON_EXECUTABLE_BLUEPRINTS)
+    if p.stem not in NON_EXECUTABLE_BLUEPRINTS
 ]
 
 _SAMPLE_VARIABLES = {
