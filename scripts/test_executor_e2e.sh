@@ -13,6 +13,20 @@ set -euo pipefail
 : "${EXECUTOR_API_KEY:?Set EXECUTOR_API_KEY}"
 : "${EXECUTOR_BASE_URL:?Set EXECUTOR_BASE_URL}"
 
+echo "=== Step 0: Verify unknown blueprint rejected ==="
+REJECT_RESP=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
+  -H "Authorization: Bearer ${EXECUTOR_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"blueprint_id": "bp_nonexistent.1.0.0", "instruction": "test"}')
+REJECT_CODE=$(echo "$REJECT_RESP" | tail -1)
+if [ "$REJECT_CODE" = "400" ]; then
+  echo "PASS: Unknown blueprint correctly rejected (HTTP 400)"
+else
+  echo "FAIL: Expected 400 for unknown blueprint, got $REJECT_CODE"
+  exit 1
+fi
+
+echo ""
 echo "=== Step 1: POST /execute ==="
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
   -H "Authorization: Bearer ${EXECUTOR_API_KEY}" \

@@ -1,6 +1,7 @@
 // supabase/functions/execute/index.ts
 
 import { validateApiKey } from "../_shared/auth.ts";
+import { AVAILABLE_BLUEPRINTS, VALID_BLUEPRINTS } from "../_shared/blueprints.ts";
 import { getSupabase } from "../_shared/supabase.ts";
 import { corsOptions, json } from "../_shared/cors.ts";
 
@@ -56,6 +57,13 @@ Deno.serve(async (req) => {
         instruction: "Add a /health endpoint",
         context: { repo: "owner/repo", ref: "main" },
       },
+    }, 400);
+  }
+
+  if (!VALID_BLUEPRINTS.has(blueprint_id as string)) {
+    return json({
+      error: `Unknown blueprint: ${blueprint_id}`,
+      available: AVAILABLE_BLUEPRINTS,
     }, 400);
   }
 

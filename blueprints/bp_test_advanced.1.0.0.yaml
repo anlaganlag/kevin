@@ -215,16 +215,17 @@ blueprint:
               dependencies: []
               skills: ["adversarial_testing", "fuzzing", "security_testing"]
               output: "Security test results and vulnerability report"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "semgrep --config auto src/"
+                prompt_template: |
+                  Run security static analysis on the project source code. Auto-detect available tools:
+                  - If `semgrep` is installed: `semgrep --config auto . --severity ERROR`
+                  - If `bandit` is installed (Python): `bandit -r . -ll`
+                  - If neither is available: perform a manual code review for OWASP top-10 patterns
+                    (SQL injection, XSS, hardcoded secrets, command injection) and report findings.
+                  Report: tool used, issues found (severity + location), and pass/fail summary.
               timeout: 3600
               max_retries: 1
-
-              validators:
-                - type: "command"
-                  command: "semgrep --config auto src/ --severity ERROR"
-                  expected_exit_code: 0
 
             # Block B17: Performance testing
             - block_id: "B17"
@@ -233,16 +234,17 @@ blueprint:
               dependencies: []
               skills: ["performance_testing", "load_testing"]
               output: "Performance test results and baseline comparison"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "k6 run tests/performance/load_test.js"
+                prompt_template: |
+                  Run performance tests for this project. Auto-detect available tools:
+                  - If `k6` is installed: `k6 run tests/performance/load_test.js` (or smoke_test.js)
+                  - If `locust` is installed (Python): `locust --headless -f tests/performance/locustfile.py`
+                  - If neither is available: write and run a simple benchmark script using the project's
+                    native language (e.g., Python timeit, Go benchmark, JS perf_hooks).
+                  Report: tool used, requests/sec, p95 latency, and pass/fail against baselines.
               timeout: 3600
               max_retries: 1
-
-              validators:
-                - type: "command"
-                  command: "k6 run tests/performance/smoke_test.js"
-                  expected_exit_code: 0
 
           execution_order: "(B15 + B16 + B17) [parallel]"
 

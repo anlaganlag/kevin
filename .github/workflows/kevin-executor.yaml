@@ -33,14 +33,17 @@ jobs:
           token: ${{ github.token }}
 
       - name: Checkout target repo
+        id: checkout-target
         if: github.event.client_payload.context != ''
+        env:
+          CONTEXT: ${{ github.event.client_payload.context }}
+          CLONE_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          SELF_REPO: ${{ github.repository }}
         run: |
-          CONTEXT='${{ github.event.client_payload.context }}'
           REPO=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('repo',''))" 2>/dev/null || echo "")
           REF=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ref','main'))" 2>/dev/null || echo "main")
-          SELF="${{ github.repository }}"
-          if [ -n "$REPO" ] && [ "$REPO" != "$SELF" ]; then
-            git clone "https://x-access-token:${{ steps.app-token.outputs.token || github.token }}@github.com/${REPO}.git" target-repo
+          if [ -n "$REPO" ] && [ "$REPO" != "$SELF_REPO" ]; then
+            git clone "https://x-access-token:${CLONE_TOKEN}@github.com/${REPO}.git" target-repo
             cd target-repo && git checkout "$REF"
           fi
 
@@ -67,18 +70,53 @@ jobs:
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
           API_TIMEOUT_MS: "600000"
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          KEVIN_RUN_ID: ${{ github.event.client_payload.run_id }}
+          KEVIN_BLUEPRINT_ID: ${{ github.event.client_payload.blueprint_id }}
+          KEVIN_INSTRUCTION: ${{ github.event.client_payload.instruction }}
+          KEVIN_CONTEXT: ${{ github.event.client_payload.context }}
+          KEVIN_CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          KEVIN_CALLBACK_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
         run: |
           TARGET_DIR="."
           if [ -d "target-repo" ]; then TARGET_DIR="target-repo"; fi
 
           python -m kevin run \
-            --run-id "${{ github.event.client_payload.run_id }}" \
-            --blueprint "${{ github.event.client_payload.blueprint_id }}" \
-            --instruction "${{ github.event.client_payload.instruction }}" \
-            --context '${{ github.event.client_payload.context }}' \
-            --callback-url "${{ github.event.client_payload.callback_url }}" \
-            --callback-secret "${{ secrets.CALLBACK_HMAC_SECRET }}" \
+            --run-id "$KEVIN_RUN_ID" \
+            --blueprint "$KEVIN_BLUEPRINT_ID" \
+            --instruction "$KEVIN_INSTRUCTION" \
+            --context "$KEVIN_CONTEXT" \
+            --callback-url "$KEVIN_CALLBACK_URL" \
+            --callback-secret "$KEVIN_CALLBACK_SECRET" \
             --target-repo "$TARGET_DIR"
+
+      - name: Fallback callback on failure
+        if: failure() && github.event.client_payload.callback_url != ''
+        env:
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          CALLBACK_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+          RUN_ID: ${{ github.event.client_payload.run_id }}
+        run: |
+          python3 -c "
+          import json, hmac, hashlib, os, subprocess
+          body = json.dumps({
+              'run_id': os.environ['RUN_ID'],
+              'status': 'failed',
+              'error_code': 'WORKFLOW_FAILED',
+              'error_message': 'GitHub Actions workflow failed before Kevin could execute'
+          })
+          sig = hmac.new(
+              os.environ['CALLBACK_SECRET'].encode(),
+              body.encode(),
+              hashlib.sha256
+          ).hexdigest()
+          subprocess.run([
+              'curl', '-s', '-X', 'POST', os.environ['CALLBACK_URL'],
+              '-H', 'Content-Type: application/json',
+              '-H', f'X-Signature: {sig}',
+              '-d', body
+          ], check=True)
+          "
+          echo "Fallback callback sent: failed"
 
       - name: Upload run state
         if: always()

@@ -13,11 +13,32 @@ from kevin.blueprint_compiler import (
     compile,
     compile_task,
     load_semantic,
+    summarize_validation,
     validate_for_execution,
 )
 from kevin.workers.interface import WorkerTask
 
 BLUEPRINTS_DIR = Path(__file__).resolve().parent.parent.parent / "blueprints"
+
+
+def _make_semantic(**overrides: Any) -> SemanticBlueprint:
+    """Create a SemanticBlueprint with sensible defaults for testing."""
+    defaults = {
+        "blueprint_id": "test",
+        "blueprint_name": "Test",
+        "goal": "Build a feature",
+        "acceptance_criteria": ["Feature works"],
+        "constraints": ["No external deps"],
+        "context_sources": [],
+        "sub_agents": [],
+        "verification_commands": ["Run: pytest"],
+        "workflow_steps": ["Analyze", "Implement"],
+        "artifacts": [],
+        "task_timeout": 300,
+        "raw": {},
+    }
+    defaults.update(overrides)
+    return SemanticBlueprint(**defaults)
 
 # Collect all real blueprint YAML files for parametrized tests
 _ALL_BP_FILES = sorted(BLUEPRINTS_DIR.glob("*.yaml")) if BLUEPRINTS_DIR.exists() else []
@@ -387,28 +408,9 @@ class TestLoadSemanticEdgeCases:
 class TestCompileEdgeCases:
     """Test prompt compilation with unusual inputs."""
 
-    @staticmethod
-    def _minimal_semantic(**overrides: Any) -> SemanticBlueprint:
-        defaults = {
-            "blueprint_id": "test",
-            "blueprint_name": "Test",
-            "goal": "Do thing",
-            "acceptance_criteria": ["Done"],
-            "constraints": [],
-            "context_sources": [],
-            "sub_agents": [],
-            "verification_commands": [],
-            "workflow_steps": [],
-            "artifacts": [],
-            "task_timeout": 300,
-            "raw": {},
-        }
-        defaults.update(overrides)
-        return SemanticBlueprint(**defaults)
-
     def test_should_handle_missing_variables_gracefully(self) -> None:
         """Unknown {{var}} placeholders should be left as-is, not crash."""
-        semantic = self._minimal_semantic(goal="Fix {{unknown_var}} issue")
+        semantic = _make_semantic(goal="Fix {{unknown_var}} issue", acceptance_criteria=["Done"], constraints=[], verification_commands=[], workflow_steps=[])
         variables = {"issue_number": "1", "issue_title": "X", "issue_body": "Y"}
 
         prompt = compile(semantic, variables)
@@ -418,7 +420,7 @@ class TestCompileEdgeCases:
     def test_should_handle_very_long_issue_body(self) -> None:
         """50KB issue body should not crash or be truncated in the prompt."""
         long_body = "A" * 50_000
-        semantic = self._minimal_semantic()
+        semantic = _make_semantic()
         variables = {
             "issue_number": "99",
             "issue_title": "Big Issue",
@@ -432,7 +434,7 @@ class TestCompileEdgeCases:
     def test_should_handle_special_characters_in_variables(self) -> None:
         """Newlines, quotes, and braces in variable values should not break rendering."""
         body_with_specials = 'Line1\nLine2\n"quoted"\n{braces}\n{{double}}'
-        semantic = self._minimal_semantic()
+        semantic = _make_semantic()
         variables = {
             "issue_number": "1",
             "issue_title": "Special's \"chars\"",
@@ -447,7 +449,7 @@ class TestCompileEdgeCases:
 
     def test_should_handle_empty_acceptance_criteria(self) -> None:
         """Empty acceptance_criteria list should omit the section entirely."""
-        semantic = self._minimal_semantic(acceptance_criteria=[])
+        semantic = _make_semantic(acceptance_criteria=[])
         variables = {"issue_number": "1", "issue_title": "X", "issue_body": "Y"}
 
         prompt = compile(semantic, variables)
@@ -530,27 +532,8 @@ class TestCompileTask:
 class TestValidateForExecution:
     """Test blueprint validation for agentic execution."""
 
-    @staticmethod
-    def _minimal_semantic(**overrides: Any) -> SemanticBlueprint:
-        defaults = {
-            "blueprint_id": "test",
-            "blueprint_name": "Test",
-            "goal": "Build a feature",
-            "acceptance_criteria": ["Feature works"],
-            "constraints": ["No external deps"],
-            "context_sources": [],
-            "sub_agents": [],
-            "verification_commands": ["Run: pytest"],
-            "workflow_steps": ["Analyze", "Implement"],
-            "artifacts": [],
-            "task_timeout": 300,
-            "raw": {},
-        }
-        defaults.update(overrides)
-        return SemanticBlueprint(**defaults)
-
     def test_should_pass_valid_blueprint(self) -> None:
-        sem = self._minimal_semantic()
+        sem = _make_semantic()
         v = validate_for_execution(sem)
         assert v.valid is True
         assert v.prompt_chars > 0
@@ -558,7 +541,7 @@ class TestValidateForExecution:
         assert v.step_count == 2
 
     def test_should_fail_empty_blueprint(self) -> None:
-        sem = self._minimal_semantic(
+        sem = _make_semantic(
             goal="Test",
             blueprint_name="Test",
             acceptance_criteria=[],
@@ -571,13 +554,13 @@ class TestValidateForExecution:
         assert len(v.warnings) >= 3
 
     def test_should_warn_on_missing_verification(self) -> None:
-        sem = self._minimal_semantic(verification_commands=[])
+        sem = _make_semantic(verification_commands=[])
         v = validate_for_execution(sem)
         assert v.valid is True  # still valid — has goal + criteria
         assert any("verification" in w for w in v.warnings)
 
     def test_should_pass_blueprint_with_criteria_but_no_steps(self) -> None:
-        sem = self._minimal_semantic(workflow_steps=[])
+        sem = _make_semantic(workflow_steps=[])
         v = validate_for_execution(sem)
         assert v.valid is True  # criteria alone is sufficient
 
@@ -718,3 +701,51 @@ class TestDesignSpecBlocks:
         assert "healthy" in all_criteria or "health" in all_criteria or "error rate" in all_criteria, (
             "success_criteria from deployment blocks should be extracted"
         )
+
+
+# ---------------------------------------------------------------------------
+# summarize_validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizeValidation:
+    """Test summarize_validation() aggregation of validator results."""
+
+    def test_should_return_zeros_for_empty_list(self) -> None:
+        result = summarize_validation([])
+        assert result == {"total": 0, "passed": 0, "failed": 0, "pass_rate": 0.0}
+
+    def test_should_count_all_passed(self) -> None:
+        results = [
+            {"type": "command", "passed": True},
+            {"type": "git_diff_check", "passed": True},
+            {"type": "file_exists", "passed": True},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 3, "passed": 3, "failed": 0, "pass_rate": 1.0}
+
+    def test_should_count_all_failed(self) -> None:
+        results = [
+            {"type": "command", "passed": False},
+            {"type": "git_diff_check", "passed": False},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 2, "passed": 0, "failed": 2, "pass_rate": 0.0}
+
+    def test_should_count_mixed_results(self) -> None:
+        results = [
+            {"type": "command", "passed": True},
+            {"type": "git_diff_check", "passed": False},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 2, "passed": 1, "failed": 1, "pass_rate": 0.5}
+
+    def test_should_handle_single_passed(self) -> None:
+        results = [{"type": "command", "passed": True}]
+        result = summarize_validation(results)
+        assert result == {"total": 1, "passed": 1, "failed": 0, "pass_rate": 1.0}
+
+    def test_should_handle_single_failed(self) -> None:
+        results = [{"type": "command", "passed": False}]
+        result = summarize_validation(results)
+        assert result == {"total": 1, "passed": 0, "failed": 1, "pass_rate": 0.0}

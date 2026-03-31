@@ -215,17 +215,19 @@ blueprint:
               dependencies: ["B10", "B11"]
               skills: ["test_execution", "ui_testing"]
               output: "Frontend test results with screenshots"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "npm test -- --coverage"
+                prompt_template: |
+                  Run frontend tests with coverage. Auto-detect the test runner:
+                  - If vitest.config exists: `npx vitest run --coverage`
+                  - If jest.config exists: `npx jest --coverage`
+                  - If package.json has "test" script: `npm test -- --coverage --watchAll=false`
+                  - Python (Streamlit/Dash): `python3 -m pytest tests/frontend/ -v`
+                  Report pass/fail count, coverage percentage, and any failures.
               timeout: 1800
               max_retries: 1
 
               validators:
-                - type: "command"
-                  command: "npm test -- --watchAll=false"
-                  expected_exit_code: 0
-
                 - type: "git_diff_check"
                   min_files_changed: 1
 

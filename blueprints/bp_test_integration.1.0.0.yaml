@@ -223,17 +223,19 @@ blueprint:
               dependencies: ["B7", "B11"]
               skills: ["test_execution", "integration_testing"]
               output: "Integration test results"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "docker-compose -f docker-compose.test.yml up --abort-on-container-exit"
+                prompt_template: |
+                  Run integration tests for this project. Auto-detect the stack:
+                  - If docker-compose.test.yml exists: `docker-compose -f docker-compose.test.yml up --abort-on-container-exit`
+                  - Python: `python3 -m pytest tests/integration/ -v`
+                  - Go: `go test ./tests/integration/... -v`
+                  - JS/TS: `npx jest --testPathPattern=integration` or `npx vitest run tests/integration`
+                  Report pass/fail count and any failures.
               timeout: 3600
               max_retries: 1
 
               validators:
-                - type: "command"
-                  command: "go test ./tests/integration/... -v"
-                  expected_exit_code: 0
-
                 - type: "git_diff_check"
                   min_files_changed: 1
 

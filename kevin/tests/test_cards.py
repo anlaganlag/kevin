@@ -84,7 +84,7 @@ class TestFormatDuration:
         assert format_duration(32.0) == "32s"
 
     def test_should_return_minutes_and_seconds_when_over_60(self) -> None:
-        assert format_duration(133.0) == "2m13s"
+        assert format_duration(133.0) == "2m 13s"
 
     def test_should_return_zero_seconds_when_zero(self) -> None:
         assert format_duration(0.0) == "0s"
@@ -103,7 +103,7 @@ class TestBuildRunStatusCardDuration:
         card = build_run_status_card(COMPLETED_PAYLOAD)
         blocks_text = card["body"][3]["text"]
         assert "(32s)" in blocks_text
-        assert "(2m13s)" in blocks_text
+        assert "(2m 13s)" in blocks_text
 
     def test_should_show_duration_only_for_completed_blocks_when_running(self) -> None:
         card = build_run_status_card(RUNNING_PAYLOAD)

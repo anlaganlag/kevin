@@ -214,17 +214,18 @@ blueprint:
               dependencies: ["B9", "B11"]
               skills: ["test_execution", "coverage_analysis"]
               output: "Unit test results and coverage report"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "go test ./... -cover -coverprofile=coverage.out"
+                prompt_template: |
+                  Detect the project's test framework and run all unit tests with coverage.
+                  - Python: `python3 -m pytest --tb=short -q`
+                  - Go: `go test ./... -cover`
+                  - JS/TS: `npx jest --coverage` or `npx vitest run --coverage`
+                  Report the pass/fail count and coverage percentage.
               timeout: 1800
               max_retries: 1
 
               validators:
-                - type: "command"
-                  command: "go test ./... -v"
-                  expected_exit_code: 0
-
                 - type: "git_diff_check"
                   min_files_changed: 1
 

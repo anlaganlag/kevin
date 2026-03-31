@@ -2,23 +2,7 @@
 
 from typing import Any
 
-
-def format_duration(seconds: float | None) -> str:
-    """Format a duration in seconds to a human-readable string.
-
-    Args:
-        seconds: Duration in seconds, or None if not available.
-
-    Returns:
-        Formatted string like "32s", "2m13s", or "" for None.
-    """
-    if seconds is None:
-        return ""
-    total = int(seconds)
-    minutes, secs = divmod(total, 60)
-    if minutes:
-        return f"{minutes}m{secs}s"
-    return f"{secs}s"
+from kevin.state import format_duration
 
 
 def _status_icon(status: str) -> str:

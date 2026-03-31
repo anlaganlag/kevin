@@ -494,7 +494,7 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     """Validate all (or one) blueprints for executor compatibility."""
-    from kevin.blueprint_compiler import compile, load_semantic
+    from kevin.blueprint_compiler import compile, load_semantic, validate_for_execution
     from kevin.config import NON_EXECUTABLE_BLUEPRINTS, build_config
 
     config = build_config()
@@ -520,12 +520,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
     }
 
     print("\nBlueprint Validation Matrix")
-    print("\u2500" * 70)
-    print(f"{'Blueprint':<45} {'Load':>5} {'Compile':>8} {'Size':>8}")
-    print("\u2500" * 70)
+    print("\u2500" * 80)
+    print(f"{'Blueprint':<45} {'Load':>5} {'Valid':>6} {'Compile':>8} {'Size':>8}")
+    print("\u2500" * 80)
 
     failures = 0
     non_exec = 0
+    warnings_total = 0
     for bp_path in bp_files:
         name = bp_path.stem
 
@@ -534,14 +535,21 @@ def cmd_validate(args: argparse.Namespace) -> int:
             load_ok = "\u2713"
         except Exception as exc:
             load_ok = "\u2717"
-            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'':>8}  ({exc})")
+            print(f"{name:<45} {load_ok:>5} {'':>6} {'':>8} {'':>8}  ({exc})")
             failures += 1
             continue
 
         if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
             non_exec += 1
-            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'(orchestrator)':>8}")
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>6} {'\u2014':>8} {'(skip)':>8}")
             continue
+
+        validation = validate_for_execution(semantic)
+        valid_ok = "\u2713" if validation.valid else "\u2717"
+        if not validation.valid:
+            failures += 1
+        if validation.warnings:
+            warnings_total += len(validation.warnings)
 
         try:
             prompt = compile(semantic, sample_vars)
@@ -550,17 +558,37 @@ def cmd_validate(args: argparse.Namespace) -> int:
         except Exception as exc:
             compile_ok = "\u2717"
             size = "\u2014"
-            failures += 1
-            print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}  ({exc})")
+            if validation.valid:
+                failures += 1
+            print(f"{name:<45} {load_ok:>5} {valid_ok:>6} {compile_ok:>8} {size:>8}  ({exc})")
             continue
 
-        print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}")
+        line = f"{name:<45} {load_ok:>5} {valid_ok:>6} {compile_ok:>8} {size:>8}"
+        if validation.warnings:
+            line += f"  ({len(validation.warnings)} warnings)"
+        print(line)
+
+        if args.blueprint and validation.warnings:
+            for w in validation.warnings:
+                print(f"  \u26a0 {w}")
 
     executable = len(bp_files) - non_exec
 
-    print("\u2500" * 70)
+    print("\u2500" * 80)
     print(f"Result: {executable - failures}/{executable} executor-ready, "
-          f"{non_exec} orchestrator(s)")
+          f"{non_exec} orchestrator(s), {warnings_total} warning(s)")
+
+    # Check edge function sync
+    import subprocess
+    sync_script = config.blueprints_dir.parent / "scripts" / "sync_blueprints_ts.py"
+    if sync_script.exists():
+        r = subprocess.run(["python3", str(sync_script), "--check"],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            print(f"Edge function sync: \u2713")
+        else:
+            print(f"Edge function sync: \u2717 — run: python scripts/sync_blueprints_ts.py")
+            failures += 1
 
     return 1 if failures > 0 else 0
 

@@ -202,19 +202,21 @@ blueprint:
               dependencies: ["B8", "B11"]
               skills: ["e2e_test_execution", "ui_testing"]
               output: "E2E test results with screenshots"
-              runner: "shell"
+              runner: "claude-code"
               runner_config:
-                command: "npx playwright test"
+                prompt_template: |
+                  Run E2E tests for this project. Auto-detect the framework:
+                  - If playwright.config exists: `npx playwright test --reporter=list`
+                  - If cypress.config exists: `npx cypress run`
+                  - If selenium tests exist: detect and run accordingly
+                  - Python (pytest + selenium/playwright): `python3 -m pytest tests/e2e/ -v`
+                  Report pass/fail count, screenshots of failures if available.
               timeout: 3600
               max_retries: 1
 
               validators:
-                - type: "command"
-                  command: "npx playwright test --reporter=list"
-                  expected_exit_code: 0
-
-                - type: "file_exists"
-                  path: "tests/e2e/results/"
+                - type: "git_diff_check"
+                  min_files_changed: 1
 
           execution_order: "B8 → B11 → B14"
 

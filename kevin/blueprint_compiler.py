@@ -143,7 +143,8 @@ def compile(semantic: SemanticBlueprint, variables: dict[str, str]) -> str:
         "Complete the following task end-to-end. You have full tool access "
         "(Read, Write, Edit, Bash, Glob, Grep).\n"
         "You MUST create files and execute commands. Do NOT ask questions or wait "
-        "for confirmation. Just execute."
+        "for confirmation. Just execute.\n"
+        "NEVER modify files in the blueprints/ or .github/ directories."
     )
 
     # Goal
@@ -627,6 +628,19 @@ def _extract_timeout(
     # Fallback: sum of all block timeouts
     total = sum(int(b.get("timeout", 300)) for b in blocks)
     return max(total, 600)  # minimum 10 minutes
+
+
+def summarize_validation(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate multiple validator results into a summary dict.
+
+    Each result must have a ``"passed"`` bool key.  Returns totals and
+    pass rate (0.0 when the list is empty).
+    """
+    total = len(results)
+    passed = sum(1 for r in results if r.get("passed"))
+    failed = total - passed
+    pass_rate = passed / total if total else 0.0
+    return {"total": total, "passed": passed, "failed": failed, "pass_rate": pass_rate}
 
 
 def _parse_timeout(value: str) -> int:

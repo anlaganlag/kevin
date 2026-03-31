@@ -20,6 +20,14 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "architecture": "bp_architecture_blueprint_design.1.0.0",
     "function": "bp_function_implementation_fip_blueprint.1.0.0",
     "testing": "bp_test_feature_comprehensive_testing.1.0.0",
+    "unit-test": "bp_test_unit.1.0.0",
+    "integration-test": "bp_test_integration.1.0.0",
+    "e2e-test": "bp_test_e2e.1.0.0",
+    "frontend-test": "bp_test_frontend.1.0.0",
+    "advanced-test": "bp_test_advanced.1.0.0",
+    "test-env-setup": "bp_test_environment_setup.1.0.0",
+    "test-strategy": "bp_test_strategy_design.1.0.0",
+    "test-report": "bp_test_report_signoff.1.0.0",
     "planning": "bp_planning_agent.1.0.0",
 }
 
