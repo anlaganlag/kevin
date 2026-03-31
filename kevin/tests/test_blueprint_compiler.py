@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 import yaml
 
+from kevin.config import NON_EXECUTABLE_BLUEPRINTS
 from kevin.blueprint_compiler import (
     BlueprintValidation,
     SemanticBlueprint,
@@ -585,11 +586,11 @@ class TestValidateForExecution:
 # Full pipeline: all blueprints → load → compile → validate
 # ---------------------------------------------------------------------------
 
-# Blueprints that are NOT intended for agentic execution
-_NON_EXECUTABLE_BLUEPRINTS = {
-    "planning_agent_state_machine.yaml",  # deprecated legacy config
-    "bp_planning_agent.1.0.0.yaml",       # orchestrator — uses Claude SDK, not executor
-}
+# Filenames to exclude from executable-blueprint tests:
+# 1. Non-executable blueprints (from canonical config)
+# 2. Legacy YAML that isn't a blueprint at all
+_NON_EXECUTABLE_BP_FILENAMES = {f"{bp_id}.yaml" for bp_id in NON_EXECUTABLE_BLUEPRINTS}
+_SKIP_FILES = _NON_EXECUTABLE_BP_FILENAMES | {"planning_agent_state_machine.yaml"}
 
 # Blueprints with execution-ready blocks (have prompt_template)
 _EXECUTION_READY_BLUEPRINTS = {
@@ -602,7 +603,7 @@ _EXECUTION_READY_BLUEPRINTS = {
 
 # Executable blueprint files (excluding known non-executable)
 _EXECUTABLE_BP_FILES = [
-    p for p in _ALL_BP_FILES if p.name not in _NON_EXECUTABLE_BLUEPRINTS
+    p for p in _ALL_BP_FILES if p.name not in _SKIP_FILES
 ]
 
 
@@ -664,8 +665,8 @@ class TestFullPipelineAllBlueprints:
 
     @pytest.mark.parametrize(
         "bp_name",
-        sorted(_NON_EXECUTABLE_BLUEPRINTS),
-        ids=sorted(_NON_EXECUTABLE_BLUEPRINTS),
+        sorted(_NON_EXECUTABLE_BP_FILENAMES),
+        ids=sorted(_NON_EXECUTABLE_BP_FILENAMES),
     )
     def test_non_executable_blueprints_should_fail_validation(self, bp_name: str) -> None:
         """Non-executable blueprints must be flagged by validate_for_execution."""
