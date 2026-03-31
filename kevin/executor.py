@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from kevin.agent_runner import _run_validators
-from kevin.blueprint_compiler import SemanticBlueprint
-from kevin.blueprint_loader import _extract_blocks, _parse_block, _topological_sort
+from kevin.blueprint_compiler import SemanticBlueprint, _extract_blocks_raw
+from kevin.blueprint_loader import _parse_block, _topological_sort
 from kevin.subprocess_utils import run_with_heartbeat
 
 
@@ -101,7 +101,7 @@ def run_post_validators(
 
     Uses the same validator implementations as block-by-block mode, in dependency order.
     """
-    blocks_raw = _extract_blocks(semantic.raw)
+    blocks_raw = _extract_blocks_raw(semantic.raw)
     if not blocks_raw:
         return []
     try:
