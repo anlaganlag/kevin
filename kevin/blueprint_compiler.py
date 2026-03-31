@@ -629,6 +629,19 @@ def _extract_timeout(
     return max(total, 600)  # minimum 10 minutes
 
 
+def summarize_validation(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate multiple validator results into a summary dict.
+
+    Each result must have a ``"passed"`` bool key.  Returns totals and
+    pass rate (0.0 when the list is empty).
+    """
+    total = len(results)
+    passed = sum(1 for r in results if r.get("passed"))
+    failed = total - passed
+    pass_rate = passed / total if total else 0.0
+    return {"total": total, "passed": passed, "failed": failed, "pass_rate": pass_rate}
+
+
 def _parse_timeout(value: str) -> int:
     """Parse timeout string like '35m', '1h', '600' into seconds."""
     value = value.strip().lower()

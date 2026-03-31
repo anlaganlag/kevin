@@ -1,21 +1,19 @@
-# Issue #67: format_duration helper
+# Issue #68: summarize_validation helper
 
 ## Summary
-Add `format_duration(seconds: float) -> str` to `kevin/state.py` that converts seconds into human-readable "Xh Xm Xs" format.
+Add `summarize_validation(results: list[dict]) -> dict` to `kevin/blueprint_compiler.py`.
+Aggregates multiple validator results into a summary dict with total, passed, failed, pass_rate.
 
-## Files to modify
-- `kevin/state.py` — add `format_duration()` function
-- `kevin/tests/test_state_format_duration.py` — new test file
+## TDD Strategy
 
-## Test scenarios
-- 65.3 → "1m 5s"
-- 3661 → "1h 1m 1s"
-- 0.5 → "0s"
-- 0 → "0s"
-- 3600 → "1h 0m 0s"
-- 59 → "59s"
-- negative → "0s"
-- hours only: 7200 → "2h 0m 0s"
+### Test Cases (RED phase)
+1. Empty list → `{"total": 0, "passed": 0, "failed": 0, "pass_rate": 0.0}`
+2. All passed → pass_rate = 1.0
+3. All failed → pass_rate = 0.0
+4. Mixed → correct counts and ratio
+5. Single item passed
+6. Single item failed
 
-## Risks
-- None — pure function, no side effects.
+### Files
+- Test: `kevin/tests/test_blueprint_compiler.py` (append new test class)
+- Impl: `kevin/blueprint_compiler.py` (add function)

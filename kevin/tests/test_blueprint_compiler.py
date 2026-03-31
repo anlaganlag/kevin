@@ -13,6 +13,7 @@ from kevin.blueprint_compiler import (
     compile,
     compile_task,
     load_semantic,
+    summarize_validation,
     validate_for_execution,
 )
 from kevin.workers.interface import WorkerTask
@@ -718,3 +719,51 @@ class TestDesignSpecBlocks:
         assert "healthy" in all_criteria or "health" in all_criteria or "error rate" in all_criteria, (
             "success_criteria from deployment blocks should be extracted"
         )
+
+
+# ---------------------------------------------------------------------------
+# summarize_validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizeValidation:
+    """Test summarize_validation() aggregation of validator results."""
+
+    def test_should_return_zeros_for_empty_list(self) -> None:
+        result = summarize_validation([])
+        assert result == {"total": 0, "passed": 0, "failed": 0, "pass_rate": 0.0}
+
+    def test_should_count_all_passed(self) -> None:
+        results = [
+            {"type": "command", "passed": True},
+            {"type": "git_diff_check", "passed": True},
+            {"type": "file_exists", "passed": True},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 3, "passed": 3, "failed": 0, "pass_rate": 1.0}
+
+    def test_should_count_all_failed(self) -> None:
+        results = [
+            {"type": "command", "passed": False},
+            {"type": "git_diff_check", "passed": False},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 2, "passed": 0, "failed": 2, "pass_rate": 0.0}
+
+    def test_should_count_mixed_results(self) -> None:
+        results = [
+            {"type": "command", "passed": True},
+            {"type": "git_diff_check", "passed": False},
+        ]
+        result = summarize_validation(results)
+        assert result == {"total": 2, "passed": 1, "failed": 1, "pass_rate": 0.5}
+
+    def test_should_handle_single_passed(self) -> None:
+        results = [{"type": "command", "passed": True}]
+        result = summarize_validation(results)
+        assert result == {"total": 1, "passed": 1, "failed": 0, "pass_rate": 1.0}
+
+    def test_should_handle_single_failed(self) -> None:
+        results = [{"type": "command", "passed": False}]
+        result = summarize_validation(results)
+        assert result == {"total": 1, "passed": 0, "failed": 1, "pass_rate": 0.0}
