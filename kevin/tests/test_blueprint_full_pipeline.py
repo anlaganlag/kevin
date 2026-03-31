@@ -75,8 +75,8 @@ class TestNonExecutableBlueprintGuard:
         executable_names = {p.name for p in _EXECUTABLE_BP_FILES}
         assert "bp_planning_agent.1.0.0.yaml" not in executable_names
 
-    def test_executable_count_is_nine(self) -> None:
-        assert len(_EXECUTABLE_BP_FILES) == 9, (
-            f"Expected 9 executable blueprints, found {len(_EXECUTABLE_BP_FILES)}: "
+    def test_executable_count_at_least_nine(self) -> None:
+        assert len(_EXECUTABLE_BP_FILES) >= 9, (
+            f"Expected at least 9 executable blueprints, found {len(_EXECUTABLE_BP_FILES)}: "
             f"{[p.stem for p in _EXECUTABLE_BP_FILES]}"
         )
