@@ -14,7 +14,7 @@ from kevin.cli import main
 class TestExecutorMode:
     """Test the executor CLI entry point."""
 
-    @patch("kevin.cli._execute_blocks")
+    @patch("kevin.cli._execute_agentic")
     @patch("kevin.cli.load")
     @patch("kevin.cli.find_blueprint")
     @patch("kevin.cli.StateManager")
@@ -63,7 +63,7 @@ class TestExecutorMode:
         mock_load.assert_called_once()
         mock_exec.assert_called_once()
 
-    @patch("kevin.cli._execute_blocks")
+    @patch("kevin.cli._execute_agentic")
     @patch("kevin.cli.load")
     @patch("kevin.cli.find_blueprint")
     @patch("kevin.cli.StateManager")

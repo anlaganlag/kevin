@@ -21,7 +21,7 @@ from kevin import __version__
 from kevin.agent_runner import BlockResult, run_block, run_block_async
 from kevin.blueprint_loader import Block, find_blueprint, load
 from kevin.config import KevinConfig, build_config
-from kevin.github_client import Issue, add_labels, fetch_issue, post_comment, remove_labels
+from kevin.github_client import Issue, add_labels, close_issue, fetch_issue, post_comment, remove_labels
 from kevin.intent import classify
 from kevin.state import BlockState, RunState, StateManager
 
@@ -44,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--agent-id", default="", help="Agent identity posted in AgentCompletedEvent signal")
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--verbose", action="store_true")
+    p_run.add_argument("--legacy", action="store_true",
+                        help="Use legacy Block execution mode instead of agentic")
+    p_run.add_argument("--agentic", action="store_true", default=True,
+                        help="(default) Agentic execution: compile Blueprint into single Claude call")
     # Executor mode args
     p_run.add_argument("--run-id", default="", help="Executor run ID (enables executor mode)")
     p_run.add_argument("--instruction", default="", help="Task instruction (executor mode)")
@@ -84,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     p_harvest = sub.add_parser("harvest", help="Backfill knowledge.db from all historical runs")
     p_harvest.add_argument("--target-repo", default="", help="Local path to target repo")
 
+    # --- validate ---
+    sp_validate = sub.add_parser("validate", help="Validate blueprint executability")
+    sp_validate.add_argument("--blueprint", help="Validate a specific blueprint ID")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -101,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_debug(args)
     elif args.command == "harvest":
         return cmd_harvest(args)
+    elif args.command == "validate":
+        return cmd_validate(args)
     return 1
 
 
@@ -245,14 +255,20 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
         blueprint_path=bp_path,
     )
 
-    _log(cfg, f"Executor mode: run_id={args.run_id}, blueprint={bp.blueprint_id}")
+    legacy = getattr(args, "legacy", False)
+    agentic = not legacy
+    mode_tag = " [agentic]" if agentic else " [legacy]"
+    _log(cfg, f"Executor mode{mode_tag}: run_id={args.run_id}, blueprint={bp.blueprint_id}")
     _log(cfg, f"  Local run: {run.run_id}")
-    _log(cfg, f"  Blocks: {' → '.join(b.block_id for b in bp.blocks)}")
 
-    # Execute blocks (reuse existing execution engine)
-    exit_code = _execute_blocks(cfg, state_mgr, run, bp.blocks, variables)
+    # Execute
+    if agentic:
+        exit_code = _execute_agentic(cfg, state_mgr, run, bp_path, variables)
+    else:
+        _log(cfg, f"  Blocks: {' → '.join(b.block_id for b in bp.blocks)}")
+        exit_code = _execute_blocks(cfg, state_mgr, run, bp.blocks, variables)
 
-    # Reload run to get latest block states
+    # Reload run to get latest state
     run = state_mgr.load_run(run.run_id)
     block_results: list[dict[str, str]] = []
     for bid, bs in run.blocks.items():
@@ -266,21 +282,22 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
             run_id=args.run_id,
             status="completed",
             result={
-                "summary": f"Blueprint {bp.blueprint_id} completed",
+                "summary": f"Blueprint {bp.blueprint_id} completed{mode_tag}",
                 "blocks": block_results,
             },
         )
     else:
         failed_block = next((b for b in block_results if b["status"] == "failed"), None)
+        error_msg = (
+            f"Block {failed_block['block_id']} failed"
+            if failed_block
+            else "Agentic execution failed" if agentic else "Unknown failure"
+        )
         callback.report_status(
             run_id=args.run_id,
             status="failed",
-            error_code="BLOCK_FAILED",
-            error_message=(
-                f"Block {failed_block['block_id']} failed"
-                if failed_block
-                else "Unknown failure"
-            ),
+            error_code="EXECUTION_FAILED" if agentic else "BLOCK_FAILED",
+            error_message=error_msg,
             result={"blocks": block_results},
         )
 
@@ -371,15 +388,27 @@ def _cmd_run_inner(args: argparse.Namespace) -> int:
     _log(config, f"  Run ID: {run.run_id}")
 
     # 6. Post start comment
+    legacy = getattr(args, "legacy", False)
+    agentic = not legacy
+    mode_tag = " [agentic]" if agentic else " [legacy]"
     if not config.dry_run:
-        post_comment(
-            config.repo_full_name,
-            issue.number,
-            f"Kevin started `{blueprint.blueprint_id}` (run: `{run.run_id}`)\n\n"
-            f"Blocks: {' → '.join(b.block_id for b in blueprint.blocks)}",
-        )
+        if agentic:
+            post_comment(
+                config.repo_full_name,
+                issue.number,
+                f"Kevin started `{blueprint.blueprint_id}` (run: `{run.run_id}`){mode_tag}",
+            )
+        else:
+            post_comment(
+                config.repo_full_name,
+                issue.number,
+                f"Kevin started `{blueprint.blueprint_id}` (run: `{run.run_id}`)\n\n"
+                f"Blocks: {' → '.join(b.block_id for b in blueprint.blocks)}",
+            )
 
-    # 7. Execute blocks
+    # 7. Execute
+    if agentic:
+        return _execute_agentic(config, state_mgr, run, bp_path, variables, issue=issue)
     return _execute_blocks(config, state_mgr, run, blueprint.blocks, variables, issue=issue)
 
 
@@ -448,6 +477,81 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     result = harvest_all(config.knowledge_db, config.state_dir)
     print(f"Harvested: {result.harvested}  Skipped: {result.skipped_existing}  Failed: {result.failed_parse}")
     return 0
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Validate all (or one) blueprints for executor compatibility."""
+    from kevin.blueprint_compiler import compile, load_semantic
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
+
+    kevin_root = Path(__file__).resolve().parent.parent
+    blueprints_dir = kevin_root / "blueprints"
+
+    if args.blueprint:
+        try:
+            bp_path = find_blueprint(blueprints_dir, args.blueprint)
+            bp_files = [bp_path]
+        except FileNotFoundError:
+            _err(f"Blueprint not found: {args.blueprint}")
+            return 1
+    else:
+        bp_files = sorted(blueprints_dir.glob("bp_*.yaml"))
+
+    if not bp_files:
+        _err("No blueprints found")
+        return 1
+
+    sample_vars = {
+        "issue_number": "0", "issue_title": "validation", "issue_body": "",
+        "issue_labels": "", "target_repo": ".", "owner": "test", "repo": "test",
+        "repo_full": "test/test", "learning_context": "", "pr_number": "",
+    }
+
+    print("\nBlueprint Validation Matrix")
+    print("\u2500" * 70)
+    print(f"{'Blueprint':<45} {'Load':>5} {'Compile':>8} {'Size':>8}")
+    print("\u2500" * 70)
+
+    failures = 0
+    for bp_path in bp_files:
+        name = bp_path.stem
+        is_non_exec = any(ne in bp_path.name for ne in NON_EXECUTABLE_BLUEPRINTS)
+
+        try:
+            semantic = load_semantic(bp_path)
+            load_ok = "\u2713"
+        except Exception as exc:
+            load_ok = "\u2717"
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'':>8}  ({exc})")
+            failures += 1
+            continue
+
+        if is_non_exec:
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'(orchestrator)':>8}")
+            continue
+
+        try:
+            prompt = compile(semantic, sample_vars)
+            compile_ok = "\u2713"
+            size = f"{len(prompt)/1024:.1f}KB"
+        except Exception as exc:
+            compile_ok = "\u2717"
+            size = "\u2014"
+            failures += 1
+            print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}  ({exc})")
+            continue
+
+        print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}")
+
+    total = len(bp_files)
+    non_exec = sum(1 for f in bp_files if any(ne in f.name for ne in NON_EXECUTABLE_BLUEPRINTS))
+    executable = total - non_exec
+
+    print("\u2500" * 70)
+    print(f"Result: {executable - failures}/{executable} executor-ready, "
+          f"{non_exec} orchestrator(s)")
+
+    return 1 if failures > 0 else 0
 
 
 def cmd_debug(args: argparse.Namespace) -> int:
@@ -525,6 +629,192 @@ def _load_blueprint_for_run(config: KevinConfig, run_id: str, blueprint_id: str)
 
 
 # ---------------------------------------------------------------------------
+# Agentic execution
+# ---------------------------------------------------------------------------
+
+def _execute_agentic(
+    config: KevinConfig,
+    state_mgr: StateManager,
+    run: RunState,
+    bp_path: Path,
+    variables: dict[str, str],
+    *,
+    issue: Issue | None = None,
+) -> int:
+    """Agentic execution: compile Blueprint into a WorkerTask and dispatch via WorkerRegistry.
+
+    Replaces the block-by-block execution with a single autonomous invocation.
+    Post-execution validators serve as a quality gate.
+    """
+    from kevin.blueprint_compiler import compile_task, load_semantic
+    from kevin.executor import extract_pr_number, run_post_validators
+    from kevin.workers.interface import ArtifactType, WorkerResult
+    from kevin.workers.registry import WorkerRegistry
+
+    # 1. Load semantic blueprint
+    try:
+        semantic = load_semantic(bp_path)
+    except Exception as exc:
+        _err(f"Failed to load semantic blueprint from {bp_path}: {exc}")
+        state_mgr.complete_run(run, "failed")
+        return 1
+
+    # 1b. Guard: non-executable blueprints
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
+    if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
+        _err(f"{semantic.blueprint_id} is an orchestrator blueprint — not executor-compatible. "
+             f"Use Claude SDK or the planning agent workflow instead.")
+        state_mgr.complete_run(run, "failed")
+        return 1
+
+    _log(config, f"  Agentic mode: {semantic.blueprint_name}")
+    _log(config, f"  Criteria: {len(semantic.acceptance_criteria)}, "
+                 f"Constraints: {len(semantic.constraints)}, "
+                 f"Timeout: {semantic.task_timeout}s")
+
+    # 2. Compile to WorkerTask
+    try:
+        task = compile_task(
+            semantic, variables, task_id=run.run_id, cwd=config.target_repo,
+        )
+    except Exception as exc:
+        _err(f"Blueprint compilation failed: {exc}")
+        state_mgr.complete_run(run, "failed")
+        return 1
+    _log(config, f"  Compiled instruction: {len(task.instruction)} chars")
+
+    # 3. Resolve worker
+    registry = WorkerRegistry()
+    worker = registry.resolve()  # default: claude-code
+    _log(config, f"  Worker: {worker.worker_id}")
+
+    # 4. Notify Teams: running
+    if not config.dry_run:
+        _notify_teams(config, run, [], issue, "running")
+
+    # 5. Execute via worker
+    run.status = "running"
+    state_mgr.complete_run(run, "running")
+
+    if config.dry_run:
+        result = WorkerResult(
+            success=True,
+            stdout=f"[dry-run] Would execute via {worker.worker_id} ({len(task.instruction)} chars)",
+        )
+    else:
+        result = worker.execute(task)
+
+    # 6. Save logs
+    state_mgr.save_executor_logs(
+        run.run_id,
+        prompt=task.instruction,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+
+    _log(config, f"  Worker({worker.worker_id}): exit_code={result.exit_code}, "
+                 f"duration={result.duration_seconds:.0f}s, "
+                 f"stdout={len(result.stdout)} chars")
+
+    # 7. Post-execution validators (only if executor succeeded)
+    all_passed = result.success
+    validator_results: list[dict] = []
+    if result.success and not config.dry_run:
+        try:
+            validator_results = run_post_validators(semantic, variables, config.target_repo)
+        except Exception as exc:
+            _log(config, f"  Validator execution error: {exc}")
+            validator_results = [{"name": "validator_error", "passed": False, "error": str(exc)}]
+        failed_validators = [v for v in validator_results if not v.get("passed")]
+        if failed_validators:
+            all_passed = False
+            _log(config, f"  Validator failures: {failed_validators}")
+        else:
+            _log(config, f"  Validators: all {len(validator_results)} passed")
+
+    # 8. Extract PR number — check worker artifacts first, then fallback
+    pr_number: int | None = None
+    if all_passed:
+        for artifact in result.artifacts:
+            if artifact.artifact_type == ArtifactType.PR_URL:
+                import re as _re
+
+                m = _re.search(r"/pull/(\d+)", artifact.location)
+                if m:
+                    pr_number = int(m.group(1))
+                    break
+        if pr_number is None:
+            pr_number = extract_pr_number(
+                result.stdout,
+                repo=run.repo,
+                issue_number=run.issue_number,
+            )
+
+    # 9. Persist task completion metadata + harvest learning
+    final_status = "completed" if all_passed else "failed"
+    run.completion_status = "all_passed" if all_passed else (
+        "validators_failed" if validator_results else "worker_failed"
+    )
+    run.pr_number = pr_number
+    run.verification_summary = {
+        "total": len(validator_results),
+        "passed": sum(1 for v in validator_results if v.get("passed")),
+        "failed": [v for v in validator_results if not v.get("passed")],
+    }
+    state_mgr.complete_run(run, final_status)
+
+    try:
+        from kevin.learning import harvest_run
+        harvest_run(config.knowledge_db, config.state_dir, run.run_id)
+    except Exception:
+        pass
+
+    # 10. Post completion comment + update labels
+    error_summary = ""
+    if not all_passed:
+        if result.failure_detail:
+            error_summary = result.failure_detail[:300]
+        elif result.stderr:
+            error_summary = result.stderr[:300]
+        elif validator_results:
+            failed = [v for v in validator_results if not v.get("passed")]
+            error_summary = f"Validator failures: {failed}"
+
+    if not config.dry_run:
+        _post_completion_comment_agentic(config, run, pr_number=pr_number)
+        _notify_teams(config, run, [], issue, final_status, error=error_summary)
+        try:
+            remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
+            if all_passed:
+                add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+                close_issue(run.repo, run.issue_number)
+                run.issue_closed = True
+                state_mgr.complete_run(run, final_status)  # persist issue_closed flag
+        except Exception:
+            pass
+
+    _log(config, f"\nRun {run.run_id}: {final_status} (worker={worker.worker_id})")
+    return 0 if all_passed else 1
+
+
+def _post_completion_comment_agentic(
+    config: KevinConfig,
+    run: RunState,
+    *,
+    pr_number: int | None = None,
+) -> None:
+    """Post simplified completion comment for agentic mode."""
+    icon = ":white_check_mark:" if run.status == "completed" else ":x:"
+    lines = [f"{icon} Kevin run `{run.run_id}` — **{run.status}** (agentic)"]
+    if pr_number:
+        lines.append(f"\nPR: https://github.com/{run.repo}/pull/{pr_number}")
+    try:
+        post_comment(run.repo, run.issue_number, "\n".join(lines))
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Core execution loop
 # ---------------------------------------------------------------------------
 
@@ -542,7 +832,10 @@ def _execute_blocks(
     *,
     issue: Issue | None = None,
 ) -> int:
-    """Execute blocks using the wave scheduler (sync wrapper)."""
+    """[Legacy] Execute blocks using the wave scheduler (sync wrapper).
+
+    Only used when --legacy flag is set. Default execution uses _execute_agentic.
+    """
     return asyncio.run(
         _execute_blocks_async(config, state_mgr, run, blocks, variables, issue=issue)
     )
@@ -680,9 +973,10 @@ async def _execute_blocks_async(
         _post_completion_comment(config, run, blocks)
         _notify_teams(config, run, blocks, issue, final_status, error=error_summary)
         try:
-            remove_labels(run.repo, run.issue_number, ["kevin"])
+            remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
             if all_passed:
-                add_labels(run.repo, run.issue_number, ["kevin-completed"])
+                add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+                close_issue(run.repo, run.issue_number)
         except Exception:
             pass
 
