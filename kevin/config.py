@@ -31,7 +31,11 @@ DEFAULT_LABEL_ALIASES: dict[str, str] = {
     "feature": "coding-task",
     "documentation": "coding-task",
     "refactor": "coding-task",
-    # "testing" removed — now has a dedicated blueprint in DEFAULT_INTENT_MAP
+    "test": "testing",
+    "deploy": "deployment",
+    "arch": "architecture",
+    "req": "requirement",
+    "fip": "function",
 }
 
 # Label that triggers Kevin

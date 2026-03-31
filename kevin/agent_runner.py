@@ -135,6 +135,9 @@ def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
     When provided, a temporary .claudeignore file is written to the cwd before
     execution and cleaned up afterward.
     """
+    if not block.prompt_template:
+        raise ValueError(f"Block {block.block_id} has runner=claude_cli but no prompt_template — use agentic mode for design-spec blueprints")
+
     prompt = render(block.prompt_template, variables)
 
     # Adaptive retry: append previous failure context so the agent can adjust

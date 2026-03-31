@@ -416,6 +416,15 @@ def _cmd_run_inner(args: argparse.Namespace) -> int:
     # 7. Execute
     if agentic:
         return _execute_agentic(config, state_mgr, run, bp_path, variables, issue=issue)
+
+    # Guard: design-spec blueprints have no prompt_template — legacy mode cannot work
+    if not blueprint.blocks:
+        _err(f"Blueprint {blueprint.blueprint_id} has no blocks — cannot run in legacy mode. Use agentic mode (default).")
+        return 1
+    if any(b.runner in ("claude_cli", None) and not b.prompt_template for b in blueprint.blocks):
+        _err(f"Blueprint {blueprint.blueprint_id} has claude_cli blocks without prompt_template — incompatible with legacy mode. Use agentic mode (default).")
+        return 1
+
     return _execute_blocks(config, state_mgr, run, blueprint.blocks, variables, issue=issue)
 
 
