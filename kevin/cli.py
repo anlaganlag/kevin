@@ -88,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     p_harvest = sub.add_parser("harvest", help="Backfill knowledge.db from all historical runs")
     p_harvest.add_argument("--target-repo", default="", help="Local path to target repo")
 
+    # --- validate ---
+    sp_validate = sub.add_parser("validate", help="Validate blueprint executability")
+    sp_validate.add_argument("--blueprint", help="Validate a specific blueprint ID")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -105,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_debug(args)
     elif args.command == "harvest":
         return cmd_harvest(args)
+    elif args.command == "validate":
+        return cmd_validate(args)
     return 1
 
 
@@ -471,6 +477,81 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     result = harvest_all(config.knowledge_db, config.state_dir)
     print(f"Harvested: {result.harvested}  Skipped: {result.skipped_existing}  Failed: {result.failed_parse}")
     return 0
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Validate all (or one) blueprints for executor compatibility."""
+    from kevin.blueprint_compiler import compile, load_semantic
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
+
+    kevin_root = Path(__file__).resolve().parent.parent
+    blueprints_dir = kevin_root / "blueprints"
+
+    if args.blueprint:
+        try:
+            bp_path = find_blueprint(blueprints_dir, args.blueprint)
+            bp_files = [bp_path]
+        except FileNotFoundError:
+            _err(f"Blueprint not found: {args.blueprint}")
+            return 1
+    else:
+        bp_files = sorted(blueprints_dir.glob("bp_*.yaml"))
+
+    if not bp_files:
+        _err("No blueprints found")
+        return 1
+
+    sample_vars = {
+        "issue_number": "0", "issue_title": "validation", "issue_body": "",
+        "issue_labels": "", "target_repo": ".", "owner": "test", "repo": "test",
+        "repo_full": "test/test", "learning_context": "", "pr_number": "",
+    }
+
+    print("\nBlueprint Validation Matrix")
+    print("\u2500" * 70)
+    print(f"{'Blueprint':<45} {'Load':>5} {'Compile':>8} {'Size':>8}")
+    print("\u2500" * 70)
+
+    failures = 0
+    for bp_path in bp_files:
+        name = bp_path.stem
+        is_non_exec = any(ne in bp_path.name for ne in NON_EXECUTABLE_BLUEPRINTS)
+
+        try:
+            semantic = load_semantic(bp_path)
+            load_ok = "\u2713"
+        except Exception as exc:
+            load_ok = "\u2717"
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'':>8}  ({exc})")
+            failures += 1
+            continue
+
+        if is_non_exec:
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'(orchestrator)':>8}")
+            continue
+
+        try:
+            prompt = compile(semantic, sample_vars)
+            compile_ok = "\u2713"
+            size = f"{len(prompt)/1024:.1f}KB"
+        except Exception as exc:
+            compile_ok = "\u2717"
+            size = "\u2014"
+            failures += 1
+            print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}  ({exc})")
+            continue
+
+        print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}")
+
+    total = len(bp_files)
+    non_exec = sum(1 for f in bp_files if any(ne in f.name for ne in NON_EXECUTABLE_BLUEPRINTS))
+    executable = total - non_exec
+
+    print("\u2500" * 70)
+    print(f"Result: {executable - failures}/{executable} executor-ready, "
+          f"{non_exec} orchestrator(s)")
+
+    return 1 if failures > 0 else 0
 
 
 def cmd_debug(args: argparse.Namespace) -> int:
