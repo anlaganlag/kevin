@@ -95,3 +95,61 @@ class TestLoadAndComplete:
         loaded = mgr.load_run(run.run_id)
         assert loaded.status == "completed"
         assert loaded.completed_at != ""
+
+
+class TestDurationSeconds:
+    """E2E #56: run duration tracking via duration_seconds field."""
+
+    def test_should_be_none_before_completion(self, state_env: tuple) -> None:
+        mgr, _ = state_env
+        run = mgr.create_run("bp_x", 1, "a/b")
+        assert run.duration_seconds is None
+
+    def test_should_compute_on_complete(self, state_env: tuple) -> None:
+        mgr, _ = state_env
+        run = mgr.create_run("bp_x", 1, "a/b")
+        mgr.complete_run(run, "completed")
+        assert run.duration_seconds is not None
+        assert isinstance(run.duration_seconds, float)
+        assert run.duration_seconds >= 0.0
+
+    def test_should_persist_and_reload(self, state_env: tuple) -> None:
+        mgr, _ = state_env
+        run = mgr.create_run("bp_x", 1, "a/b")
+        mgr.complete_run(run, "completed")
+        loaded = mgr.load_run(run.run_id)
+        assert loaded.duration_seconds is not None
+        assert loaded.duration_seconds >= 0.0
+
+    def test_should_be_none_when_created_at_empty(self) -> None:
+        run = RunState(run_id="t1", blueprint_id="bp", issue_number=1, repo="a/b")
+        assert run.duration_seconds is None
+
+    def test_should_compute_known_delta(self) -> None:
+        run = RunState(
+            run_id="t2",
+            blueprint_id="bp",
+            issue_number=1,
+            repo="a/b",
+            created_at="2026-03-31T10:00:00+00:00",
+            completed_at="2026-03-31T10:05:30+00:00",
+        )
+        assert run.duration_seconds == 330.0
+
+    def test_should_handle_failed_status(self, state_env: tuple) -> None:
+        mgr, _ = state_env
+        run = mgr.create_run("bp_x", 1, "a/b")
+        mgr.complete_run(run, "failed")
+        assert run.duration_seconds is not None
+        assert run.duration_seconds >= 0.0
+
+    def test_should_persist_duration_in_yaml(self, state_env: tuple) -> None:
+        """duration_seconds should appear in run.yaml after completion."""
+        mgr, _ = state_env
+        run = mgr.create_run("bp_x", 1, "a/b")
+        mgr.complete_run(run, "completed")
+        import yaml
+        run_file = mgr._state_dir / run.run_id / "run.yaml"
+        data = yaml.safe_load(run_file.read_text())
+        assert "duration_seconds" in data
+        assert isinstance(data["duration_seconds"], float)
