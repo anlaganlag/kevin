@@ -1,3 +1,16 @@
+# DEPRECATED: This blueprint has been split into smaller, more manageable blueprints
+# See the following blueprints for the refactored implementation:
+# - bp_test_strategy_design.1.0.0.yaml (Test strategy and scenario design)
+# - bp_test_environment_setup.1.0.0.yaml (Test environment preparation)
+# - bp_test_unit.1.0.0.yaml (Unit testing)
+# - bp_test_frontend.1.0.0.yaml (Frontend testing)
+# - bp_test_integration.1.0.0.yaml (Integration testing)
+# - bp_test_e2e.1.0.0.yaml (E2E testing)
+# - bp_test_advanced.1.0.0.yaml (Advanced testing: RL, adversarial, performance)
+# - bp_test_report_signoff.1.0.0.yaml (Results aggregation and QA sign-off)
+#
+# This file is preserved for reference purposes only.
+#
 # Comprehensive Testing Automation Blueprint
 # Blueprint for end-to-end testing automation with multi-agent coordination
 # Ralph Loop execution with QAAgent (Test Lead) for comprehensive testing strategy

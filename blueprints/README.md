@@ -148,6 +148,41 @@ blueprints/
 └── README.md          # 本文档
 ```
 
+## Test Blueprints
+
+Test Blueprints are organized by phase and test type for better manageability:
+
+### Strategy & Environment Phase
+| Blueprint | Description | Primary Agent |
+|-----------|-------------|---------------|
+| `bp_test_strategy_design.1.0.0.yaml` | Test strategy and scenario design | QAAgent (Test Lead) |
+| `bp_test_environment_setup.1.0.0.yaml` | Test environment preparation | PlatformAgent (DevOps Expert) |
+
+### Test Execution Phase
+| Blueprint | Description | Primary Agent | Blocks |
+|-----------|-------------|---------------|--------|
+| `bp_test_unit.1.0.0.yaml` | Unit testing | BuilderAgent (Backend) | B5, B9, B12, B11 |
+| `bp_test_frontend.1.0.0.yaml` | Frontend testing | BuilderAgent (Frontend) | B6, B10, B14, B11 |
+| `bp_test_integration.1.0.0.yaml` | Integration testing | PlanningAgent (Architecture) | B7, B13, B11 |
+| `bp_test_e2e.1.0.0.yaml` | E2E testing | QAAgent (QA Engineer) | B8, B14, B11 |
+
+### Advanced Testing Phase
+| Blueprint | Description | Primary Agent | Blocks |
+|-----------|-------------|---------------|--------|
+| `bp_test_advanced.1.0.0.yaml` | Advanced testing (RL, security, performance) | QAAgent (QA Engineer) | B15, B16, B17 |
+
+### Reporting & Sign-off Phase
+| Blueprint | Description | Primary Agent |
+|-----------|-------------|---------------|
+| `bp_test_report_signoff.1.0.0.yaml` | Results aggregation and QA sign-off | QAAgent (Test Lead) |
+
+### Legacy Blueprints
+| Blueprint | Status | Note |
+|-----------|--------|------|
+| `bp_test_feature_comprehensive_testing.1.0.0.yaml` | **DEPRECATED** | Split into smaller blueprints listed above |
+
+**Note**: Block B11 (generate_synthetic_test_data) is duplicated in blueprints that require it (unit, frontend, integration, e2e) for independence.
+
 ## Blueprint 核心组件
 
 ### 1. 输入定义 (Input)
