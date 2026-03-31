@@ -1,0 +1,39 @@
+name: Blueprint Validation
+
+on:
+  push:
+    paths:
+      - "blueprints/**"
+      - "kevin/config.py"
+      - "kevin/blueprint_compiler.py"
+      - "supabase/functions/_shared/blueprints.ts"
+      - "scripts/sync_blueprints_ts.py"
+  pull_request:
+    paths:
+      - "blueprints/**"
+      - "kevin/config.py"
+      - "kevin/blueprint_compiler.py"
+      - "supabase/functions/_shared/blueprints.ts"
+      - "scripts/sync_blueprints_ts.py"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kevin
+        run: pip install -e .
+
+      - name: Validate all blueprints
+        run: python -m kevin validate
+
+      - name: Check edge function sync
+        run: python scripts/sync_blueprints_ts.py --check
+
+      - name: Run blueprint tests
+        run: python -m pytest kevin/tests/test_blueprint_robustness.py -v
