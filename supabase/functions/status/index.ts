@@ -1,8 +1,9 @@
 // supabase/functions/status/index.ts
 
 import { validateApiKey } from "../_shared/auth.ts";
-import { getSupabase } from "../_shared/supabase.ts";
 import { corsOptions, json } from "../_shared/cors.ts";
+import { checkRateLimit } from "../_shared/rate_limit.ts";
+import { getSupabase } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return corsOptions();
@@ -16,6 +17,14 @@ Deno.serve(async (req) => {
       error: "Unauthorized",
       hint: "Add header: Authorization: Bearer <your-api-key>",
     }, 401);
+  }
+
+  const rl = checkRateLimit(req);
+  if (rl.limited) {
+    return json(
+      { error: "Rate limit exceeded", hint: "Max 10 requests per minute" },
+      429,
+    );
   }
 
   // Extract run_id from URL path: /status/{run_id}

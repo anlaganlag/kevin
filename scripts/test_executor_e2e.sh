@@ -13,7 +13,30 @@ set -euo pipefail
 : "${EXECUTOR_API_KEY:?Set EXECUTOR_API_KEY}"
 : "${EXECUTOR_BASE_URL:?Set EXECUTOR_BASE_URL}"
 
-echo "=== Step 0: Verify unknown blueprint rejected ==="
+echo "=== Step 0a: Verify idempotency key deduplication ==="
+IDEM_KEY="e2e-test-$(date +%s)"
+IDEM_RESP1=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
+  -H "Authorization: Bearer ${EXECUTOR_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{\"blueprint_id\": \"bp_coding_task.1.0.0\", \"instruction\": \"idempotency test\", \"idempotency_key\": \"${IDEM_KEY}\"}")
+IDEM_CODE1=$(echo "$IDEM_RESP1" | tail -1)
+IDEM_RUN1=$(echo "$IDEM_RESP1" | head -1 | python3 -c "import sys,json; print(json.load(sys.stdin)['run_id'])")
+
+IDEM_RESP2=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
+  -H "Authorization: Bearer ${EXECUTOR_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{\"blueprint_id\": \"bp_coding_task.1.0.0\", \"instruction\": \"idempotency test\", \"idempotency_key\": \"${IDEM_KEY}\"}")
+IDEM_CODE2=$(echo "$IDEM_RESP2" | tail -1)
+IDEM_RUN2=$(echo "$IDEM_RESP2" | head -1 | python3 -c "import sys,json; print(json.load(sys.stdin)['run_id'])")
+
+if [ "$IDEM_RUN1" = "$IDEM_RUN2" ] && [ "$IDEM_CODE2" = "200" ]; then
+  echo "PASS: Idempotency key returned same run_id ($IDEM_RUN1)"
+else
+  echo "FAIL: Expected same run_id, got $IDEM_RUN1 vs $IDEM_RUN2 (codes: $IDEM_CODE1, $IDEM_CODE2)"
+fi
+
+echo ""
+echo "=== Step 0b: Verify unknown blueprint rejected ==="
 REJECT_RESP=$(curl -s -w "\n%{http_code}" -X POST "${EXECUTOR_BASE_URL}/execute" \
   -H "Authorization: Bearer ${EXECUTOR_API_KEY}" \
   -H "Content-Type: application/json" \

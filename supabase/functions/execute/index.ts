@@ -2,8 +2,9 @@
 
 import { validateApiKey } from "../_shared/auth.ts";
 import { AVAILABLE_BLUEPRINTS, VALID_BLUEPRINTS } from "../_shared/blueprints.ts";
-import { getSupabase } from "../_shared/supabase.ts";
 import { corsOptions, json } from "../_shared/cors.ts";
+import { checkRateLimit } from "../_shared/rate_limit.ts";
+import { getSupabase } from "../_shared/supabase.ts";
 
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") ?? "";
 const DISPATCH_REPO = Deno.env.get("DISPATCH_REPO") ?? "centific-cn/AgenticSDLC";
@@ -31,6 +32,15 @@ Deno.serve(async (req) => {
     }, 401);
   }
 
+  // Rate limit
+  const rl = checkRateLimit(req);
+  if (rl.limited) {
+    return json(
+      { error: "Rate limit exceeded", hint: "Max 10 requests per minute" },
+      429,
+    );
+  }
+
   // Safe JSON parse
   let body: Record<string, unknown>;
   try {
@@ -42,11 +52,12 @@ Deno.serve(async (req) => {
     }, 400);
   }
 
-  const { blueprint_id, instruction, context, callback_url } = body as {
+  const { blueprint_id, instruction, context, callback_url, idempotency_key } = body as {
     blueprint_id?: string;
     instruction?: string;
     context?: Record<string, unknown>;
     callback_url?: string;
+    idempotency_key?: string;
   };
 
   if (!blueprint_id || !instruction) {
@@ -78,6 +89,20 @@ Deno.serve(async (req) => {
 
   const db = getSupabase();
 
+  // Idempotency: return existing run if key matches an active run
+  if (idempotency_key) {
+    const { data: existing } = await db
+      .from("runs")
+      .select("run_id, status")
+      .eq("idempotency_key", idempotency_key)
+      .not("status", "in", '("completed","failed","dispatch_failed")')
+      .maybeSingle();
+
+    if (existing) {
+      return json({ run_id: existing.run_id, status: existing.status, deduplicated: true }, 200);
+    }
+  }
+
   // Insert run record
   const { data: run, error: insertErr } = await db
     .from("runs")
@@ -86,6 +111,7 @@ Deno.serve(async (req) => {
       instruction,
       context: context ?? {},
       callback_url: callback_url ?? null,
+      idempotency_key: idempotency_key ?? null,
       status: "pending",
     })
     .select("run_id, status")
