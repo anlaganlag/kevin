@@ -2,14 +2,39 @@
 
 from __future__ import annotations
 
+import os
 import selectors
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 # Claude CLI can go quiet during extended thinking; keep generous.
 HEARTBEAT_TIMEOUT_SECONDS = 600
+
+# Progress lines (parent stderr) so CI logs show the subprocess is still alive.
+_DEFAULT_PROGRESS_INTERVAL = 60
+
+
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
+def _heartbeat_cap_seconds() -> int:
+    """Max silence (no child stdout/stderr) before kill. Override via KEVIN_SUBPROCESS_HEARTBEAT_SECONDS."""
+    return _int_env("KEVIN_SUBPROCESS_HEARTBEAT_SECONDS", HEARTBEAT_TIMEOUT_SECONDS) or HEARTBEAT_TIMEOUT_SECONDS
+
+
+def _progress_log_interval_seconds() -> int:
+    """Emit [kevin] still waiting... every N seconds to stderr; 0 disables."""
+    return _int_env("KEVIN_SUBPROCESS_PROGRESS_INTERVAL", _DEFAULT_PROGRESS_INTERVAL)
 
 
 @dataclass
@@ -47,7 +72,10 @@ def run_with_heartbeat(
     stderr_chunks: list[str] = []
     start_time = time.monotonic()
     last_output_time = start_time
-    heartbeat_limit = min(HEARTBEAT_TIMEOUT_SECONDS, timeout)
+    heartbeat_cap = _heartbeat_cap_seconds()
+    heartbeat_limit = min(heartbeat_cap, timeout)
+    progress_interval = _progress_log_interval_seconds()
+    last_progress_log = start_time
 
     sel = selectors.DefaultSelector()
     try:
@@ -57,7 +85,19 @@ def run_with_heartbeat(
             sel.register(proc.stderr, selectors.EVENT_READ, "stderr")
 
         while sel.get_map():
-            elapsed = time.monotonic() - start_time
+            now = time.monotonic()
+            elapsed = now - start_time
+            if progress_interval > 0 and (now - last_progress_log) >= progress_interval:
+                silence_s = now - last_output_time
+                print(
+                    f"[kevin] subprocess still running: elapsed={elapsed:.0f}s, "
+                    f"no child output for {silence_s:.0f}s (silence limit {heartbeat_limit}s, "
+                    f"hard timeout {timeout}s)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                last_progress_log = now
+
             if elapsed > timeout:
                 proc.kill()
                 proc.wait()
@@ -68,7 +108,7 @@ def run_with_heartbeat(
                     stderr=f"Timeout after {timeout}s\n{''.join(stderr_chunks)}",
                 )
 
-            silence = time.monotonic() - last_output_time
+            silence = now - last_output_time
             if silence > heartbeat_limit:
                 proc.kill()
                 proc.wait()

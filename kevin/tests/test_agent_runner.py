@@ -6,7 +6,6 @@ from kevin.agent_runner import (
     _subprocess_run,
     _run_pre_check,
     run_block,
-    HEARTBEAT_TIMEOUT_SECONDS,
 )
 from kevin.blueprint_loader import Block, Validator
 import time
