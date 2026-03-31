@@ -73,7 +73,19 @@ Deno.serve(async (req) => {
 
   // Add elapsed time hint for long-running tasks
   const elapsed = Math.round((Date.now() - new Date(run.created_at).getTime()) / 1000);
-  const response = { ...run, elapsed_seconds: elapsed };
+
+  // Fetch event timeline if ?events=true
+  let events: unknown[] | undefined;
+  if (url.searchParams.get("events") === "true") {
+    const { data: evts } = await db
+      .from("run_events")
+      .select("event_id, event_type, payload, created_at")
+      .eq("run_id", runId)
+      .order("created_at", { ascending: true });
+    events = evts ?? [];
+  }
+
+  const response = { ...run, elapsed_seconds: elapsed, ...(events ? { events } : {}) };
 
   return json(response);
 });

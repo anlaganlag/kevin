@@ -32,10 +32,22 @@ class KevinBot(ActivityHandler):
                 "Kevin Teams Bot is alive! \U0001f916\n\n"
                 "Supported commands:\n"
                 "- `help` \u2014 show this message\n"
-                "- `ping` \u2014 check connectivity"
+                "- `ping` \u2014 check connectivity\n"
+                "- `run <blueprint_id> <instruction>` \u2014 execute a blueprint\n"
+                "- `status <run_id>` \u2014 check run status\n"
+                "- `runs` \u2014 list recent runs\n"
+                "- `cancel <run_id>` \u2014 cancel a running task"
             )
         elif text.lower() == "ping":
             await turn_context.send_activity("pong \U0001f3d3")
+        elif text.lower().startswith("run "):
+            await self._handle_run(turn_context, text[4:].strip())
+        elif text.lower().startswith("status "):
+            await self._handle_status(turn_context, text[7:].strip())
+        elif text.lower() == "runs":
+            await self._handle_list_runs(turn_context)
+        elif text.lower().startswith("cancel "):
+            await self._handle_cancel(turn_context, text[7:].strip())
         else:
             await turn_context.send_activity(
                 f"Unknown command: `{text}`\n\nType `help` for available commands."
@@ -69,3 +81,80 @@ class KevinBot(ActivityHandler):
         if REFERENCES_FILE.exists():
             return json.loads(REFERENCES_FILE.read_text())
         return {}
+
+    async def _handle_run(self, ctx: TurnContext, args: str) -> None:
+        from kevin.teams_bot.executor_client import execute, is_configured
+
+        if not is_configured():
+            await ctx.send_activity("Executor not configured. Set EXECUTOR_BASE_URL and EXECUTOR_API_KEY.")
+            return
+
+        parts = args.split(" ", 1)
+        if len(parts) < 2:
+            await ctx.send_activity("Usage: `run <blueprint_id> <instruction>`")
+            return
+
+        blueprint_id, instruction = parts
+        try:
+            result = execute(blueprint_id, instruction)
+            await ctx.send_activity(
+                f"\u2705 Dispatched!\n\n"
+                f"- **run_id**: `{result['run_id']}`\n"
+                f"- **status**: {result['status']}\n\n"
+                f"Use `status {result['run_id']}` to check progress."
+            )
+        except Exception as exc:
+            await ctx.send_activity(f"\u274c Failed to dispatch: {exc}")
+
+    async def _handle_status(self, ctx: TurnContext, run_id: str) -> None:
+        from kevin.teams_bot.executor_client import get_status, is_configured
+
+        if not is_configured():
+            await ctx.send_activity("Executor not configured.")
+            return
+
+        try:
+            run = get_status(run_id.strip())
+            lines = [
+                f"**Run** `{run['run_id']}`",
+                f"- **Blueprint**: {run['blueprint_id']}",
+                f"- **Status**: {run['status']}",
+                f"- **Elapsed**: {run.get('elapsed_seconds', '?')}s",
+            ]
+            if run.get("error_message"):
+                lines.append(f"- **Error**: {run['error_message']}")
+            await ctx.send_activity("\n".join(lines))
+        except Exception as exc:
+            await ctx.send_activity(f"\u274c Failed to fetch status: {exc}")
+
+    async def _handle_list_runs(self, ctx: TurnContext) -> None:
+        from kevin.teams_bot.executor_client import list_runs, is_configured
+
+        if not is_configured():
+            await ctx.send_activity("Executor not configured.")
+            return
+
+        try:
+            runs = list_runs(limit=5)
+            if not runs:
+                await ctx.send_activity("No runs found.")
+                return
+            lines = ["**Recent Runs**\n"]
+            for r in runs:
+                lines.append(f"- `{r['run_id'][:8]}...` {r['status']} — {r['blueprint_id']}")
+            await ctx.send_activity("\n".join(lines))
+        except Exception as exc:
+            await ctx.send_activity(f"\u274c Failed to list runs: {exc}")
+
+    async def _handle_cancel(self, ctx: TurnContext, run_id: str) -> None:
+        from kevin.teams_bot.executor_client import cancel_run, is_configured
+
+        if not is_configured():
+            await ctx.send_activity("Executor not configured.")
+            return
+
+        try:
+            result = cancel_run(run_id.strip())
+            await ctx.send_activity(f"\u2705 Run `{result['run_id']}` cancelled.")
+        except Exception as exc:
+            await ctx.send_activity(f"\u274c Failed to cancel: {exc}")

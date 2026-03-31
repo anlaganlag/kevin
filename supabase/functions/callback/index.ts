@@ -71,6 +71,13 @@ Deno.serve(async (req) => {
     .update(update)
     .eq("run_id", run_id);
 
+  // Emit event to run_events log (best-effort, don't fail the callback)
+  await db.from("run_events").insert({
+    run_id,
+    event_type: "status_change",
+    payload: { from: run.status, to: status, error_code, error_message },
+  }).then(() => {}, () => {});
+
   if (updateErr) {
     return new Response(
       JSON.stringify({ error: "Failed to update run", detail: updateErr.message }),
