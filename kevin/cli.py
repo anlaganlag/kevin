@@ -658,6 +658,7 @@ def _execute_agentic(
     Post-execution validators serve as a quality gate.
     """
     from kevin.blueprint_compiler import compile_task, load_semantic, validate_for_execution
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
     from kevin.executor import extract_pr_number, run_post_validators
     from kevin.workers.interface import ArtifactType, WorkerResult
     from kevin.workers.registry import WorkerRegistry
@@ -669,9 +670,6 @@ def _execute_agentic(
         _err(f"Failed to load semantic blueprint from {bp_path}: {exc}")
         state_mgr.complete_run(run, "failed")
         return 1
-
-    # 1b. Guard: non-executable blueprints
-    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
     if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
         _err(f"{semantic.blueprint_id} is an orchestrator blueprint — not executor-compatible. "
              f"Use Claude SDK or the planning agent workflow instead.")
