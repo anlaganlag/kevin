@@ -1,0 +1,921 @@
+openapi: 3.0.3
+info:
+  title: Kevin Worker Adapter Plugin API
+  description: |
+    API contract for the Kevin Worker Adapter Plugin Architecture.
+    Covers worker management, task routing, health monitoring, and plugin lifecycle.
+  version: 1.0.0
+  contact:
+    name: Kevin Planning Agent
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://kevin.example.com/api/v1
+    description: Production
+
+tags:
+  - name: workers
+    description: Worker adapter management and queries
+  - name: tasks
+    description: Task dispatch and routing
+  - name: health
+    description: Health monitoring and circuit breaker status
+  - name: plugins
+    description: Plugin discovery and lifecycle management
+  - name: config
+    description: Worker configuration management
+
+paths:
+  /workers:
+    get:
+      tags: [workers]
+      summary: List all registered worker adapters
+      operationId: listWorkers
+      parameters:
+        - name: capability
+          in: query
+          description: Filter by capability
+          schema:
+            $ref: '#/components/schemas/WorkerCapability'
+        - name: available
+          in: query
+          description: Filter by availability
+          schema:
+            type: boolean
+        - name: source
+          in: query
+          description: Filter by plugin source
+          schema:
+            $ref: '#/components/schemas/PluginSource'
+      responses:
+        '200':
+          description: List of registered workers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkerSummary'
+                  total:
+                    type: integer
+                required: [workers, total]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workers/{worker_id}:
+    get:
+      tags: [workers]
+      summary: Get worker adapter details
+      operationId: getWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Worker details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workers/{worker_id}/config:
+    get:
+      tags: [config]
+      summary: Get worker configuration
+      operationId: getWorkerConfig
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterConfig'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [config]
+      summary: Update worker configuration
+      operationId: updateWorkerConfig
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterConfig'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workers/{worker_id}/config/schema:
+    get:
+      tags: [config]
+      summary: Get worker's configuration JSON Schema
+      operationId: getWorkerConfigSchema
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: JSON Schema for adapter-specific configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                description: JSON Schema document
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: Dispatch a task to a worker
+      operationId: dispatchTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDispatchRequest'
+      responses:
+        '202':
+          description: Task accepted and dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDispatchResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          description: No healthy worker available for required capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{task_id}:
+    get:
+      tags: [tasks]
+      summary: Get task execution status
+      operationId: getTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatus'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{task_id}/result:
+    get:
+      tags: [tasks]
+      summary: Get task execution result
+      operationId: getTaskResult
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Task still in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags: [health]
+      summary: System-wide health status
+      operationId: getSystemHealth
+      responses:
+        '200':
+          description: All workers healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemHealth'
+        '503':
+          description: One or more workers unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemHealth'
+
+  /health/workers:
+    get:
+      tags: [health]
+      summary: Health status of all workers
+      operationId: getWorkersHealth
+      responses:
+        '200':
+          description: Per-worker health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workers:
+                    type: object
+                    additionalProperties:
+                      $ref: '#/components/schemas/WorkerHealthDetail'
+                required: [workers]
+
+  /health/workers/{worker_id}:
+    get:
+      tags: [health]
+      summary: Health status of a specific worker
+      operationId: getWorkerHealth
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Worker health details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerHealthDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health/workers/{worker_id}/circuit-breaker:
+    get:
+      tags: [health]
+      summary: Circuit breaker state for a worker
+      operationId: getCircuitBreakerState
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Circuit breaker state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitBreakerState'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [health]
+      summary: Reset circuit breaker for a worker
+      operationId: resetCircuitBreaker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Circuit breaker reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitBreakerState'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /plugins:
+    get:
+      tags: [plugins]
+      summary: List discovered plugins
+      operationId: listPlugins
+      responses:
+        '200':
+          description: All discovered plugins
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugins:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PluginMetadata'
+                required: [plugins]
+
+    post:
+      tags: [plugins]
+      summary: Trigger plugin re-discovery
+      operationId: rediscoverPlugins
+      responses:
+        '200':
+          description: Discovery completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  discovered:
+                    type: integer
+                  registered:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                required: [discovered, registered, errors]
+
+  /plugins/{plugin_id}:
+    get:
+      tags: [plugins]
+      summary: Get plugin details
+      operationId: getPlugin
+      parameters:
+        - name: plugin_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plugin metadata and status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /plugins/{plugin_id}/enable:
+    post:
+      tags: [plugins]
+      summary: Enable a plugin
+      operationId: enablePlugin
+      parameters:
+        - name: plugin_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plugin enabled
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /plugins/{plugin_id}/disable:
+    post:
+      tags: [plugins]
+      summary: Disable a plugin
+      operationId: disablePlugin
+      parameters:
+        - name: plugin_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plugin disabled
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    WorkerId:
+      name: worker_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique worker adapter identifier
+      example: claude-code
+
+  schemas:
+    WorkerCapability:
+      type: string
+      enum:
+        - code_generation
+        - code_review
+        - shell_execution
+        - container_execution
+        - api_call
+        - testing
+        - security_scan
+        - documentation
+        - infrastructure
+        - custom
+      description: Capability that a worker can provide
+
+    PluginSource:
+      type: string
+      enum: [builtin, entry_point, filesystem]
+      description: How the plugin was discovered
+
+    PluginState:
+      type: string
+      enum: [discovered, configured, ready, active, tripped, error, shutdown]
+      description: Current lifecycle state of the plugin
+
+    WorkerSummary:
+      type: object
+      required: [worker_id, source, capabilities, available, state]
+      properties:
+        worker_id:
+          type: string
+          example: claude-code
+        source:
+          $ref: '#/components/schemas/PluginSource'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerCapability'
+        available:
+          type: boolean
+        state:
+          $ref: '#/components/schemas/PluginState'
+        priority:
+          type: integer
+          example: 10
+        version:
+          type: string
+          example: "1.0.0"
+
+    WorkerDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkerSummary'
+        - type: object
+          properties:
+            description:
+              type: string
+            config:
+              $ref: '#/components/schemas/AdapterConfig'
+            health:
+              $ref: '#/components/schemas/WorkerHealthDetail'
+            circuit_breaker:
+              $ref: '#/components/schemas/CircuitBreakerState'
+            metadata:
+              $ref: '#/components/schemas/PluginMetadata'
+
+    AdapterConfig:
+      type: object
+      required: [worker_id, enabled]
+      properties:
+        worker_id:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        priority:
+          type: integer
+          default: 100
+          description: Lower value = higher priority
+        max_concurrent_tasks:
+          type: integer
+          default: 1
+          minimum: 1
+        timeout_override:
+          type: integer
+          nullable: true
+          description: Override task timeout in seconds
+        circuit_breaker:
+          $ref: '#/components/schemas/CircuitBreakerConfig'
+        custom:
+          type: object
+          additionalProperties: true
+          description: Adapter-specific configuration validated against config_schema()
+
+    AdapterConfigUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        max_concurrent_tasks:
+          type: integer
+          minimum: 1
+        timeout_override:
+          type: integer
+          nullable: true
+        circuit_breaker:
+          $ref: '#/components/schemas/CircuitBreakerConfig'
+        custom:
+          type: object
+          additionalProperties: true
+
+    CircuitBreakerConfig:
+      type: object
+      properties:
+        failure_threshold:
+          type: integer
+          default: 5
+          description: Consecutive failures before circuit opens
+        reset_timeout:
+          type: integer
+          default: 60
+          description: Seconds before transitioning to half-open
+        half_open_max_calls:
+          type: integer
+          default: 2
+          description: Probe calls allowed in half-open state
+        success_threshold:
+          type: integer
+          default: 2
+          description: Successes needed to close from half-open
+        timeout_counts_as_failure:
+          type: boolean
+          default: true
+
+    CircuitBreakerState:
+      type: object
+      required: [worker_id, state]
+      properties:
+        worker_id:
+          type: string
+        state:
+          type: string
+          enum: [closed, open, half_open]
+        failure_count:
+          type: integer
+        success_count:
+          type: integer
+        last_failure_time:
+          type: string
+          format: date-time
+          nullable: true
+        last_state_change:
+          type: string
+          format: date-time
+        next_retry_time:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the circuit will transition to half-open (only when open)
+
+    PluginMetadata:
+      type: object
+      required: [plugin_id, worker_id, version, source]
+      properties:
+        plugin_id:
+          type: string
+          example: kevin-worker-docker
+        worker_id:
+          type: string
+          example: docker
+        version:
+          type: string
+          example: "1.2.0"
+        author:
+          type: string
+        description:
+          type: string
+        source:
+          $ref: '#/components/schemas/PluginSource'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerCapability'
+        min_kevin_version:
+          type: string
+          example: "1.0.0"
+
+    PluginDetail:
+      allOf:
+        - $ref: '#/components/schemas/PluginMetadata'
+        - type: object
+          properties:
+            state:
+              $ref: '#/components/schemas/PluginState'
+            config_schema:
+              type: object
+              description: JSON Schema for adapter-specific configuration
+            error:
+              type: string
+              nullable: true
+              description: Error message if plugin is in error state
+
+    TaskDispatchRequest:
+      type: object
+      required: [task_id, instruction, workspace]
+      properties:
+        task_id:
+          type: string
+          description: Unique task identifier
+        instruction:
+          type: string
+          description: Task instruction or prompt
+        workspace:
+          $ref: '#/components/schemas/WorkspacePolicy'
+        permissions:
+          $ref: '#/components/schemas/WorkerPermissions'
+        timeout:
+          type: integer
+          default: 300
+          description: Timeout in seconds
+        model:
+          type: string
+          description: Model override (adapter-specific)
+        required_capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerCapability'
+          description: Capabilities the selected worker must have
+        preferred_worker:
+          type: string
+          nullable: true
+          description: Preferred worker_id (falls back to capability routing)
+        metadata:
+          type: object
+          additionalProperties: true
+
+    TaskDispatchResponse:
+      type: object
+      required: [task_id, worker_id, status]
+      properties:
+        task_id:
+          type: string
+        worker_id:
+          type: string
+          description: The worker that received the task
+        status:
+          type: string
+          enum: [dispatched, queued]
+        estimated_start:
+          type: string
+          format: date-time
+          nullable: true
+
+    TaskStatus:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, dispatched, running, completed, failed, rejected]
+        worker_id:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    WorkerResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        exit_code:
+          type: integer
+          nullable: true
+        failure_type:
+          type: string
+          nullable: true
+          enum:
+            - timeout
+            - command_not_found
+            - exit_code_non_zero
+            - permission_denied
+            - resource_limit
+            - network_error
+            - internal_error
+            - task_rejected
+            - heartbeat_timeout
+        failure_detail:
+          type: string
+        stdout:
+          type: string
+        stderr:
+          type: string
+        duration_seconds:
+          type: number
+        token_usage:
+          type: integer
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerArtifact'
+
+    WorkerArtifact:
+      type: object
+      required: [artifact_type, name, location]
+      properties:
+        artifact_type:
+          type: string
+          enum:
+            - source_code
+            - test_file
+            - analysis_report
+            - pr_url
+            - commit_sha
+            - branch_name
+            - coverage_report
+            - custom
+        name:
+          type: string
+        location:
+          type: string
+        content_hash:
+          type: string
+
+    WorkerPermissions:
+      type: object
+      properties:
+        file_read:
+          type: boolean
+          default: true
+        file_write:
+          type: boolean
+          default: true
+        file_delete:
+          type: boolean
+          default: false
+        shell_execute:
+          type: boolean
+          default: true
+        network_access:
+          type: boolean
+          default: false
+        git_read:
+          type: boolean
+          default: true
+        git_write:
+          type: boolean
+          default: false
+        git_push:
+          type: boolean
+          default: false
+        secrets_access:
+          type: array
+          items:
+            type: string
+
+    WorkspacePolicy:
+      type: object
+      required: [cwd]
+      properties:
+        cwd:
+          type: string
+          description: Working directory path
+        branch_pattern:
+          type: string
+          default: "kevin/issue-{issue_number}"
+        commit_message_pattern:
+          type: string
+          default: "feat: {issue_title} (resolves #{issue_number})"
+        protected_paths:
+          type: array
+          items:
+            type: string
+        context_filter:
+          type: array
+          items:
+            type: string
+        max_files_changed:
+          type: integer
+          default: 50
+        max_lines_changed:
+          type: integer
+          default: 5000
+
+    WorkerHealthDetail:
+      type: object
+      required: [available, worker_id]
+      properties:
+        available:
+          type: boolean
+        worker_id:
+          type: string
+        version:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        latency_ms:
+          type: integer
+        error:
+          type: string
+        circuit_state:
+          type: string
+          enum: [closed, open, half_open]
+        tasks_in_flight:
+          type: integer
+        success_rate_1h:
+          type: number
+          format: float
+        last_failure:
+          type: string
+          format: date-time
+          nullable: true
+
+    SystemHealth:
+      type: object
+      required: [status, workers_total, workers_healthy]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        workers_total:
+          type: integer
+        workers_healthy:
+          type: integer
+        workers_degraded:
+          type: integer
+          description: Workers with open circuit breakers
+        uptime_seconds:
+          type: number
+        version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: WORKER_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: NOT_FOUND
+            message: "Worker 'unknown-worker' not found"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: VALIDATION_ERROR
+            message: "Invalid configuration"
+            details:
+              field: custom.memory_limit
+              reason: "Must match pattern ^\\d+[kmg]$"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: UNAUTHORIZED
+            message: "Valid API key required"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Kevin Executor API key
+
+security:
+  - ApiKeyAuth: []
