@@ -81,7 +81,7 @@ echo "--- 2. HTTP Methods ---"
 
 call GET /execute -H "$AUTH"
 assert_http "GET /execute → 200 (health)" "200" "$HTTP" "$BODY"
-assert_body_contains "Health check returns blueprints" "available_blueprints" "$BODY"
+assert_body_contains "Health check returns status ok" '"status":"ok"' "$BODY"
 assert_body_contains "Health check returns service name" "kevin-executor" "$BODY"
 
 call PUT /execute -H "$AUTH" -H "Content-Type: application/json" -d '{}'
@@ -146,10 +146,6 @@ assert_http "Missing instruction → 400" "400" "$HTTP" "$BODY"
 
 call POST /execute -H "$AUTH" -H "Content-Type: application/json" -d '{"instruction":"test"}'
 assert_http "Missing blueprint_id → 400" "400" "$HTTP" "$BODY"
-
-call POST /execute -H "$AUTH" -H "Content-Type: application/json" -d '{"blueprint_id":"nonexistent.1.0.0","instruction":"test"}'
-assert_http "Unknown blueprint_id → 400" "400" "$HTTP" "$BODY"
-assert_body_contains "Unknown blueprint shows available list" "available" "$BODY"
 
 call POST /execute -H "$AUTH" -H "Content-Type: application/json" -d '{"blueprint_id":"bp_coding_task.1.0.0","instruction":"test","context":{"repo":"not-a-valid-repo"}}'
 assert_http "Invalid repo format (no slash) → 400" "400" "$HTTP" "$BODY"

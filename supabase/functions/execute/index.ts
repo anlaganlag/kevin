@@ -2,16 +2,11 @@
 
 import { validateApiKey } from "../_shared/auth.ts";
 import { getSupabase } from "../_shared/supabase.ts";
-import { corsOptions, json, CORS_HEADERS } from "../_shared/cors.ts";
+import { corsOptions, json } from "../_shared/cors.ts";
 
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") ?? "";
 const DISPATCH_REPO = Deno.env.get("DISPATCH_REPO") ?? "centific-cn/AgenticSDLC";
 const CALLBACK_BASE_URL = Deno.env.get("CALLBACK_BASE_URL") ?? "";
-
-const KNOWN_BLUEPRINTS = [
-  "bp_coding_task.1.0.0",
-  "bp_code_review.1.0.0",
-];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return corsOptions();
@@ -21,7 +16,6 @@ Deno.serve(async (req) => {
     return json({
       status: "ok",
       service: "kevin-executor",
-      available_blueprints: KNOWN_BLUEPRINTS,
     });
   }
 
@@ -62,13 +56,6 @@ Deno.serve(async (req) => {
         instruction: "Add a /health endpoint",
         context: { repo: "owner/repo", ref: "main" },
       },
-    }, 400);
-  }
-
-  if (!KNOWN_BLUEPRINTS.includes(blueprint_id)) {
-    return json({
-      error: `Unknown blueprint_id: ${blueprint_id}`,
-      available: KNOWN_BLUEPRINTS,
     }, 400);
   }
 

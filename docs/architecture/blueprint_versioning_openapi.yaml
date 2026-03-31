@@ -1,0 +1,508 @@
+openapi: "3.0.3"
+info:
+  title: Kevin Blueprint Versioning API
+  description: |
+    API endpoints for managing blueprint versions in the Kevin executor-as-a-service mode.
+    These endpoints complement the CLI commands for blueprint version management.
+  version: "1.0.0"
+  contact:
+    name: Kevin Platform Team
+
+servers:
+  - url: "{baseUrl}/api/v1"
+    description: Kevin Executor Service
+    variables:
+      baseUrl:
+        default: "http://localhost:8000"
+
+paths:
+  /blueprints:
+    get:
+      operationId: listBlueprints
+      summary: List all blueprints with their latest stable version
+      tags: [blueprints]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [stable, deprecated, prerelease, all]
+            default: stable
+          description: Filter by version lifecycle status
+        - name: domain
+          in: query
+          schema:
+            type: string
+          description: Filter by blueprint domain (e.g., coding_task, test)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Blueprint list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlueprintListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /blueprints/{blueprint_base}/versions:
+    get:
+      operationId: listBlueprintVersions
+      summary: List all versions for a specific blueprint
+      tags: [blueprints]
+      parameters:
+        - name: blueprint_base
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Blueprint base ID without version (e.g., bp_coding_task)"
+          example: bp_coding_task
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [stable, deprecated, prerelease, all]
+            default: all
+      responses:
+        "200":
+          description: Version list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /blueprints/{blueprint_id}:
+    get:
+      operationId: getBlueprint
+      summary: Load a specific blueprint version
+      tags: [blueprints]
+      parameters:
+        - name: blueprint_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Full blueprint ID with version (e.g., bp_coding_task.2.0.0)"
+          example: bp_coding_task.2.0.0
+      responses:
+        "200":
+          description: Blueprint content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlueprintDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /blueprints/{blueprint_id}/validate:
+    post:
+      operationId: validateBlueprint
+      summary: Validate blueprint YAML structure and detect breaking changes
+      tags: [blueprints]
+      parameters:
+        - name: blueprint_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Blueprint ID to validate against (for breaking change detection)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /blueprints/{blueprint_id}/deprecate:
+    post:
+      operationId: deprecateBlueprint
+      summary: Mark a blueprint version as deprecated
+      tags: [blueprints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeprecateRequest"
+      parameters:
+        - name: blueprint_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deprecation applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeprecateResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /blueprints/diff:
+    get:
+      operationId: diffBlueprints
+      summary: Compare two blueprint versions and identify changes
+      tags: [blueprints]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Source blueprint ID (e.g., bp_coding_task.1.0.0)
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Target blueprint ID (e.g., bp_coding_task.2.0.0)
+      responses:
+        "200":
+          description: Diff result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+
+  schemas:
+    BlueprintSummary:
+      type: object
+      required: [blueprint_base, latest_stable, version_count]
+      properties:
+        blueprint_base:
+          type: string
+          example: bp_coding_task
+        blueprint_name:
+          type: string
+          example: "Coding Task Automation"
+        latest_stable:
+          type: string
+          example: "2.0.0"
+        version_count:
+          type: integer
+          example: 4
+        domain:
+          type: string
+          example: coding_task
+        tags:
+          type: array
+          items:
+            type: string
+
+    BlueprintListResponse:
+      type: object
+      required: [blueprints, total, page, per_page]
+      properties:
+        blueprints:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlueprintSummary"
+        total:
+          type: integer
+        page:
+          type: integer
+        per_page:
+          type: integer
+
+    VersionInfo:
+      type: object
+      required: [version, status, file, created_at]
+      properties:
+        version:
+          type: string
+          example: "2.0.0"
+        status:
+          type: string
+          enum: [draft, prerelease, stable, deprecated, removed]
+        file:
+          type: string
+          example: bp_coding_task.2.0.0.yaml
+        created_at:
+          type: string
+          format: date-time
+        sunset_date:
+          type: string
+          format: date
+          nullable: true
+        superseded_by:
+          type: string
+          nullable: true
+        deprecation_notice:
+          type: string
+          nullable: true
+
+    VersionListResponse:
+      type: object
+      required: [blueprint_base, versions]
+      properties:
+        blueprint_base:
+          type: string
+        latest_stable:
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionInfo"
+
+    BlueprintDetail:
+      type: object
+      required: [metadata, blocks]
+      properties:
+        metadata:
+          type: object
+          properties:
+            blueprint_id:
+              type: string
+            blueprint_name:
+              type: string
+            version:
+              type: string
+            status:
+              type: string
+              enum: [draft, prerelease, stable, deprecated]
+            min_kevin_version:
+              type: string
+              nullable: true
+            created_at:
+              type: string
+              format: date-time
+            sunset_date:
+              type: string
+              format: date
+              nullable: true
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockSummary"
+        raw_yaml:
+          type: string
+          description: Original YAML content
+
+    BlockSummary:
+      type: object
+      properties:
+        block_id:
+          type: string
+          example: B1
+        name:
+          type: string
+        runner:
+          type: string
+          enum: [claude_cli, shell, api_call]
+        dependencies:
+          type: array
+          items:
+            type: string
+        timeout:
+          type: integer
+        validators:
+          type: array
+          items:
+            type: object
+
+    ValidateRequest:
+      type: object
+      required: [yaml_content]
+      properties:
+        yaml_content:
+          type: string
+          description: Raw YAML content to validate
+        compare_with:
+          type: string
+          description: "Previous version to compare against for breaking change detection"
+          nullable: true
+
+    ValidationResult:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+        breaking_changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/BreakingChange"
+
+    ValidationIssue:
+      type: object
+      required: [code, message, path]
+      properties:
+        code:
+          type: string
+          example: MISSING_FIELD
+        message:
+          type: string
+        path:
+          type: string
+          description: "YAML path to the issue (e.g., blueprint.metadata.version)"
+
+    BreakingChange:
+      type: object
+      required: [type, description, severity]
+      properties:
+        type:
+          type: string
+          enum: [block_removed, block_renamed, runner_changed, variable_removed, dependency_restructured]
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [breaking, warning]
+        affected_block:
+          type: string
+          nullable: true
+        migration_hint:
+          type: string
+          nullable: true
+
+    DeprecateRequest:
+      type: object
+      required: [sunset_date]
+      properties:
+        sunset_date:
+          type: string
+          format: date
+          example: "2026-05-01"
+        superseded_by:
+          type: string
+          example: bp_coding_task.2.0.0
+        notice:
+          type: string
+
+    DeprecateResponse:
+      type: object
+      properties:
+        blueprint_id:
+          type: string
+        status:
+          type: string
+          example: deprecated
+        sunset_date:
+          type: string
+          format: date
+
+    DiffResult:
+      type: object
+      required: [from_version, to_version, changes]
+      properties:
+        from_version:
+          type: string
+        to_version:
+          type: string
+        is_breaking:
+          type: boolean
+        suggested_bump:
+          type: string
+          enum: [major, minor, patch]
+        changes:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [added, removed, modified]
+              path:
+                type: string
+              old_value:
+                type: string
+                nullable: true
+              new_value:
+                type: string
+                nullable: true
+              breaking:
+                type: boolean
+        breaking_changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/BreakingChange"
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: unauthorized
+            message: "Bearer token required"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: not_found
+            message: "Blueprint not found"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: bad_request
+            message: "Invalid YAML content"
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: blueprints
+    description: Blueprint version management

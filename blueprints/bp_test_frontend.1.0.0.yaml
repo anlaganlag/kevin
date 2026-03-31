@@ -1,0 +1,442 @@
+# Frontend Testing Blueprint
+# Blueprint for frontend testing implementation and execution
+# Ralph Loop execution with BuilderAgent (Frontend Expert) for frontend test development
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_frontend.1.0.0"
+    blueprint_name: "Frontend Testing"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "BuilderAgent"
+    tags:
+      - "testing"
+      - "frontend"
+      - "component_test"
+      - "ui_test"
+    phase: "test_execution"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for frontend testing"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+
+      inline:
+        custom_rules:
+          - name: "component_test_coverage"
+            rule: "All components must have test coverage ≥ 90%"
+            enforcement: "strict"
+
+          - name: "accessibility_testing"
+            rule: "Frontend tests must include accessibility checks"
+            enforcement: "moderate"
+
+    constraints:
+      inline:
+        testing_constraints:
+          minimum_coverage: 90
+          critical_component_coverage: 100
+
+        test_tools:
+          frontend_testing:
+            - "jest"
+            - "react_testing_library"
+            - "playwright"
+            - "cypress"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "EnvironmentReadyEvent | IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "frontend"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Scenarios"
+          location: "docs/testing/test_scenarios.md"
+          required: true
+
+        - type: "Frontend Implementation"
+          location: "src/frontend/"
+          required: true
+
+        - type: "Component Documentation"
+          location: "docs/components/"
+          required: false
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "BuilderAgent"
+      role: "Frontend Expert"
+      selection_logic:
+        reasoning: |
+          1. Task requires frontend test design and implementation → BuilderAgent core competency
+          2. Frontend expertise needed for component/UI tests → BuilderAgent (Frontend)
+          → Decision: BuilderAgent as Primary Agent (Frontend Expert)
+
+      responsibilities:
+        - "Design frontend test specifications"
+        - "Implement component tests"
+        - "Implement UI tests"
+        - "Execute frontend tests"
+        - "Ensure accessibility targets are met"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      BuilderAgent:
+        - "frontend_test_design"
+        - "component_test_creation"
+        - "test_implementation"
+        - "ui_testing"
+        - "accessibility_testing"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "test_frameworks"
+        permissions:
+          - "jest:execute"
+          - "playwright:execute"
+          - "cypress:execute"
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "test_commands"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BuilderAgent as Primary (Frontend Expert)"
+        output: "BuilderAgent assigned as Primary Agent for frontend testing"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_frameworks:
+                frontend: ["jest", "react_testing_library", "playwright", "cypress"]
+
+              testing_standards:
+                coverage_minimum: 90
+                accessibility: "wcag_2.1_aa"
+
+          - source: "Test Scenarios"
+            content:
+              frontend_test_scenarios: "Frontend test scenarios from test design"
+
+          - source: "Implementation Context"
+            content:
+              source_code_location: "src/frontend/"
+              component_library: "src/components/"
+
+        output: "Frontend test strategy formulated"
+
+      # Step 3: Execute Frontend Testing
+      step_3:
+        action: "Primary Agent → Execute Frontend Testing"
+        dependency_graph:
+          blocks:
+            # Block B6: Design frontend tests
+            - block_id: "B6"
+              name: "design_frontend_tests"
+              assigned_to: "BuilderAgent (Frontend Expert)"
+              dependencies: []
+              skills: ["frontend_test_design", "component_testing"]
+              output: "Frontend test specifications"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_frontend_tests.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B10: Implement frontend tests
+            - block_id: "B10"
+              name: "implement_frontend_tests"
+              assigned_to: "BuilderAgent (Frontend Expert)"
+              dependencies: ["B6"]
+              skills: ["test_implementation", "component_test_creation"]
+              output: "Frontend tests implemented"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/implement_frontend_tests.md"
+              timeout: 3600
+              max_retries: 2
+
+            # Block B11: Generate synthetic test data
+            - block_id: "B11"
+              name: "generate_synthetic_test_data"
+              assigned_to: "BuilderAgent (Frontend Expert)"
+              dependencies: ["B6"]
+              skills: ["synthetic_data_generation", "test_data_management"]
+              output: "Synthetic test datasets ready"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/generate_frontend_data.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B14 (partial): Execute frontend tests
+            - block_id: "B14"
+              name: "execute_frontend_tests"
+              assigned_to: "BuilderAgent (Frontend Expert)"
+              dependencies: ["B10", "B11"]
+              skills: ["test_execution", "ui_testing"]
+              output: "Frontend test results with screenshots"
+              runner: "shell"
+              runner_config:
+                command: "npm test -- --coverage"
+              timeout: 1800
+              max_retries: 1
+
+              validators:
+                - type: "command"
+                  command: "npm test -- --watchAll=false"
+                  expected_exit_code: 0
+
+                - type: "git_diff_check"
+                  min_files_changed: 1
+
+          execution_order: "B6 → (B10 + B11) → B14"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ design_frontend_tests (BuilderAgent) - Complete"
+                - "✅ implement_frontend_tests (BuilderAgent) - Complete"
+                - "✅ generate_synthetic_test_data (BuilderAgent) - Complete"
+                - "✅ execute_frontend_tests (BuilderAgent) - Complete"
+                - ""
+                - "📊 **Frontend Test Results:**"
+                - "- Component tests: XX/XX passed"
+                - "- Coverage: XX% (≥ 90% requirement)"
+                - "- Accessibility: WCAG 2.1 AA compliant"
+              labels:
+                add: ["frontend-tests-complete"]
+
+          - type: "artifact"
+            artifact_type: "frontend_testing"
+            content:
+              blueprint_id: "bp_test_frontend.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "frontend_tests"
+                  name: "Frontend Test Suite"
+                  storage_location: "tests/frontend/"
+                  format: "Jest / React Testing Library"
+
+                - artifact_type: "component_tests"
+                  name: "Component Test Suite"
+                  storage_location: "tests/components/"
+                  format: "Jest"
+
+                - artifact_type: "test_data"
+                  name: "Frontend Test Data"
+                  storage_location: "tests/data/frontend/"
+                  format: "JSON / YAML"
+
+                - artifact_type: "coverage_report"
+                  name: "Frontend Test Coverage Report"
+                  storage_location: "coverage/frontend/"
+                  format: "JSON / HTML"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "Frontend Test Audit"
+            checks:
+              - "Frontend test覆盖率 ≥ 90%": "passed"
+              - "Tests通过": "passed"
+              - "Accessibility符合": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "AccessibilityAuditAgent"
+            scope: "Accessibility Audit"
+            checks:
+              - "WCAG 2.1 AA合规": "passed"
+              - "Keyboard navigation": "passed"
+              - "Screen reader兼容": "passed"
+            output: "AccessibilityAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            coverage_gate:
+              condition: "frontend_coverage ≥ 90%"
+              status: "passed"
+
+            accessibility_gate:
+              condition: "wcag_2.1_aa_compliant"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Frontend testing complete, proceed to next test phase"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      frontend_testing:
+        - "Frontend test coverage ≥ 90%"
+        - "Critical component coverage = 100%"
+        - "All frontend tests passing"
+        - "Accessibility WCAG 2.1 AA compliant"
+
+      artifacts:
+        - "Frontend test suite"
+        - "Component tests"
+        - "Accessibility tests"
+        - "Coverage report"
+
+    artifacts:
+      test_code_artifacts:
+        - artifact_type: "frontend_tests"
+          name: "Frontend Test Suite"
+          storage_location: "tests/frontend/"
+          format: "Jest / React Testing Library"
+
+        - artifact_type: "component_tests"
+          name: "Component Test Suite"
+          storage_location: "tests/components/"
+          format: "Jest"
+
+        - artifact_type: "test_data"
+          name: "Frontend Test Data"
+          storage_location: "tests/data/frontend/"
+          format: "JSON / YAML"
+
+        - artifact_type: "coverage_report"
+          name: "Frontend Test Coverage Report"
+          storage_location: "coverage/frontend/"
+          format: "JSON / HTML"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Frontend Tests Complete"
+          labels:
+            add: ["frontend-tests-complete"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "frontend_test_design_time"
+        description: "Frontend test design time"
+        unit: "hours"
+        target: "≤ 1h"
+
+      - metric_name: "frontend_test_implementation_time"
+        description: "Frontend test implementation time"
+        unit: "hours"
+        target: "≤ 2h"
+
+    quality:
+      - metric_name: "frontend_test_coverage"
+        description: "Frontend test coverage"
+        unit: "percentage"
+        target: "≥ 90%"
+        threshold: "hard_gate"
+
+      - metric_name: "component_test_pass_rate"
+        description: "Component test pass rate"
+        unit: "percentage"
+        target: "100%"
+
+      - metric_name: "accessibility_compliance"
+        description: "Accessibility compliance"
+        unit: "percentage"
+        target: "100% (WCAG 2.1 AA)"
+
+    summary:
+      total_blocks: 4
+      phase: "frontend_testing"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "coverage"
+        description: "Frontend test coverage may not reach 90%"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Identify uncovered components, add targeted tests"
+
+      - risk_id: "R002"
+        risk_type: "ui_flakiness"
+        description: "UI tests may be flaky due to timing issues"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Use proper waits, avoid hard-coded delays"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "low"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 90
+      critical_component_coverage: 100
+      accessibility_standard: "wcag_2.1_aa"
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "4h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# Frontend Testing Blueprint End
+# ================================================================

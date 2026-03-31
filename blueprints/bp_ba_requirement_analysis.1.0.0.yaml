@@ -404,6 +404,11 @@ blueprint:
               implementation: "export_service.py + event publisher"
               output: "Structured artifacts committed to repo (event published after audit in step_5)"
               estimated_duration: "5m"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 2
+                - type: "file_exists"
+                  path: "requirements/*.md"
 
           execution_order: "B1 → B2 → B3 → B4(HITL) → B5 → (B6 + B7 conditional parallel) → B8"
 

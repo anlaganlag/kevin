@@ -48,6 +48,20 @@ class RunState:
     blocks: dict[str, BlockState] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
 
+    # E2E #56: Run duration tracking
+    duration_seconds: float | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Auto-compute duration when both timestamps are present."""
+        if self.duration_seconds is None and self.created_at and self.completed_at:
+            self.duration_seconds = _compute_duration(self.created_at, self.completed_at)
+
+    # E3: Task completion tracking
+    verification_summary: dict[str, Any] = field(default_factory=dict)
+    completion_status: str = ""  # "" | "all_passed" | "validators_failed" | "worker_failed"
+    pr_number: int | None = None
+    issue_closed: bool = False
+
 
 class StateManager:
     """Read/write run state to .kevin/runs/{run_id}/."""
@@ -89,11 +103,30 @@ class StateManager:
         return run
 
     def load_run(self, run_id: str) -> RunState:
-        """Load an existing run from disk."""
+        """Load an existing run from disk.
+
+        Raises:
+            FileNotFoundError: If the run directory or run.yaml does not exist.
+            ValueError: If run.yaml is empty, corrupted, or has missing fields.
+        """
         run_file = self._run_dir(run_id) / "run.yaml"
-        with run_file.open() as f:
-            data = yaml.safe_load(f)
-        run = RunState(**{k: v for k, v in data.items() if k != "blocks"})
+        if not run_file.exists():
+            raise FileNotFoundError(f"Run '{run_id}' not found: {run_file}")
+
+        try:
+            with run_file.open() as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Corrupted run.yaml for '{run_id}': {exc}") from exc
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid run.yaml for '{run_id}': expected dict, got {type(data).__name__}")
+
+        try:
+            run = RunState(**{k: v for k, v in data.items() if k != "blocks"})
+        except TypeError as exc:
+            raise ValueError(f"Incompatible fields in run.yaml for '{run_id}': {exc}") from exc
+
         run.blocks = {
             bid: BlockState(**bdata)
             for bid, bdata in data.get("blocks", {}).items()
@@ -106,10 +139,15 @@ class StateManager:
         self._save_run(run)
         self._save_block(run.run_id, block_state)
 
+    def save_run(self, run: RunState) -> None:
+        """Persist current run state without modifying timestamps."""
+        self._save_run(run)
+
     def complete_run(self, run: RunState, status: str = "completed") -> None:
         """Mark the run as completed/failed and persist."""
         run.status = status
         run.completed_at = _now()
+        run.duration_seconds = _compute_duration(run.created_at, run.completed_at)
         self._save_run(run)
 
     def save_block_logs(
@@ -131,6 +169,32 @@ class StateManager:
         sections = []
         if prompt:
             sections.append(f"=== PROMPT ===\n{prompt}")
+        if stdout:
+            sections.append(f"=== STDOUT ===\n{stdout}")
+        if stderr:
+            sections.append(f"=== STDERR ===\n{stderr}")
+        log_path.write_text("\n\n".join(sections), encoding="utf-8")
+        return log_path
+
+    def save_executor_logs(
+        self,
+        run_id: str,
+        *,
+        prompt: str = "",
+        stdout: str = "",
+        stderr: str = "",
+    ) -> Path:
+        """Save full execution logs for agentic mode (single file).
+
+        Unlike save_block_logs which creates per-block files, this saves
+        a single executor.log for the entire agentic run.
+        """
+        logs_dir = self._run_dir(run_id) / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / "executor.log"
+        sections = []
+        if prompt:
+            sections.append(f"=== COMPILED PROMPT ===\n{prompt}")
         if stdout:
             sections.append(f"=== STDOUT ===\n{stdout}")
         if stderr:
@@ -165,5 +229,38 @@ class StateManager:
             yaml.safe_dump(asdict(block_state), f, default_flow_style=False, allow_unicode=True)
 
 
+def format_duration(seconds: float) -> str:
+    """Format a duration in seconds as a human-readable string.
+
+    Examples:
+        65.3  → "1m 5s"
+        3661  → "1h 1m 1s"
+        0.5   → "0s"
+    """
+    if seconds < 0:
+        seconds = 0
+    total = int(seconds)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    if h > 0:
+        return f"{h}h {m}m {s}s"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _compute_duration(created_at: str, completed_at: str) -> float | None:
+    """Compute elapsed seconds between two ISO 8601 timestamps."""
+    if not created_at or not completed_at:
+        return None
+    try:
+        start = datetime.fromisoformat(created_at)
+        end = datetime.fromisoformat(completed_at)
+        return (end - start).total_seconds()
+    except (ValueError, TypeError):
+        return None
