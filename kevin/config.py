@@ -23,6 +23,12 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "planning": "bp_planning_agent.1.0.0",
 }
 
+# Orchestrator blueprints — use Claude SDK directly, not the executor pipeline.
+# _execute_agentic() rejects these with a clear error message.
+NON_EXECUTABLE_BLUEPRINTS: frozenset[str] = frozenset({
+    "bp_planning_agent.1.0.0",
+})
+
 # Aliases: common GitHub labels → Kevin task-type labels.
 # These are checked AFTER exact intent_map match fails.
 DEFAULT_LABEL_ALIASES: dict[str, str] = {
