@@ -25,8 +25,11 @@ def run_post_validators(
     blocks_raw = _extract_blocks(semantic.raw)
     if not blocks_raw:
         return []
-    blocks = [_parse_block(b) for b in blocks_raw]
-    ordered = _topological_sort(blocks)
+    try:
+        blocks = [_parse_block(b) for b in blocks_raw]
+        ordered = _topological_sort(blocks)
+    except Exception as exc:
+        return [{"name": "block_parse_error", "passed": False, "error": str(exc)}]
     validators: list = []
     for block in ordered:
         validators.extend(block.validators)
