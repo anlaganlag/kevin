@@ -1,0 +1,366 @@
+# Test Strategy Design Blueprint
+# Blueprint for test strategy and scenario design phase
+# Ralph Loop execution with QAAgent (Test Lead) for comprehensive test strategy
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_strategy_design.1.0.0"
+    blueprint_name: "Test Strategy Design"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "QAAgent"
+    tags:
+      - "testing"
+      - "qa"
+      - "strategy"
+      - "test_design"
+      - "multi_agent"
+    phase: "strategy_design"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "default_profile"
+      description: "Default profile for test strategy design"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+
+      inline:
+        custom_rules:
+          - name: "test_first_approach"
+            rule: "Test scenarios must be designed before implementation when possible"
+            enforcement: "moderate"
+
+          - name: "comprehensive_coverage"
+            rule: "Test strategy must cover functional, non-functional, and edge case scenarios"
+            enforcement: "strict"
+
+    constraints:
+      inline:
+        testing_constraints:
+          minimum_coverage: 95
+          critical_path_coverage: 100
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "IssueCreatedEvent | RequirementReadyEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "qa", "strategy"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "GitHub Issue (Testing Task)"
+          location: "github://centific-cn/AgenticSDLC/issues/23"
+          required: true
+
+        - type: "Requirements Documentation"
+          location: "requirements/brd_*.md"
+          required: true
+
+        - type: "Architecture Design"
+          location: "docs/architecture/architecture_design.md"
+          required: true
+
+        - type: "API Specifications"
+          location: "docs/api/api_contract_openapi.yaml"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "QAAgent"
+      role: "Test Lead"
+      selection_logic:
+        reasoning: |
+          1. Issue type = "test" OR label = "testing"/"strategy" → QAAgent
+          2. Task requires test strategy design → QAAgent core competency
+          → Decision: QAAgent as Primary Agent (Test Lead)
+
+      responsibilities:
+        - "Design overall test strategy"
+        - "Define test coverage requirements"
+        - "Review and approve test scenarios"
+
+    sub_agents:
+      - agent_type: "PlanningAgent"
+        role: "Architecture Test Designer"
+        phase: "architecture_test_design"
+        responsibilities:
+          - "Analyze architecture for test points"
+          - "Design integration test strategy"
+          - "Define test environment architecture"
+        coordination: "consultative"
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      QAAgent:
+        - "test_strategy_design"
+        - "test_scenario_generation"
+        - "coverage_analysis"
+
+      PlanningAgent:
+        - "architecture_analysis"
+        - "integration_test_design"
+        - "test_environment_architecture"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read"]
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "file_operations"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm QAAgent as Primary (Test Lead)"
+        output: "QAAgent assigned as Primary Agent for test strategy design"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_standards:
+                coverage_minimum: 95
+                test_documentation: "required"
+
+          - source: "Requirements and Architecture"
+            content:
+              business_requirements: "Business requirements and user stories"
+              architecture_design: "System architecture and component design"
+
+        output: "Test strategy formulated with full context"
+
+      # Step 3: Coordinate Sub-Agents
+      step_3:
+        action: "Primary Agent → Execute Test Strategy Design"
+        dependency_graph:
+          blocks:
+            # Block B1: Analyze requirements and architecture
+            - block_id: "B1"
+              name: "analyze_requirements_and_architecture"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: []
+              skills: ["requirement_analysis", "architecture_review"]
+              output: "Test scope and objectives defined"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/analyze_requirements.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B2: Design test environment architecture
+            - block_id: "B2"
+              name: "design_test_environment_architecture"
+              assigned_to: "PlanningAgent (Architecture Designer)"
+              dependencies: ["B1"]
+              skills: ["architecture_design", "test_environment_design"]
+              output: "Test environment architecture design"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_environment.md"
+              timeout: 2700
+              max_retries: 2
+
+            # Block B3: Design test scenarios
+            - block_id: "B3"
+              name: "design_test_scenarios"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: ["B1"]
+              skills: ["test_design", "scenario_generation"]
+              output: "Comprehensive test scenarios document"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_scenarios.md"
+              timeout: 3600
+              max_retries: 2
+
+          execution_order: "B1 → (B2 + B3)"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ analyze_requirements_and_architecture (QAAgent) - Complete"
+                - "✅ design_test_environment_architecture (PlanningAgent) - Complete"
+                - "✅ design_test_scenarios (QAAgent) - Complete"
+              labels:
+                add: ["strategy-designed"]
+
+          - type: "artifact"
+            artifact_type: "test_strategy_design"
+            content:
+              blueprint_id: "bp_test_strategy_design.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "test_strategy"
+                  name: "Test Strategy Document"
+                  storage_location: "docs/testing/test_strategy.md"
+                  format: "Markdown"
+
+                - artifact_type: "test_scenarios"
+                  name: "Test Scenarios Document"
+                  storage_location: "docs/testing/test_scenarios.md"
+                  format: "Markdown"
+
+                - artifact_type: "environment_architecture"
+                  name: "Test Environment Architecture"
+                  storage_location: "docs/testing/test_environment_architecture.md"
+                  format: "Markdown"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "Test Strategy Audit"
+            checks:
+              - "Test strategy完整性": "passed"
+              - "Test scenarios覆盖": "passed"
+              - "Architecture分析": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            strategy_gate:
+              condition: "test_strategy_complete AND scenarios_defined"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Test strategy design complete, proceed to environment setup"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      strategy_design:
+        - "Test scope and objectives defined"
+        - "Test environment architecture designed"
+        - "Test scenarios documented"
+
+      artifacts:
+        - "Test strategy document"
+        - "Test scenarios document"
+        - "Test environment architecture document"
+
+    artifacts:
+      specification_artifacts:
+        - artifact_type: "test_strategy"
+          name: "Test Strategy Document"
+          storage_location: "docs/testing/test_strategy.md"
+          format: "Markdown"
+
+        - artifact_type: "test_scenarios"
+          name: "Test Scenarios Document"
+          storage_location: "docs/testing/test_scenarios.md"
+          format: "Markdown"
+
+        - artifact_type: "environment_architecture"
+          name: "Test Environment Architecture"
+          storage_location: "docs/testing/test_environment_architecture.md"
+          format: "Markdown"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "Pending → In Progress → Strategy Complete"
+          labels:
+            add: ["strategy-designed"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "strategy_design_time"
+        description: "Test strategy design time"
+        unit: "hours"
+        target: "≤ 2h"
+
+    quality:
+      - metric_name: "scenario_coverage"
+        description: "Test scenario coverage"
+        unit: "percentage"
+        target: "≥ 90%"
+
+    summary:
+      total_blocks: 3
+      phase: "strategy_design"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "requirements"
+        description: "Requirements may be incomplete or ambiguous"
+        probability: "medium"
+        impact: "high"
+        mitigation: "Consult with BA Agent for clarification"
+
+      - risk_id: "R002"
+        risk_type: "architecture"
+        description: "Architecture may not support planned test approach"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Early architecture review with Planning Agent"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "low"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 95
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "3h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# Test Strategy Design Blueprint End
+# ================================================================

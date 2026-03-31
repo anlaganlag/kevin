@@ -1,5 +1,91 @@
 # Blueprint 模板更新日志
 
+## 2026-03-31 - Test Blueprints 拆分重构
+
+### 背景
+
+现有的 `bp_test_feature_comprehensive_testing.1.0.0.yaml` 包含 **21 个 Blocks**，覆盖了完整的测试自动化流程。这个 Blueprint 过于庞大，难以管理和维护。
+
+### 变更
+
+将 `bp_test_feature_comprehensive_testing.1.0.0.yaml` 拆分为 **8 个独立的 Blueprints**：
+
+#### 策略和环境准备阶段
+1. **bp_test_strategy_design.1.0.0.yaml**
+   - 负责人: QAAgent (Test Lead)
+   - Blocks: B1-B3
+   - 内容: 测试策略设计、环境架构设计、测试场景设计
+
+2. **bp_test_environment_setup.1.0.0.yaml**
+   - 负责人: PlatformAgent (DevOps Expert)
+   - Blocks: B4
+   - 内容: 测试环境准备
+
+#### 测试执行阶段
+3. **bp_test_unit.1.0.0.yaml**
+   - 负责人: BuilderAgent (Backend Expert)
+   - Blocks: B5, B9, B12, B11
+   - 内容: 单元测试设计、实现、执行
+
+4. **bp_test_frontend.1.0.0.yaml**
+   - 负责人: BuilderAgent (Frontend Expert)
+   - Blocks: B6, B10, B14, B11
+   - 内容: 前端测试设计、实现、执行
+
+5. **bp_test_integration.1.0.0.yaml**
+   - 负责人: PlanningAgent (Architecture Designer)
+   - Blocks: B7, B13, B11
+   - 内容: 集成测试设计、执行
+
+6. **bp_test_e2e.1.0.0.yaml**
+   - 负责人: QAAgent (QA Engineer)
+   - Blocks: B8, B14, B11
+   - 内容: E2E 测试设计、执行
+
+#### 高级测试阶段
+7. **bp_test_advanced.1.0.0.yaml**
+   - 负责人: QAAgent (QA Engineer)
+   - Blocks: B15-B17
+   - 内容: RL 探索测试、对抗性安全测试、性能测试
+
+#### 报告和签收阶段
+8. **bp_test_report_signoff.1.0.0.yaml**
+   - 负责人: QAAgent (Test Lead)
+   - Blocks: B18-B21
+   - 内容: 结果汇总、报告生成、缺陷分类、QA 签收
+
+### 关键设计决策
+
+1. **B11 (generate_synthetic_test_data) 复制**: 需要测试数据的各 blueprint 均包含 B11 的副本，确保各 blueprint 可以独立执行
+2. **B14 (execute_e2e_tests) 部分复制**: B14 在 `bp_test_frontend` 和 `bp_test_e2e` 中都有部分使用
+3. **原有 Blueprint 标记为 deprecated**: `bp_test_feature_comprehensive_testing.1.0.0.yaml` 保留参考用途
+
+### 更新的文件
+
+**新建文件:**
+- `blueprints/bp_test_strategy_design.1.0.0.yaml`
+- `blueprints/bp_test_environment_setup.1.0.0.yaml`
+- `blueprints/bp_test_unit.1.0.0.yaml`
+- `blueprints/bp_test_frontend.1.0.0.yaml`
+- `blueprints/bp_test_integration.1.0.0.yaml`
+- `blueprints/bp_test_e2e.1.0.0.yaml`
+- `blueprints/bp_test_advanced.1.0.0.yaml`
+- `blueprints/bp_test_report_signoff.1.0.0.yaml`
+
+**修改文件:**
+- `blueprints/bp_test_feature_comprehensive_testing.1.0.0.yaml` - 标记为 deprecated
+- `blueprints/README.md` - 添加新的 blueprints 说明
+- `blueprints/CHANGELOG.md` - 本条目
+
+### 优势
+
+✅ **更好的可管理性** - 每个 blueprint 专注于特定测试类型
+✅ **独立执行** - 每个 blueprint 可以独立运行
+✅ **更清晰的职责划分** - 每个 blueprint 有明确的 Primary Agent
+✅ **更灵活的编排** - 可以根据需要选择执行哪些 test blueprints
+
+---
+
 ## 2026-03-29 - Executor blueprint availability gaps (temporary fallbacks)
 
 ### Context

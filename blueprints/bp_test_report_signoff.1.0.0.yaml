@@ -1,0 +1,561 @@
+# Test Report and Sign-off Blueprint
+# Blueprint for test results aggregation, reporting, and QA sign-off
+# Ralph Loop execution with QAAgent (Test Lead) for final test reporting
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_report_signoff.1.0.0"
+    blueprint_name: "Test Report and Sign-off"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "QAAgent"
+    tags:
+      - "testing"
+      - "reporting"
+      - "signoff"
+      - "qa"
+    phase: "reporting_signoff"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for test reporting and sign-off"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+        - ".agentic/rules/quality/"
+
+      inline:
+        custom_rules:
+          - name: "comprehensive_reporting"
+            rule: "All test results must be aggregated and reported"
+            enforcement: "strict"
+
+          - name: "defect_triage"
+            rule: "All defects must be triaged and prioritized"
+            enforcement: "strict"
+
+          - name: "qa_sign_off"
+            rule: "QA must sign off before release"
+            enforcement: "strict"
+
+    constraints:
+      inline:
+        quality_gates:
+          test_coverage: "≥ 95%"
+          no_critical_defects: true
+          no_high_defects: true
+          performance_baseline: "must meet or exceed"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "AllTestsCompleteEvent | IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "reporting"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Unit Test Results"
+          location: "tests/unit/results/"
+          required: true
+
+        - type: "Integration Test Results"
+          location: "tests/integration/results/"
+          required: true
+
+        - type: "E2E Test Results"
+          location: "tests/e2e/results/"
+          required: true
+
+        - type: "Advanced Test Results"
+          location: "tests/advanced/results/"
+          required: true
+
+        - type: "Coverage Reports"
+          location: "coverage/"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "QAAgent"
+      role: "Test Lead"
+      selection_logic:
+        reasoning: |
+          1. Task requires test aggregation and reporting → QAAgent core competency
+          2. QA sign-off authority needed → QAAgent (Test Lead)
+          → Decision: QAAgent as Primary Agent (Test Lead)
+
+      responsibilities:
+        - "Aggregate all test results"
+        - "Generate comprehensive test reports"
+        - "Triage and prioritize defects"
+        - "Provide QA sign-off"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      QAAgent:
+        - "result_aggregation"
+        - "test_analysis"
+        - "report_generation"
+        - "metrics_analysis"
+        - "defect_triage"
+        - "prioritization"
+        - "quality_gate_evaluation"
+        - "sign_off"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "file_operations"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm QAAgent as Primary (Test Lead)"
+        output: "QAAgent assigned as Primary Agent for test reporting"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              quality_gates:
+                test_coverage: "≥ 95%"
+                no_critical_defects: true
+                no_high_defects: true
+                performance_baseline: "must meet or exceed"
+
+          - source: "Test Results"
+            content:
+              unit_test_results: "Unit test execution results"
+              integration_test_results: "Integration test execution results"
+              e2e_test_results: "E2E test execution results"
+              advanced_test_results: "Advanced test execution results"
+
+          - source: "Coverage Reports"
+            content:
+              coverage_data: "Test coverage metrics"
+
+        output: "Test reporting strategy formulated"
+
+      # Step 3: Execute Test Reporting
+      step_3:
+        action: "Primary Agent → Execute Test Reporting"
+        dependency_graph:
+          blocks:
+            # Block B18: Aggregate test results
+            - block_id: "B18"
+              name: "aggregate_test_results"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: []
+              skills: ["result_aggregation", "test_analysis"]
+              output: "Comprehensive test results aggregation"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/aggregate_results.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B19: Generate test reports
+            - block_id: "B19"
+              name: "generate_test_reports"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: ["B18"]
+              skills: ["report_generation", "metrics_analysis"]
+              output: "Test reports for all stakeholders"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/generate_reports.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B20: Triage defects
+            - block_id: "B20"
+              name: "triage_defects"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: ["B18"]
+              skills: ["defect_triage", "prioritization"]
+              output: "Defect triage report and Jira tickets"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/triage_defects.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B21: QA sign off
+            - block_id: "B21"
+              name: "qa_sign_off"
+              assigned_to: "QAAgent (Test Lead)"
+              dependencies: ["B19", "B20"]
+              skills: ["quality_gate_evaluation", "sign_off"]
+              output: "QA sign-off and release recommendation"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/qa_signoff.md"
+              timeout: 900
+              max_retries: 1
+
+              validators:
+                - type: "file_exists"
+                  path: "artifacts/qa/qa_sign_off.pdf"
+
+          execution_order: "B18 → (B19 + B20) → B21"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress → Done"
+              comments:
+                - "✅ aggregate_test_results (QAAgent) - Complete"
+                - "✅ generate_test_reports (QAAgent) - Complete"
+                - "✅ triage_defects (QAAgent) - Complete"
+                - "✅ qa_sign_off (QAAgent) - Complete"
+                - ""
+                - "📊 **Testing Summary:**"
+                - "- Status: Complete"
+                - "- Unit Tests: PASSING (XX/XX)"
+                - "- Integration Tests: PASSING (XX/XX)"
+                - "- E2E Tests: PASSING (XX/XX)"
+                - "- Coverage: XX% (≥ 95% requirement)"
+                - "- Edge Cases Found: XX"
+                - "- Security Issues: XX"
+                - "- Performance: MEETS_BASELINE"
+                - "- Defects Logged: XX"
+                - "- QA Sign-off: APPROVED"
+              labels:
+                remove: ["in-progress", "pending"]
+                add: ["completed", "tested", "qa_approved", "ready_for_release"]
+
+          - type: "artifact"
+            artifact_type: "test_report_signoff"
+            content:
+              blueprint_id: "bp_test_report_signoff.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "test_execution_report"
+                  name: "Test Execution Report"
+                  storage_location: "s3://artifacts/test-reports/comprehensive_[timestamp].json"
+                  format: "JSON"
+
+                - artifact_type: "coverage_report"
+                  name: "Coverage Report"
+                  storage_location: "s3://artifacts/coverage/[timestamp]_coverage.json"
+                  format: "JSON"
+
+                - artifact_type: "defect_report"
+                  name: "Defect Triage Report"
+                  storage_location: "s3://artifacts/defects/defect_triage_[timestamp].json"
+                  format: "JSON"
+
+                - artifact_type: "qa_sign_off"
+                  name: "QA Sign-off Document"
+                  storage_location: "s3://artifacts/qa/qa_sign_off_[timestamp].pdf"
+                  format: "PDF"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "Security Audit"
+            checks:
+              - "测试中的安全问题": "passed"
+              - "OWASP 测试覆盖": "passed"
+              - "渗透测试完成": "passed"
+              - "漏洞验证": "passed"
+            output: "SecurityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "QualityAuditAgent"
+            scope: "Quality Audit"
+            checks:
+              - "测试覆盖率 ≥ 95%": "passed"
+              - "测试通过率": "passed"
+              - "测试完整性": "passed"
+              - "缺陷追踪完整": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "TestAuditAgent"
+            scope: "Test Audit"
+            checks:
+              - "测试策略完整性": "passed"
+              - "测试场景覆盖": "passed"
+              - "RL 探索执行": "passed"
+              - "边界测试覆盖": "passed"
+              - "性能基准测试": "passed"
+            output: "TestAuditReport Artifact"
+            status: "passed"
+
+          - agent: "ComplianceAuditAgent"
+            scope: "Compliance Audit"
+            checks:
+              - "测试文档完整": "passed"
+              - "审计追踪完整": "passed"
+              - "缺陷记录符合标准": "passed"
+            output: "ComplianceAuditReport Artifact"
+            status: "passed"
+
+          - agent: "CostAuditAgent"
+            scope: "Cost Audit"
+            checks:
+              - "Token 使用": "passed"
+              - "执行时间": "passed"
+            output: "CostAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            quality_gate:
+              condition: "test_coverage ≥ 95% AND pass_rate ≥ 90%"
+              status: "passed"
+
+            security_gate:
+              condition: "no_critical_vulnerabilities AND security_tests_passed"
+              status: "passed"
+
+            test_coverage_gate:
+              condition: "unit ≥ 95% AND integration ≥ 90% AND e2e ≥ 85%"
+              status: "passed"
+
+            defect_gate:
+              condition: "no_critical_defects AND no_high_defects_unresolved"
+              status: "passed"
+
+            performance_gate:
+              condition: "performance_baseline_met = true"
+              status: "passed"
+
+            cost_gate:
+              condition: "total_cost_usd ≤ budget_usd AND time ≤ estimated"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            reason: "All gates passed, comprehensive testing successfully completed, quality targets met"
+            action: "Testing successfully completed, coverage targets met, QA signed off, ready for release"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      test_reporting:
+        - "All test results aggregated"
+        - "Comprehensive test reports generated"
+        - "All defects triaged and documented"
+        - "QA sign-off completed"
+        - "All quality gates passed"
+
+      artifacts:
+        - "Test execution report"
+        - "Coverage report"
+        - "Defect triage report"
+        - "QA sign-off document"
+
+    artifacts:
+      report_artifacts:
+        - artifact_type: "test_execution_report"
+          name: "Test Execution Report"
+          storage_location: "s3://artifacts/test-reports/comprehensive_[timestamp].json"
+          format: "JSON"
+          content:
+            execution_summary:
+              total_tests: 150
+              passed: 142
+              failed: 5
+              skipped: 3
+              pass_rate: 94.7
+
+            coverage_summary:
+              unit: 97.2
+              integration: 94.5
+              e2e: 88.0
+              overall: 95.5
+
+        - artifact_type: "coverage_report"
+          name: "Coverage Report"
+          storage_location: "s3://artifacts/coverage/[timestamp]_coverage.json"
+          format: "JSON / HTML"
+
+        - artifact_type: "defect_report"
+          name: "Defect Triage Report"
+          storage_location: "s3://artifacts/defects/defect_triage_[timestamp].json"
+          format: "JSON"
+          content:
+            total_defects: 5
+            critical: 0
+            high: 0
+            medium: 3
+            low: 2
+
+        - artifact_type: "qa_sign_off"
+          name: "QA Sign-off Document"
+          storage_location: "s3://artifacts/qa/qa_sign_off_[timestamp].pdf"
+          format: "PDF"
+          content:
+            signed_by: "QAAgent (Test Lead)"
+            sign_off_date: "2026-03-31"
+            release_recommendation: "approved"
+            conditions:
+              - "All quality gates passed"
+              - "Coverage targets met"
+              - "No critical defects"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Done"
+          comments:
+            - "✅ Test Reporting and Sign-off completed successfully"
+            - "✅ Test coverage: XX% (target: ≥ 95%)"
+            - "✅ All tests passed"
+            - "✅ QA sign-off: Approved"
+          labels:
+            remove: ["in-progress", "pending"]
+            add: ["completed", "tested", "qa_approved", "ready_for_release"]
+
+      notifications:
+        channels:
+          - channel: "slack"
+            message: |
+              ✅ Test Reporting Complete - QA Approved
+
+              **Issue**: #23
+              **Coverage**: XX%
+              **Pass Rate**: XX%
+              **QA Sign-off**: Approved
+
+              **Artifacts**: Ready for review
+
+          - channel: "email"
+            recipients: ["dev-team@centific.com", "qa-team@centific.com", "stakeholders@centific.com"]
+            subject: "[Testing Complete] Comprehensive Testing Ready for Release"
+            body: |
+              Comprehensive testing completed successfully.
+
+              Details:
+              - Issue: #23
+              - Coverage: XX%
+              - Pass rate: XX%
+              - QA: Approved for release
+
+              Test reports available at: s3://artifacts/test-reports/
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "report_generation_time"
+        description: "Test report generation time"
+        unit: "hours"
+        target: "≤ 1h"
+
+    quality:
+      - metric_name: "test_coverage"
+        description: "Test coverage"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+
+      - metric_name: "test_pass_rate"
+        description: "Test pass rate"
+        unit: "percentage"
+        target: "≥ 90%"
+
+    summary:
+      total_blocks: 4
+      phase: "reporting_signoff"
+      overall_status: "completed"
+      qa_sign_off: "approved"
+      ready_for_release: true
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "quality_gate"
+        description: "Quality gates may not pass"
+        probability: "low"
+        impact: "high"
+        mitigation: "Monitor metrics throughout testing, address issues early"
+
+      - risk_id: "R002"
+        risk_type: "defects"
+        description: "Critical defects may be found during testing"
+        probability: "low"
+        impact: "critical"
+        mitigation: "Have remediation process ready"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "low"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 95
+      critical_path_coverage: 100
+
+    quality_gates:
+      test_coverage: "≥ 95%"
+      no_critical_defects: true
+      no_high_defects: true
+      performance_baseline: "must meet or exceed"
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "3h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+    notifications:
+      on_complete: true
+      channels: ["slack", "email"]
+
+# ================================================================
+# Test Report and Sign-off Blueprint End
+# ================================================================
