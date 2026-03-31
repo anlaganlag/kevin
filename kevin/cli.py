@@ -91,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     # --- validate ---
     sp_validate = sub.add_parser("validate", help="Validate blueprint executability")
     sp_validate.add_argument("--blueprint", help="Validate a specific blueprint ID")
+    sp_validate.add_argument("--fix", action="store_true", help="Auto-fix: sync edge function blueprint list")
 
     args = parser.parse_args(argv)
 
@@ -586,8 +587,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
                            capture_output=True, text=True)
         if r.returncode == 0:
             print(f"Edge function sync: \u2713")
+        elif args.fix:
+            subprocess.run(["python3", str(sync_script)], check=True)
+            print(f"Edge function sync: \u2713 (auto-fixed)")
         else:
-            print(f"Edge function sync: \u2717 — run: python scripts/sync_blueprints_ts.py")
+            print(f"Edge function sync: \u2717 — run: python scripts/sync_blueprints_ts.py (or --fix)")
             failures += 1
 
     return 1 if failures > 0 else 0
