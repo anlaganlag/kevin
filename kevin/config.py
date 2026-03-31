@@ -18,6 +18,8 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "frontend": "bp_frontend_feature_ui_design.1.0.0",
     "deployment": "bp_deployment_monitoring_automation.1.0.0",
     "architecture": "bp_architecture_blueprint_design.1.0.0",
+    "function": "bp_function_implementation_fip_blueprint.1.0.0",
+    "testing": "bp_test_feature_comprehensive_testing.1.0.0",
 }
 
 # Orchestrator blueprints — use Claude SDK directly, not the executor pipeline.
