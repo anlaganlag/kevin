@@ -48,6 +48,14 @@ class RunState:
     blocks: dict[str, BlockState] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
 
+    # E2E #56: Run duration tracking
+    duration_seconds: float | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Auto-compute duration when both timestamps are present."""
+        if self.duration_seconds is None and self.created_at and self.completed_at:
+            self.duration_seconds = _compute_duration(self.created_at, self.completed_at)
+
     # E3: Task completion tracking
     verification_summary: dict[str, Any] = field(default_factory=dict)
     completion_status: str = ""  # "" | "all_passed" | "validators_failed" | "worker_failed"
@@ -131,10 +139,15 @@ class StateManager:
         self._save_run(run)
         self._save_block(run.run_id, block_state)
 
+    def save_run(self, run: RunState) -> None:
+        """Persist current run state without modifying timestamps."""
+        self._save_run(run)
+
     def complete_run(self, run: RunState, status: str = "completed") -> None:
         """Mark the run as completed/failed and persist."""
         run.status = status
         run.completed_at = _now()
+        run.duration_seconds = _compute_duration(run.created_at, run.completed_at)
         self._save_run(run)
 
     def save_block_logs(
@@ -218,3 +231,15 @@ class StateManager:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _compute_duration(created_at: str, completed_at: str) -> float | None:
+    """Compute elapsed seconds between two ISO 8601 timestamps."""
+    if not created_at or not completed_at:
+        return None
+    try:
+        start = datetime.fromisoformat(created_at)
+        end = datetime.fromisoformat(completed_at)
+        return (end - start).total_seconds()
+    except (ValueError, TypeError):
+        return None

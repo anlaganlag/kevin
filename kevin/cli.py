@@ -88,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     p_harvest = sub.add_parser("harvest", help="Backfill knowledge.db from all historical runs")
     p_harvest.add_argument("--target-repo", default="", help="Local path to target repo")
 
+    # --- validate ---
+    sp_validate = sub.add_parser("validate", help="Validate blueprint executability")
+    sp_validate.add_argument("--blueprint", help="Validate a specific blueprint ID")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -105,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_debug(args)
     elif args.command == "harvest":
         return cmd_harvest(args)
+    elif args.command == "validate":
+        return cmd_validate(args)
     return 1
 
 
@@ -486,6 +492,79 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Validate all (or one) blueprints for executor compatibility."""
+    from kevin.blueprint_compiler import compile, load_semantic
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS, build_config
+
+    config = build_config()
+
+    if args.blueprint:
+        try:
+            bp_path = find_blueprint(config.blueprints_dir, args.blueprint)
+            bp_files = [bp_path]
+        except FileNotFoundError:
+            _err(f"Blueprint not found: {args.blueprint}")
+            return 1
+    else:
+        bp_files = sorted(config.blueprints_dir.glob("bp_*.yaml"))
+
+    if not bp_files:
+        _err("No blueprints found")
+        return 1
+
+    sample_vars = {
+        "issue_number": "0", "issue_title": "validation", "issue_body": "",
+        "issue_labels": "", "target_repo": ".", "owner": "test", "repo": "test",
+        "repo_full": "test/test", "learning_context": "", "pr_number": "",
+    }
+
+    print("\nBlueprint Validation Matrix")
+    print("\u2500" * 70)
+    print(f"{'Blueprint':<45} {'Load':>5} {'Compile':>8} {'Size':>8}")
+    print("\u2500" * 70)
+
+    failures = 0
+    non_exec = 0
+    for bp_path in bp_files:
+        name = bp_path.stem
+
+        try:
+            semantic = load_semantic(bp_path)
+            load_ok = "\u2713"
+        except Exception as exc:
+            load_ok = "\u2717"
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'':>8}  ({exc})")
+            failures += 1
+            continue
+
+        if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
+            non_exec += 1
+            print(f"{name:<45} {load_ok:>5} {'\u2014':>8} {'(orchestrator)':>8}")
+            continue
+
+        try:
+            prompt = compile(semantic, sample_vars)
+            compile_ok = "\u2713"
+            size = f"{len(prompt)/1024:.1f}KB"
+        except Exception as exc:
+            compile_ok = "\u2717"
+            size = "\u2014"
+            failures += 1
+            print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}  ({exc})")
+            continue
+
+        print(f"{name:<45} {load_ok:>5} {compile_ok:>8} {size:>8}")
+
+    executable = len(bp_files) - non_exec
+
+    print("\u2500" * 70)
+    print(f"Result: {executable - failures}/{executable} executor-ready, "
+          f"{non_exec} orchestrator(s)")
+
+    return 1 if failures > 0 else 0
+
+
 def cmd_debug(args: argparse.Namespace) -> int:
     """Replay a failed block's prompt in interactive Claude CLI.
 
@@ -584,13 +663,27 @@ def _execute_agentic(
     from kevin.workers.registry import WorkerRegistry
 
     # 1. Load semantic blueprint
-    semantic = load_semantic(bp_path)
+    try:
+        semantic = load_semantic(bp_path)
+    except Exception as exc:
+        _err(f"Failed to load semantic blueprint from {bp_path}: {exc}")
+        state_mgr.complete_run(run, "failed")
+        return 1
+
+    # 1b. Guard: non-executable blueprints
+    from kevin.config import NON_EXECUTABLE_BLUEPRINTS
+    if semantic.blueprint_id in NON_EXECUTABLE_BLUEPRINTS:
+        _err(f"{semantic.blueprint_id} is an orchestrator blueprint — not executor-compatible. "
+             f"Use Claude SDK or the planning agent workflow instead.")
+        state_mgr.complete_run(run, "failed")
+        return 1
+
     _log(config, f"  Agentic mode: {semantic.blueprint_name}")
     _log(config, f"  Criteria: {len(semantic.acceptance_criteria)}, "
                  f"Constraints: {len(semantic.constraints)}, "
                  f"Timeout: {semantic.task_timeout}s")
 
-    # 1b. Validate blueprint is executable
+    # 1c. Validate blueprint is executable
     validation = validate_for_execution(semantic)
     if validation.warnings:
         for w in validation.warnings:
@@ -602,9 +695,14 @@ def _execute_agentic(
         return 1
 
     # 2. Compile to WorkerTask
-    task = compile_task(
-        semantic, variables, task_id=run.run_id, cwd=config.target_repo,
-    )
+    try:
+        task = compile_task(
+            semantic, variables, task_id=run.run_id, cwd=config.target_repo,
+        )
+    except Exception as exc:
+        _err(f"Blueprint compilation failed: {exc}")
+        state_mgr.complete_run(run, "failed")
+        return 1
     _log(config, f"  Compiled instruction: {len(task.instruction)} chars")
 
     # 3. Resolve worker
@@ -618,7 +716,7 @@ def _execute_agentic(
 
     # 5. Execute via worker
     run.status = "running"
-    state_mgr.complete_run(run, "running")
+    state_mgr.save_run(run)
 
     if config.dry_run:
         result = WorkerResult(
@@ -644,7 +742,11 @@ def _execute_agentic(
     all_passed = result.success
     validator_results: list[dict] = []
     if result.success and not config.dry_run:
-        validator_results = run_post_validators(semantic, variables, config.target_repo)
+        try:
+            validator_results = run_post_validators(semantic, variables, config.target_repo)
+        except Exception as exc:
+            _log(config, f"  Validator execution error: {exc}")
+            validator_results = [{"name": "validator_error", "passed": False, "error": str(exc)}]
         failed_validators = [v for v in validator_results if not v.get("passed")]
         if failed_validators:
             all_passed = False
