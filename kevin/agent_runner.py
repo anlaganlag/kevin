@@ -401,7 +401,7 @@ def _subprocess_run(
     cwd: Path,
     timeout: int,
 ) -> BlockResult:
-    """Run a subprocess with heartbeat watchdog (see ``kevin.subprocess_utils``)."""
+    """Run a subprocess to completion (see ``kevin.subprocess_utils``)."""
     r = run_with_heartbeat(cmd, cwd=cwd, timeout=timeout)
     return BlockResult(
         block_id=block_id,
