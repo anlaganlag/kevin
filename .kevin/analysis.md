@@ -1,23 +1,21 @@
-# Issue #64: Unit Tests for kevin/intent.py
+# Issue #67: format_duration helper
 
 ## Summary
-Add comprehensive unit tests for the `classify()` function in `kevin/intent.py`.
+Add `format_duration(seconds: float) -> str` to `kevin/state.py` that converts seconds into human-readable "Xh Xm Xs" format.
 
-## Files Modified
-- `kevin/tests/test_intent.py` — expanded from ~35 lines to ~468 lines
+## Files to modify
+- `kevin/state.py` — add `format_duration()` function
+- `kevin/tests/test_state_format_duration.py` — new test file
 
-## Test Scenarios Covered (61 tests total)
-
-| Category | Tests | Description |
-|----------|-------|-------------|
-| Intent dataclass | 2 | Immutability, field access |
-| Exact match | 6 + 10 parametrized | Direct label->blueprint lookup, all DEFAULT_INTENT_MAP entries |
-| Alias fallback | 5 + 5 parametrized | Alias resolution, preference over exact, dangling alias, all DEFAULT_LABEL_ALIASES |
-| Unknown/no match | 4 | Missing kevin label, kevin-only, empty labels, unknown labels |
-| Default params | 4 | None->default fallback, custom map/alias override |
-| RL edge cases | 12 | Duplicates, large lists, ambiguous keys, transitive chains, empty/whitespace, case sensitivity |
-| Adversarial/security | 10 | SQL injection, XSS, template injection, path traversal, null byte, unicode, regex chars |
-| Performance | 5 | <1ms typical, <10ms for 500 labels, <5ms for 1000-entry map |
+## Test scenarios
+- 65.3 → "1m 5s"
+- 3661 → "1h 1m 1s"
+- 0.5 → "0s"
+- 0 → "0s"
+- 3600 → "1h 0m 0s"
+- 59 → "59s"
+- negative → "0s"
+- hours only: 7200 → "2h 0m 0s"
 
 ## Risks
-- None identified. All 61 tests pass deterministically.
+- None — pure function, no side effects.

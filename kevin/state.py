@@ -229,6 +229,27 @@ class StateManager:
             yaml.safe_dump(asdict(block_state), f, default_flow_style=False, allow_unicode=True)
 
 
+def format_duration(seconds: float) -> str:
+    """Format a duration in seconds as a human-readable string.
+
+    Examples:
+        65.3  → "1m 5s"
+        3661  → "1h 1m 1s"
+        0.5   → "0s"
+    """
+    if seconds < 0:
+        seconds = 0
+    total = int(seconds)
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    if h > 0:
+        return f"{h}h {m}m {s}s"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
