@@ -342,7 +342,7 @@ def _validate_git_diff(v: Validator, variables: dict[str, str], cwd: Path) -> di
 
 def _validate_command(v: Validator, variables: dict[str, str], cwd: Path) -> dict[str, Any]:
     """Run a shell command and check exit code == 0."""
-    command = render(v.params.get("run", ""), variables)
+    command = render(v.params.get("run", "") or v.params.get("command", ""), variables)
     timeout = v.params.get("timeout", 60)
     if not command:
         return {"type": "command", "passed": False, "error": "No command specified"}
