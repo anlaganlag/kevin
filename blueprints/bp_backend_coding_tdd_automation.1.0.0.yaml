@@ -426,156 +426,170 @@ blueprint:
 
         dependency_graph:
           blocks:
-            # Phase 1: Task Analysis and Setup
+            # --------------------------------------------------------
+            # B1: Analyze Requirements + Plan TDD Approach
+            # --------------------------------------------------------
             - block_id: "B1"
-              name: "analyze_task_requirements"
+              name: "analyze_and_plan_tdd"
               assigned_to: "BuilderAgent"
               dependencies: []
-              skills: ["requirement_analysis", "task_breakdown"]
-              output: "Task understanding and implementation plan"
-              tdd_phase: "preparation"
-
-            - block_id: "B2"
-              name: "setup_development_environment"
-              assigned_to: "BuilderAgent"
-              dependencies: ["B1"]
-              skills: ["environment_setup", "dependency_management"]
-              output: "Development environment ready"
-              tdd_phase: "preparation"
-
-            # Phase 2: TDD Implementation Cycles (Ralph Wiggum Loop)
-            - block_id: "B3"
-              name: "tdd_cycle_1_red"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B2"]
-              skills: ["test_writing", "tdd_red"]
-              output: "Failing tests written (Red)"
-              tdd_phase: "RED"
-              tdd_cycle: 1
-
-            - block_id: "B4"
-              name: "tdd_cycle_1_green"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B3"]
-              skills: ["implementation", "tdd_green"]
-              output: "Minimal implementation to pass tests (Green)"
-              tdd_phase: "GREEN"
-              tdd_cycle: 1
-
-            - block_id: "B5"
-              name: "tdd_cycle_1_refactor"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B4"]
-              skills: ["refactoring", "code_quality", "tdd_refactor"]
-              output: "Code refactored for quality (Refactor)"
-              tdd_phase: "REFACTOR"
-              tdd_cycle: 1
-
-            # Repeat TDD cycles for additional functionality
-            - block_id: "B6"
-              name: "tdd_cycle_2_red"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B5"]
-              skills: ["test_writing", "tdd_red"]
-              output: "Additional failing tests (Red)"
-              tdd_phase: "RED"
-              tdd_cycle: 2
-
-            - block_id: "B7"
-              name: "tdd_cycle_2_green"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B6"]
-              skills: ["implementation", "tdd_green"]
-              output: "Additional implementation (Green)"
-              tdd_phase: "GREEN"
-              tdd_cycle: 2
-
-            - block_id: "B8"
-              name: "tdd_cycle_2_refactor"
-              assigned_to: "BuilderAgent (Backend Expert)"
-              dependencies: ["B7"]
-              skills: ["refactoring", "code_quality", "tdd_refactor"]
-              output: "Additional refactoring (Refactor)"
-              tdd_phase: "REFACTOR"
-              tdd_cycle: 2
-
-            # Continue TDD cycles as needed...
-
-            # Phase 3: Continuous Validation (Parallel with TDD cycles)
-            - block_id: "B9"
-              name: "continuous_code_review"
-              assigned_to: "BuilderAgent (Code Review Validator)"
-              dependencies: ["B5"]  # Start after first cycle
-              skills: ["code_review", "pattern_validation", "naming_check"]
-              output: "Continuous code quality validation"
-              coordination: "continuous"
-              validation_frequency: "after_each_refactor"
-
-            # Phase 4: Security Review
-            - block_id: "B10"
-              name: "security_code_review"
-              assigned_to: "SecurityAgent"
-              dependencies: ["B8"]  # After main implementation
-              skills: ["security_review", "owasp_check", "vulnerability_scan"]
-              output: "Security validation report"
-              coordination: "consultative"
-
-            # Phase 5: QA Test Review
-            - block_id: "B11"
-              name: "test_quality_review"
-              assigned_to: "QAAgent"
-              dependencies: ["B8"]  # After implementation
-              skills: ["test_review", "coverage_validation", "edge_case_check"]
-              output: "Test quality validation"
-              coordination: "consultative"
-
-            # Phase 6: Final Validation and Artifacts
-            - block_id: "B12"
-              name: "final_validation_and_build"
-              assigned_to: "BuilderAgent"
-              dependencies: ["B9", "B10", "B11"]
-              skills: ["final_validation", "building", "artifact_generation"]
-              output: "Validated code and deployable artifacts"
-              runner: "shell"
+              runner: "claude_cli"
               runner_config:
                 cwd: "{{target_repo}}"
-                command: "go build ./... && go test ./... -cover -count=1 && golangci-lint run"
+                model: ""
               timeout: 300
+              max_retries: 1
+              pre_check: "rm -f .kevin/analysis.md"
+              prompt_template: |
+                You are a Backend Expert planning a TDD implementation.
+                You MUST create files as instructed. Do NOT ask questions. Just execute.
+
+                {{learning_context}}
+
+                ## Issue #{{issue_number}}: {{issue_title}}
+
+                {{issue_body}}
+
+                ## Instructions (execute ALL steps)
+
+                1. Read the issue carefully and understand the backend requirements
+                2. Create directory `.kevin/` if it does not exist: `mkdir -p .kevin`
+                3. Write an implementation plan to `.kevin/analysis.md` containing:
+                   - Summary of what needs to be built
+                   - TDD strategy: which test cases to write FIRST (Red phase)
+                   - Files to create or modify
+                   - API endpoints, data models, or services involved
+                   - Security considerations (input validation, auth, injection prevention)
+                   - Test scenarios with edge cases
+                4. Create a feature branch: `git checkout -b kevin/issue-{{issue_number}}`
+
+                IMPORTANT: You MUST write `.kevin/analysis.md` before finishing.
+                Do NOT implement the solution yet. Only analyze and plan.
+              output: "TDD implementation plan in .kevin/analysis.md + feature branch created"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/analysis.md"
+              acceptance_criteria:
+                - "Issue requirements understood and structured"
+                - "TDD test cases identified"
+                - "Feature branch created"
+
+            # --------------------------------------------------------
+            # B2: TDD Implementation (Red → Green → Refactor)
+            # --------------------------------------------------------
+            - block_id: "B2"
+              name: "tdd_implement"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B1"]
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: ""
+              timeout: 600
+              max_retries: 2
+              pre_check: "git diff --quiet HEAD -- . 2>/dev/null || git checkout -- . 2>/dev/null; git clean -fd --exclude=.kevin/ 2>/dev/null; true"
+              prompt_template: |
+                You are a Backend Expert implementing with strict TDD on branch `kevin/issue-{{issue_number}}`.
+
+                {{learning_context}}
+
+                ## Context
+
+                Read the TDD plan from `.kevin/analysis.md`.
+
+                ## TDD Workflow (follow this EXACTLY)
+
+                ### Phase 1: RED — Write Failing Tests First
+                1. Read `.kevin/analysis.md` for planned test cases
+                2. Write test files FIRST covering all planned scenarios
+                3. Run tests — they MUST fail (this proves tests are meaningful)
+
+                ### Phase 2: GREEN — Minimal Implementation
+                4. Write the minimum code to make all tests pass
+                5. Run tests — they MUST all pass now
+                6. Do NOT add extra features beyond what tests require
+
+                ### Phase 3: REFACTOR — Clean Up
+                7. Refactor for code quality: naming, duplication, complexity
+                8. Run tests again — they MUST still pass
+                9. Review for security: input validation, injection prevention, error handling
+
+                ### Phase 4: Commit
+                10. Run ALL tests one final time to ensure nothing is broken
+                11. Commit with message: `feat: {{issue_title}} (resolves #{{issue_number}})`
+
+                Follow existing code style and patterns in the repo.
+                Ensure test coverage is comprehensive (happy path + edge cases + error cases).
+              output: "TDD implementation committed to feature branch"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "command"
+                  run: "git log --oneline -1 | grep -q 'feat:'"
+              acceptance_criteria:
+                - "Tests written before implementation (TDD)"
+                - "All tests pass"
+                - "Code committed to feature branch"
+
+            # --------------------------------------------------------
+            # B3: Create Pull Request
+            # --------------------------------------------------------
+            - block_id: "B3"
+              name: "create_pull_request"
+              assigned_to: "BuilderAgent"
+              dependencies: ["B2"]
+              runner: "shell"
+              pre_check: ""
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  BRANCH="kevin/issue-{{issue_number}}"
+
+                  # Check if PR is already merged → skip entirely
+                  MERGED_PR=$(gh pr list --head "$BRANCH" --state merged --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$MERGED_PR" ]; then echo "PR #$MERGED_PR already merged — skipping B3"; exit 0; fi
+
+                  # Fetch remote refs so --force-with-lease knows the expected state
+                  git fetch origin "$BRANCH" 2>/dev/null || true
+
+                  # Push (force-with-lease to safely update existing branch)
+                  git push --force-with-lease -u origin "$BRANCH"
+
+                  # If open PR exists → just update it (push already did), done
+                  EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR updated"; exit 0; fi
+
+                  # Create new PR
+                  gh pr create \
+                    --title "{{issue_title}}" \
+                    --body "## Summary
+
+                  Resolves {{repo_full}}#{{issue_number}}
+
+                  ## TDD Approach
+
+                  Tests written first, then minimal implementation, then refactored.
+
+                  ## Changes
+
+                  $(git diff main...HEAD --stat)
+
+                  ## Test Results
+
+                  $(cat .kevin/analysis.md 2>/dev/null | head -20)
+
+                  ---
+                  _Automated by Kevin via bp_backend_coding_tdd_automation.1.0.0 (TDD)_"
+              timeout: 120
               max_retries: 1
               validators:
                 - type: "command"
-                  run: "go build ./..."
-                - type: "command"
-                  run: "go test ./... -cover -count=1"
-                - type: "command"
-                  run: "golangci-lint run"
-                - type: "git_diff_check"
-                  min_files_changed: 1
+                  run: "gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number'"
               acceptance_criteria:
-                - "All tests pass"
-                - "Coverage ≥ 95%"
-                - "Linters pass"
-                - "Code compiles"
-                - "Security approved"
+                - "PR created and linked to original issue"
+                - "PR description mentions TDD approach"
 
-          execution_order: "B1 → B2 → (B3 → B4 → B5) → (B6 → B7 → B8) → ... → B9(continuous) → B10 → B11 → B12"
-
-        # Ralph Wiggum Loop (TDD Cycle Pattern)
-        tdd_cycle_pattern:
-          description: "Red-Green-Refactor cycle repeated for each functionality"
-          red_phase:
-            action: "Write failing test"
-            validation: "Test fails as expected"
-            tools: ["go_test"]
-          green_phase:
-            action: "Write minimal passing code"
-            validation: "Test passes"
-            tools: ["go_test"]
-          refactor_phase:
-            action: "Refactor for quality"
-            validation: "Tests still pass"
-            tools: ["go_test", "golangci_lint"]
-          repetition: "Until all functionality implemented"
+          execution_order: "B1 → B2 → B3"
 
       # Step 4: Confirm Completion and Deliver Output
       step_4:

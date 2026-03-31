@@ -560,6 +560,11 @@ blueprint:
                 - "Artifact versions"
                 - "Configuration changes"
                 - "Incident reports (if any)"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "file_exists"
+                  path: "docs/deployment/*.md"
 
           execution_order: "B1 → B2 → B3 → B4 → (B5 + B6 + B7 parallel) → B8 → B9 → B10 → B11(if needed) → B12"
 

@@ -47,43 +47,20 @@ blueprint:
         - ".agentic/rules/naming/general.yaml"
         - ".agentic/rules/security/owasp_top10.yaml"
 
-      # Frontend-specific inline rules
+      # Frontend-specific inline rules (compact)
       inline:
         custom_rules:
-          - name: "component_naming_convention"
-            rule: "React/Vue components must use PascalCase; filenames must match component name exactly"
-            enforcement: "strict"
-            validator: "component_name_validator"
+          - name: "naming_and_structure"
+            rule: "PascalCase components, filename matches component name, single responsibility, max 200 lines per component"
 
-          - name: "component_single_responsibility"
-            rule: "Each component must have a single, clearly defined responsibility; no component exceeds 200 lines"
-            enforcement: "strict"
-            validator: "complexity_checker"
+          - name: "accessibility"
+            rule: "WCAG 2.1 Level AA compliance for all interactive components"
 
-          - name: "accessibility_compliance"
-            rule: "All interactive components must achieve WCAG 2.1 Level AA compliance"
-            enforcement: "strict"
-            validator: "axe_accessibility_validator"
+          - name: "styling"
+            rule: "Design tokens only (no hardcoded values), no inline styles, use CSS modules or utility classes"
 
-          - name: "design_token_usage"
-            rule: "Components must consume design tokens (colors, spacing, typography) from the design system; no hardcoded values"
-            enforcement: "strict"
-            validator: "design_token_linter"
-
-          - name: "storybook_story_required"
-            rule: "Every public-facing component must have a corresponding Storybook story with at least: Default, Loading, Error states"
-            enforcement: "strict"
-            validator: "storybook_coverage_checker"
-
-          - name: "no_inline_styles"
-            rule: "No inline style attributes on JSX/TSX elements; use CSS modules or design system utility classes"
-            enforcement: "strict"
-            validator: "eslint_no_inline_style"
-
-          - name: "xss_prevention"
-            rule: "No use of dangerouslySetInnerHTML or equivalent without explicit SecurityAgent approval; all user-supplied content must be sanitized"
-            enforcement: "strict"
-            validator: "xss_static_analyzer"
+          - name: "security"
+            rule: "No dangerouslySetInnerHTML without SecurityAgent approval, sanitize all user content"
 
     # Constraints Loading
     constraints:
@@ -97,40 +74,12 @@ blueprint:
         - ".agentic/constraints/infra/static/technical_stack.yaml"
         - ".agentic/constraints/devops/ci/quality_gates.yaml"
 
-      # Frontend-specific inline constraints
+      # Frontend-specific inline constraints (compact)
       inline:
-        technical_stack:
-          typescript_version: ">= 5.0"
-          node_version: ">= 20.x"
-          framework:
-            primary: "React >= 18.0"
-            alternative: "Vue >= 3.3"
-            selection_rule: "Follow existing project convention from Learning Agent; default to React"
-          styling:
-            approach: "CSS Modules or TailwindCSS (as defined in project config)"
-            preprocessor: "PostCSS"
-          component_library:
-            storybook_version: ">= 7.6"
-            testing_library: "React Testing Library >= 14 / Vue Test Utils >= 2"
-            unit_test_runner: "Vitest >= 1.0"
-            e2e_framework: "Playwright >= 1.40 (visual regression via Chromatic)"
-
-        architecture_constraints:
-          component_max_lines: 200
-          component_max_props: 12
-          max_nesting_depth: 4
-          state_management: "Local state preferred; global state (Zustand/Pinia) only when explicitly required"
-          preferred_patterns:
-            - "Compound Component Pattern"
-            - "Render Props (when needed)"
-            - "Custom Hooks for logic reuse"
-            - "Context API for theme/config injection"
-
-        resource_quotas:
-          max_design_time: "6h"
-          max_bundle_size_per_component: "50KB (gzipped)"
-          max_render_time_ms: 16  # 60fps threshold
-          max_token_usage: 60000
+        technical_stack: "React 18+ (or Vue 3.3+), TypeScript 5+, Node 20+, CSS Modules/Tailwind, Vitest 1+, Playwright 1.40+"
+        architecture: "Max 200 lines/component, max 12 props, max 4 nesting depth, local state preferred (Zustand/Pinia only when required)"
+        patterns: "Compound Component, Custom Hooks for logic reuse, Context API for theme/config"
+        resource_quotas: "Max 50KB gzipped per component, 16ms render target (60fps)"
 
   # ================================================================
   # 3. Input Definition
@@ -496,229 +445,167 @@ blueprint:
 
         dependency_graph:
           blocks:
-            # Phase 1: Context Loading
+            # --------------------------------------------------------
+            # B1: Analyze UX Requirements + Design Component Architecture
+            # --------------------------------------------------------
             - block_id: "B1"
-              name: "load_context_and_inventory"
-              assigned_to: "FrontendAgent + LearningAgent"
+              name: "analyze_and_design"
+              assigned_to: "BuilderAgent"
               dependencies: []
-              skills:
-                - "knowledge_base:read"
-                - "pattern_matching"
-                - "storybook_api:component_inventory:read"
-              tools_used:
-                - "learning_agent_query"
-                - "storybook_api"
-                - "figma_api"
-                - "design_token_engine"
-              actions:
-                - "Query LearningAgent for existing component patterns and UI lessons learned"
-                - "Fetch current component inventory from Storybook"
-                - "Read design tokens from design system"
-                - "Read UX wireframes from Figma (if available) or spec documents"
-              output: "Context report: reusable components identified, design tokens loaded, UI patterns loaded"
-              estimated_duration: "20m"
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: ""
+              timeout: 300
+              max_retries: 1
+              pre_check: "rm -f .kevin/analysis.md"
+              prompt_template: |
+                You are a Frontend Expert analyzing a UI feature request.
+                You MUST create files as instructed. Do NOT ask questions. Just execute.
 
-            # Phase 2: UX Requirements Analysis
+                {{learning_context}}
+
+                ## Issue #{{issue_number}}: {{issue_title}}
+
+                {{issue_body}}
+
+                ## Instructions (execute ALL steps)
+
+                1. Read the issue carefully and understand the UI/UX requirements
+                2. Create directory `.kevin/` if it does not exist: `mkdir -p .kevin`
+                3. Explore the existing codebase to understand:
+                   - Component library and design system in use (React/Vue, Tailwind/CSS Modules, etc.)
+                   - Existing component patterns and naming conventions
+                   - Test setup (Vitest, Jest, React Testing Library, etc.)
+                   - TypeScript configuration
+                4. Write an implementation plan to `.kevin/analysis.md` containing:
+                   - Summary of what UI needs to be built
+                   - Component tree: which components to create/modify (parent → child relationships)
+                   - TypeScript prop interfaces for each component
+                   - Interaction states to implement (default, hover, focus, loading, error, empty, disabled)
+                   - Accessibility requirements (ARIA, keyboard nav, contrast)
+                   - Test scenarios for each component
+                   - Files to create or modify
+                5. Create a feature branch: `git checkout -b kevin/issue-{{issue_number}}`
+
+                IMPORTANT: You MUST write `.kevin/analysis.md` before finishing.
+                Do NOT implement the solution yet. Only analyze and plan.
+              output: "Component architecture plan in .kevin/analysis.md + feature branch"
+              validators:
+                - type: "file_exists"
+                  path: ".kevin/analysis.md"
+              acceptance_criteria:
+                - "UX requirements understood and structured"
+                - "Component architecture designed"
+                - "Feature branch created"
+
+            # --------------------------------------------------------
+            # B2: Implement Components + Tests
+            # --------------------------------------------------------
             - block_id: "B2"
-              name: "analyze_ux_requirements"
-              assigned_to: "FrontendAgent"
+              name: "implement_frontend"
+              assigned_to: "BuilderAgent"
               dependencies: ["B1"]
-              skills:
-                - "ux_spec_parsing"
-                - "design_system_application"
-              tools_used:
-                - "figma_api"
-                - "learning_agent_query"
-              actions:
-                - "Parse UX spec documents and extract component list"
-                - "Identify which existing components can be reused vs. which need to be created"
-                - "Map UX design intent to design system tokens"
-                - "Identify all interaction states per component (default, hover, focus, active, disabled, loading, error, empty)"
-                - "Extract all user-facing strings for i18n key registration"
-              output: "Component requirement list with: name, props interface, events, states, accessibility notes"
-              estimated_duration: "30m"
+              runner: "claude_cli"
+              runner_config:
+                cwd: "{{target_repo}}"
+                model: ""
+              timeout: 600
+              max_retries: 2
+              pre_check: "git diff --quiet HEAD -- . 2>/dev/null || git checkout -- . 2>/dev/null; git clean -fd --exclude=.kevin/ 2>/dev/null; true"
+              prompt_template: |
+                You are a Frontend Expert implementing UI components on branch `kevin/issue-{{issue_number}}`.
 
-            # Phase 3: Component Architecture Design
+                {{learning_context}}
+
+                ## Context
+
+                Read the component plan from `.kevin/analysis.md`.
+
+                ## Instructions
+
+                1. Read `.kevin/analysis.md` for the component architecture plan
+                2. **Write tests first** for each component (render, props, interactions, accessibility)
+                3. Implement TypeScript React/Vue components following the plan:
+                   - Use design tokens / existing design system (no hardcoded colors/spacing)
+                   - Add ARIA attributes and keyboard event handlers
+                   - Handle all interaction states (loading, error, empty, disabled)
+                   - Use TypeScript interfaces for all props
+                   - No `any` types — use proper typing
+                   - No `dangerouslySetInnerHTML` unless absolutely necessary with sanitization
+                4. Run all tests to ensure they pass
+                5. Run TypeScript check if available (`npx tsc --noEmit` or equivalent)
+                6. Run linter if available (`npm run lint` or equivalent)
+                7. Commit with message: `feat: {{issue_title}} (resolves #{{issue_number}})`
+
+                Follow existing code style and patterns in the repo.
+              output: "Frontend components + tests committed to feature branch"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+                - type: "command"
+                  run: "git log --oneline -1 | grep -q 'feat:'"
+              acceptance_criteria:
+                - "Components implemented with TypeScript"
+                - "Tests written and passing"
+                - "Accessibility requirements met"
+                - "Code committed to feature branch"
+
+            # --------------------------------------------------------
+            # B3: Create Pull Request
+            # --------------------------------------------------------
             - block_id: "B3"
-              name: "design_component_architecture"
-              assigned_to: "FrontendAgent"
+              name: "create_pull_request"
+              assigned_to: "BuilderAgent"
               dependencies: ["B2"]
-              skills:
-                - "component_architecture_design"
-                - "responsive_layout_design"
-              tools_used:
-                - "openapi_generator"
-                - "bash_execution"
-              actions:
-                - "Design component tree with clear parent/child relationships"
-                - "Define TypeScript prop interfaces for each component"
-                - "Generate TypeScript types from OpenAPI spec (npx openapi-typescript)"
-                - "Map API response types to component prop types"
-                - "Define responsive breakpoint strategy per layout component"
-                - "Document composition patterns (e.g. Compound Component, slot injection)"
-              output: "Component architecture document (Mermaid component tree + TypeScript interface definitions)"
-              estimated_duration: "45m"
+              runner: "shell"
+              pre_check: ""
+              runner_config:
+                cwd: "{{target_repo}}"
+                command: |
+                  BRANCH="kevin/issue-{{issue_number}}"
 
-            # Phase 4a: Component Code Generation
-            - block_id: "B4"
-              name: "generate_component_code"
-              assigned_to: "FrontendAgent"
-              dependencies: ["B3"]
-              skills:
-                - "frontend_code_generation"
-                - "interaction_design_implementation"
-                - "accessibility_implementation"
-                - "i18n_preparation"
-                - "performance_optimization"
-              tools_used:
-                - "bash_execution"
-                - "design_token_engine"
-              actions:
-                - "Generate TypeScript React/Vue component files (*.tsx / *.vue)"
-                - "Implement all interaction states using design tokens only (no hardcoded values)"
-                - "Add ARIA attributes, roles, and keyboard event handlers"
-                - "Extract all display strings to i18n key files"
-                - "Apply React.memo / useMemo / useCallback for performance-critical components"
-                - "Run tsc --noEmit to verify TypeScript correctness"
-                - "Run ESLint + Prettier to enforce code style"
-              output: "Production-ready component source files (*.tsx / *.vue) + i18n locale additions"
-              estimated_duration: "90m"
+                  # Check if PR is already merged → skip entirely
+                  MERGED_PR=$(gh pr list --head "$BRANCH" --state merged --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$MERGED_PR" ]; then echo "PR #$MERGED_PR already merged — skipping B3"; exit 0; fi
 
-            # Phase 4b: Storybook Story Generation (parallel with B5, B6, B7)
-            - block_id: "B5"
-              name: "generate_storybook_stories"
-              assigned_to: "FrontendAgent + DocAgent"
-              dependencies: ["B4"]
-              skills:
-                - "storybook_story_generation"
-                - "component_api_documentation"
-              tools_used:
-                - "storybook_api"
-                - "bash_execution"
-              actions:
-                - "Generate *.stories.tsx files for each component"
-                - "Cover required story variants: Default, Loading, Error, Empty, Disabled, Mobile viewport"
-                - "Add ArgTypes for interactive Controls panel"
-                - "Add JSDoc / autodocs for prop documentation"
-                - "Run Storybook build to verify no story compilation errors"
-              output: "*.stories.tsx files; Storybook build verification passed"
-              estimated_duration: "40m"
+                  # Fetch remote refs
+                  git fetch origin "$BRANCH" 2>/dev/null || true
 
-            # Phase 4c: Unit Test Generation (parallel)
-            - block_id: "B6"
-              name: "generate_unit_tests"
-              assigned_to: "QAAgent"
-              dependencies: ["B4"]
-              skills:
-                - "unit_test_generation"
-                - "component_behavior_verification"
-              tools_used:
-                - "bash_execution"
-              actions:
-                - "Generate Vitest + React Testing Library test files (*.test.tsx)"
-                - "Cover: render smoke test, prop variations, user interaction events, error states"
-                - "Verify component behavior matches acceptance criteria"
-                - "Run npm run test to confirm all tests pass"
-                - "Verify test coverage ≥ 90% for generated components"
-              output: "*.test.tsx files; test coverage report; all tests passing"
-              estimated_duration: "50m"
+                  # Push
+                  git push --force-with-lease -u origin "$BRANCH"
 
-            # Phase 4d: Accessibility Audit (parallel)
-            - block_id: "B7"
-              name: "accessibility_audit"
-              assigned_to: "QAAgent"
-              dependencies: ["B4"]
-              skills:
-                - "accessibility_audit"
-              tools_used:
-                - "accessibility_checker"
-                - "bash_execution"
-              actions:
-                - "Render each component in a headless browser environment"
-                - "Run axe-core audit on all rendered components"
-                - "Verify color contrast ratios against design tokens (AA: 4.5:1 normal, 3:1 large)"
-                - "Verify keyboard navigation: Tab order, Enter/Space activation, Escape dismissal"
-                - "Verify ARIA labels on all interactive elements"
-                - "Remediate any failures before proceeding"
-              output: "axe accessibility audit report; all violations resolved or documented with rationale"
-              estimated_duration: "30m"
+                  # If open PR exists → just update it
+                  EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null)
+                  if [ -n "$EXISTING_PR" ]; then echo "PR #$EXISTING_PR updated"; exit 0; fi
 
-            # Phase 4e: Security Scan (parallel)
-            - block_id: "B8"
-              name: "security_scan"
-              assigned_to: "SecurityAgent"
-              dependencies: ["B4"]
-              skills:
-                - "xss_vulnerability_scan"
-                - "input_sanitization_check"
-                - "dependency_security_audit"
-              tools_used:
-                - "bash_execution"
-              actions:
-                - "Static analysis scan for XSS patterns (dangerouslySetInnerHTML, eval, innerHTML)"
-                - "Verify all user-input form components use controlled inputs with validation"
-                - "Check input sanitization on file upload, rich text, and URL input components"
-                - "Run npm audit for new dependencies introduced"
-                - "Verify no new critical or high CVEs introduced"
-              output: "Security scan report (SAST); npm audit report; all critical/high issues resolved"
-              estimated_duration: "25m"
+                  # Create new PR
+                  gh pr create \
+                    --title "{{issue_title}}" \
+                    --body "## Summary
 
-            # Phase 5: Visual Regression Baseline
-            - block_id: "B9"
-              name: "visual_regression_baseline"
-              assigned_to: "QAAgent"
-              dependencies: ["B5", "B6", "B7", "B8"]
-              skills:
-                - "visual_regression_testing"
-              tools_used:
-                - "visual_regression_tool"
-                - "bash_execution"
-              actions:
-                - "Publish Storybook to Chromatic to capture visual baseline"
-                - "Capture screenshots for all story variants across: mobile (375px), tablet (768px), desktop (1440px)"
-                - "Establish visual regression baseline for future comparison"
-              output: "Chromatic build URL; visual baseline established"
-              estimated_duration: "20m"
+                  Resolves {{repo_full}}#{{issue_number}}
 
-            # Phase 6: Component API Documentation
-            - block_id: "B10"
-              name: "generate_component_docs"
-              assigned_to: "DocAgent"
-              dependencies: ["B5", "B6", "B7", "B8"]
-              skills:
-                - "component_api_documentation"
-                - "usage_example_generation"
-                - "design_decision_documentation"
-              tools_used:
-                - "bash_execution"
-              actions:
-                - "Generate component API documentation (prop tables, event tables, slot definitions)"
-                - "Write usage examples in Markdown with code snippets"
-                - "Document design decisions: why this pattern was chosen, deviations from UX spec, accessibility choices"
-                - "Update CHANGELOG.md with new component entries"
-              output: "docs/components/*.md — component documentation; CHANGELOG.md updated"
-              estimated_duration: "25m"
+                  ## Changes
 
-            # Phase 7: Create PR for HITL Gate
-            - block_id: "B11"
-              name: "create_pr_for_hitl_gate"
-              assigned_to: "FrontendAgent"
-              dependencies: ["B9", "B10"]
-              skills:
-                - "git_operations"
-              tools_used:
-                - "github_api"
-                - "bash_execution"
-              actions:
-                - "Commit all generated artifacts to feature branch"
-                - "Create PR targeting main branch"
-                - "Attach: component code, stories, tests, accessibility report, security scan, visual regression baseline URL, component docs"
-                - "Add PR description with: affected components, acceptance criteria checklist, design decision notes"
-                - "Request reviewers: frontend-lead, ux-lead, accessibility-reviewer"
-              output: "Feature branch PR ready for HITL Gate review"
-              estimated_duration: "15m"
+                  $(git diff main...HEAD --stat)
 
-          execution_order: "B1 → B2 → B3 → B4 → (B5 + B6 + B7 + B8 parallel) → B9 + B10 → B11"
+                  ## Components
+
+                  $(cat .kevin/analysis.md 2>/dev/null | head -30)
+
+                  ---
+                  _Automated by Kevin via bp_frontend_feature_ui_design.1.0.0_"
+              timeout: 120
+              max_retries: 1
+              validators:
+                - type: "command"
+                  run: "gh pr list --head kevin/issue-{{issue_number}} --json number --jq '.[0].number'"
+              acceptance_criteria:
+                - "PR created and linked to original issue"
+                - "PR description includes component summary"
+
+          execution_order: "B1 → B2 → B3"
 
       # Step 4: Confirm Completion and Deliver Output
       step_4:

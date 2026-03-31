@@ -405,6 +405,11 @@ blueprint:
               dependencies: ["B4", "B5", "B6", "B7"]
               skills: ["git_operations", "documentation_generation"]
               output: "Blueprint PR for HITL Gate 1"
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 3
+                - type: "file_exists"
+                  path: "docs/architecture/*.md"
 
           execution_order: "B1 → B2 → B3 → (B4 + B5 + B6 parallel) + B7 → B8"
 

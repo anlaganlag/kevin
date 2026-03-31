@@ -18,6 +18,9 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "frontend": "bp_frontend_feature_ui_design.1.0.0",
     "deployment": "bp_deployment_monitoring_automation.1.0.0",
     "architecture": "bp_architecture_blueprint_design.1.0.0",
+    "function": "bp_function_implementation_fip_blueprint.1.0.0",
+    "testing": "bp_test_feature_comprehensive_testing.1.0.0",
+    "planning": "bp_planning_agent.1.0.0",
 }
 
 # Aliases: common GitHub labels → Kevin task-type labels.
@@ -28,7 +31,7 @@ DEFAULT_LABEL_ALIASES: dict[str, str] = {
     "feature": "coding-task",
     "documentation": "coding-task",
     "refactor": "coding-task",
-    "testing": "coding-task",
+    # "testing" removed — now has a dedicated blueprint in DEFAULT_INTENT_MAP
 }
 
 # Label that triggers Kevin
@@ -84,6 +87,12 @@ def build_config(
     kevin_root = Path(__file__).resolve().parent.parent
     blueprints_dir = kevin_root / "blueprints"
     target = Path(target_repo) if target_repo else Path.cwd()
+
+    if not target.is_dir():
+        raise FileNotFoundError(
+            f"target_repo '{target}' does not exist or is not a directory"
+        )
+
     state_dir = target / ".kevin" / "runs"
 
     owner, name = "", ""

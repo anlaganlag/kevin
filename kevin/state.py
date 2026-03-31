@@ -95,11 +95,30 @@ class StateManager:
         return run
 
     def load_run(self, run_id: str) -> RunState:
-        """Load an existing run from disk."""
+        """Load an existing run from disk.
+
+        Raises:
+            FileNotFoundError: If the run directory or run.yaml does not exist.
+            ValueError: If run.yaml is empty, corrupted, or has missing fields.
+        """
         run_file = self._run_dir(run_id) / "run.yaml"
-        with run_file.open() as f:
-            data = yaml.safe_load(f)
-        run = RunState(**{k: v for k, v in data.items() if k != "blocks"})
+        if not run_file.exists():
+            raise FileNotFoundError(f"Run '{run_id}' not found: {run_file}")
+
+        try:
+            with run_file.open() as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Corrupted run.yaml for '{run_id}': {exc}") from exc
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid run.yaml for '{run_id}': expected dict, got {type(data).__name__}")
+
+        try:
+            run = RunState(**{k: v for k, v in data.items() if k != "blocks"})
+        except TypeError as exc:
+            raise ValueError(f"Incompatible fields in run.yaml for '{run_id}': {exc}") from exc
+
         run.blocks = {
             bid: BlockState(**bdata)
             for bid, bdata in data.get("blocks", {}).items()

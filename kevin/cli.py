@@ -144,17 +144,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     finally:
         # Always signal completion when agent_id is set — even on early failure.
         # This ensures the Planning Agent state machine always advances (or fails cleanly).
-        config = build_config(
-            repo=repo,
-            target_repo=getattr(args, "target_repo", ""),
-            dry_run=getattr(args, "dry_run", False),
-        )
-        if not config.dry_run and agent_id:
-            _post_agent_completed_event(
-                repo, issue_number, agent_id,
-                success=(exit_code == 0),
-                blueprint_id=resolved_blueprint_id,
-            )
+        if agent_id:
+            try:
+                config = build_config(
+                    repo=repo,
+                    target_repo=getattr(args, "target_repo", ""),
+                    dry_run=getattr(args, "dry_run", False),
+                )
+                if not config.dry_run:
+                    _post_agent_completed_event(
+                        repo, issue_number, agent_id,
+                        success=(exit_code == 0),
+                        blueprint_id=resolved_blueprint_id,
+                    )
+            except Exception:
+                pass  # best-effort signaling — don't mask the original error
 
     return exit_code
 
@@ -300,16 +304,25 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
 
 def _cmd_run_inner(args: argparse.Namespace) -> int:
     """Inner implementation of cmd_run — all early returns live here."""
-    config = build_config(
-        repo=args.repo,
-        target_repo=args.target_repo,
-        dry_run=getattr(args, "dry_run", False),
-        verbose=args.verbose,
-    )
+    try:
+        config = build_config(
+            repo=args.repo,
+            target_repo=args.target_repo,
+            dry_run=getattr(args, "dry_run", False),
+            verbose=args.verbose,
+        )
+    except FileNotFoundError as exc:
+        _err(f"Configuration error: {exc}")
+        return 1
 
     # 1. Fetch issue
     _log(config, f"Fetching issue #{args.issue} from {args.repo}...")
-    issue = fetch_issue(args.repo, args.issue)
+    try:
+        issue = fetch_issue(args.repo, args.issue)
+    except (RuntimeError, FileNotFoundError) as exc:
+        _err(f"Failed to fetch issue #{args.issue}: {exc}")
+        _err("Check: gh auth status, network connectivity, repo access.")
+        return 1
     _log(config, f"  Title: {issue.title}")
     _log(config, f"  Labels: {issue.labels}")
 
@@ -565,7 +578,7 @@ def _execute_agentic(
     Replaces the block-by-block execution with a single autonomous invocation.
     Post-execution validators serve as a quality gate.
     """
-    from kevin.blueprint_compiler import compile_task, load_semantic
+    from kevin.blueprint_compiler import compile_task, load_semantic, validate_for_execution
     from kevin.executor import extract_pr_number, run_post_validators
     from kevin.workers.interface import ArtifactType, WorkerResult
     from kevin.workers.registry import WorkerRegistry
@@ -576,6 +589,17 @@ def _execute_agentic(
     _log(config, f"  Criteria: {len(semantic.acceptance_criteria)}, "
                  f"Constraints: {len(semantic.constraints)}, "
                  f"Timeout: {semantic.task_timeout}s")
+
+    # 1b. Validate blueprint is executable
+    validation = validate_for_execution(semantic)
+    if validation.warnings:
+        for w in validation.warnings:
+            _log(config, f"  ⚠️  {w}")
+    if not validation.valid:
+        _log(config, f"  ❌ Blueprint '{semantic.blueprint_id}' is not executable "
+                     f"(no goal, criteria, or steps). Aborting.")
+        state_mgr.complete_run(run, "failed")
+        return 1
 
     # 2. Compile to WorkerTask
     task = compile_task(
@@ -630,7 +654,7 @@ def _execute_agentic(
 
     # 8. Extract PR number — check worker artifacts first, then fallback
     pr_number: int | None = None
-    if all_passed:
+    if all_passed and not config.dry_run:
         for artifact in result.artifacts:
             if artifact.artifact_type == ArtifactType.PR_URL:
                 import re as _re
@@ -659,11 +683,12 @@ def _execute_agentic(
     }
     state_mgr.complete_run(run, final_status)
 
-    try:
-        from kevin.learning import harvest_run
-        harvest_run(config.knowledge_db, config.state_dir, run.run_id)
-    except Exception:
-        pass
+    if not config.dry_run:
+        try:
+            from kevin.learning import harvest_run
+            harvest_run(config.knowledge_db, config.state_dir, run.run_id)
+        except Exception:
+            pass
 
     # 10. Post completion comment + update labels
     error_summary = ""
@@ -679,15 +704,22 @@ def _execute_agentic(
     if not config.dry_run:
         _post_completion_comment_agentic(config, run, pr_number=pr_number)
         _notify_teams(config, run, [], issue, final_status, error=error_summary)
+        # Each GitHub operation is independent — don't let one failure block the rest
         try:
             remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
-            if all_passed:
+        except Exception as exc:
+            _log(config, f"  ⚠️  remove_labels failed (non-fatal): {exc}")
+        if all_passed:
+            try:
                 add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+            except Exception as exc:
+                _log(config, f"  ⚠️  add_labels failed (non-fatal): {exc}")
+            try:
                 close_issue(run.repo, run.issue_number)
                 run.issue_closed = True
-                state_mgr.complete_run(run, final_status)  # persist issue_closed flag
-        except Exception:
-            pass
+                state_mgr.complete_run(run, final_status)
+            except Exception as exc:
+                _log(config, f"  ⚠️  close_issue failed (non-fatal): {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status} (worker={worker.worker_id})")
     return 0 if all_passed else 1
@@ -870,11 +902,17 @@ async def _execute_blocks_async(
         _notify_teams(config, run, blocks, issue, final_status, error=error_summary)
         try:
             remove_labels(run.repo, run.issue_number, ["kevin", "status:in-progress"])
-            if all_passed:
+        except Exception as exc:
+            _log(config, f"  ⚠️  remove_labels failed (non-fatal): {exc}")
+        if all_passed:
+            try:
                 add_labels(run.repo, run.issue_number, ["kevin-completed", "status:done"])
+            except Exception as exc:
+                _log(config, f"  ⚠️  add_labels failed (non-fatal): {exc}")
+            try:
                 close_issue(run.repo, run.issue_number)
-        except Exception:
-            pass
+            except Exception as exc:
+                _log(config, f"  ⚠️  close_issue failed (non-fatal): {exc}")
 
     _log(config, f"\nRun {run.run_id}: {final_status}")
     return 0 if all_passed else 1
@@ -886,10 +924,14 @@ async def _execute_blocks_async(
 
 def _build_variables(config: KevinConfig, issue: Issue) -> dict[str, str]:
     """Build the variable dictionary for template rendering."""
+    body = issue.body.strip() if issue.body else ""
+    if not body:
+        body = f"(No description provided for issue #{issue.number}: {issue.title})"
+
     variables = {
         "issue_number": str(issue.number),
         "issue_title": issue.title,
-        "issue_body": issue.body,
+        "issue_body": body,
         "issue_labels": ", ".join(issue.labels),
         "target_repo": str(config.target_repo),
         "owner": config.repo_owner,
