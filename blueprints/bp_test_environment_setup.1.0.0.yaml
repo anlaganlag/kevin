@@ -1,0 +1,356 @@
+# Test Environment Setup Blueprint
+# Blueprint for test environment preparation
+# Ralph Loop execution with PlatformAgent (DevOps Expert) for infrastructure setup
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_environment_setup.1.0.0"
+    blueprint_name: "Test Environment Setup"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "PlatformAgent"
+    tags:
+      - "testing"
+      - "infrastructure"
+      - "environment"
+      - "devops"
+    phase: "environment_setup"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for environment setup"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/infrastructure/"
+
+    constraints:
+      inline:
+        infrastructure_constraints:
+          isolation_required: true
+          reproducibility_required: true
+
+        test_environments:
+          - name: "unit_test"
+            type: "local"
+            isolation: "mock"
+          - name: "integration_test"
+            type: "container"
+            isolation: "docker"
+          - name: "e2e_test"
+            type: "staging"
+            isolation: "namespace"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "TestStrategyCompleteEvent | IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "infrastructure"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Environment Architecture"
+          location: "docs/testing/test_environment_architecture.md"
+          required: true
+
+        - type: "Infrastructure Configuration"
+          location: "infra/"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "PlatformAgent"
+      role: "DevOps Expert"
+      selection_logic:
+        reasoning: |
+          1. Task requires environment provisioning → PlatformAgent core competency
+          2. Infrastructure setup requires DevOps expertise → PlatformAgent
+          → Decision: PlatformAgent as Primary Agent (DevOps Expert)
+
+      responsibilities:
+        - "Provision test environments"
+        - "Configure test infrastructure"
+        - "Set up test data pipelines"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      PlatformAgent:
+        - "environment_provisioning"
+        - "test_infrastructure_setup"
+        - "test_data_pipelines"
+        - "ci_cd_configuration"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write"]
+
+      - tool: "bash_execution"
+        permissions: ["command_execution"]
+
+      - tool: "docker"
+        permissions: ["container:manage"]
+
+      - tool: "kubernetes"
+        permissions: ["cluster:manage"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm PlatformAgent as Primary (DevOps Expert)"
+        output: "PlatformAgent assigned as Primary Agent for environment setup"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              infrastructure_tools:
+                containerization: ["docker", "docker-compose"]
+                orchestration: ["kubernetes"]
+                ci_cd: ["github_actions"]
+
+          - source: "Test Environment Architecture"
+            content:
+              environment_specifications: "Test environment requirements"
+
+        output: "Environment setup plan formulated"
+
+      # Step 3: Execute Environment Setup
+      step_3:
+        action: "Primary Agent → Execute Environment Setup"
+        dependency_graph:
+          blocks:
+            # Block B4: Setup test environments
+            - block_id: "B4"
+              name: "setup_test_environments"
+              assigned_to: "PlatformAgent (DevOps Expert)"
+              dependencies: []
+              skills: ["environment_setup", "infrastructure_provisioning"]
+              output: "Test environments ready and configured"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/setup_environments.md"
+              timeout: 3600
+              max_retries: 2
+
+              environments:
+                - name: "unit_test"
+                  type: "local"
+                  isolation: "mock"
+                - name: "integration_test"
+                  type: "container"
+                  isolation: "docker"
+                - name: "e2e_test"
+                  type: "staging"
+                  isolation: "namespace"
+
+              validators:
+                - type: "command"
+                  command: "docker ps"
+                  expected_output: "containers_running"
+
+                - type: "file_exists"
+                  path: "infra/test_environments/.env"
+
+          execution_order: "B4"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ setup_test_environments (PlatformAgent) - Complete"
+                - ""
+                - "📊 **Environments Ready:**"
+                - "- Unit test: Local (mock)"
+                - "- Integration test: Docker containers"
+                - "- E2E test: Staging namespace"
+              labels:
+                add: ["environments-ready"]
+
+          - type: "artifact"
+            artifact_type: "test_environment_setup"
+            content:
+              blueprint_id: "bp_test_environment_setup.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "environment_config"
+                  name: "Test Environment Configuration"
+                  storage_location: "infra/test_environments/"
+                  format: "YAML / HCL"
+
+                - artifact_type: "docker_compose"
+                  name: "Docker Compose Configuration"
+                  storage_location: "infra/test_environments/docker-compose.yml"
+                  format: "YAML"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "InfrastructureAuditAgent"
+            scope: "Environment Setup Audit"
+            checks:
+              - "Environments可访问": "passed"
+              - "Isolation正确": "passed"
+              - "Configuration完整": "passed"
+            output: "InfrastructureAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            environment_gate:
+              condition: "all_environments_accessible AND isolation_verified"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Test environments ready, proceed to test implementation"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      environment_setup:
+        - "Unit test environment configured"
+        - "Integration test environment (Docker) running"
+        - "E2E test environment (staging) accessible"
+        - "All environment configurations documented"
+
+      artifacts:
+        - "Environment configuration files"
+        - "Docker compose files"
+        - "Kubernetes manifests"
+
+    artifacts:
+      environment_artifacts:
+        - artifact_type: "environment_config"
+          name: "Test Environment Configuration"
+          storage_location: "infra/test_environments/"
+          format: "YAML / HCL"
+
+        - artifact_type: "docker_compose"
+          name: "Docker Compose Configuration"
+          storage_location: "infra/test_environments/docker-compose.yml"
+          format: "YAML"
+
+        - artifact_type: "kubernetes_manifests"
+          name: "Kubernetes Test Environment"
+          storage_location: "infra/test_environments/k8s/"
+          format: "YAML"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Environments Ready"
+          labels:
+            add: ["environments-ready"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "environment_setup_time"
+        description: "Environment setup time"
+        unit: "hours"
+        target: "≤ 1h"
+
+    infrastructure:
+      - metric_name: "environment_availability"
+        description: "Environment availability"
+        unit: "percentage"
+        target: "100%"
+
+    summary:
+      total_blocks: 1
+      phase: "environment_setup"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "infrastructure"
+        description: "Environment setup may fail due to resource constraints"
+        probability: "low"
+        impact: "high"
+        mitigation: "Pre-check resource availability, use quotas"
+
+      - risk_id: "R002"
+        risk_type: "configuration"
+        description: "Configuration errors may cause environment issues"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Validate configuration before applying"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+
+    testing:
+      mandatory: true
+
+    environments:
+      unit_test:
+        type: "local"
+        isolation: "mock"
+
+      integration_test:
+        type: "container"
+        isolation: "docker"
+
+      e2e_test:
+        type: "staging"
+        isolation: "namespace"
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "2h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# Test Environment Setup Blueprint End
+# ================================================================

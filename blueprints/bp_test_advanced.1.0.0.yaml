@@ -1,0 +1,506 @@
+# Advanced Testing Blueprint
+# Blueprint for RL exploration, adversarial security, and performance testing
+# Ralph Loop execution with QAAgent (QA Engineer) for advanced test techniques
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_advanced.1.0.0"
+    blueprint_name: "Advanced Testing"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "QAAgent"
+    tags:
+      - "testing"
+      - "rl_testing"
+      - "security"
+      - "performance"
+      - "advanced"
+    phase: "advanced_testing"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for advanced testing"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/security/"
+        - ".agentic/rules/testing/"
+
+      inline:
+        custom_rules:
+          - name: "rl_style_testing"
+            rule: "Use RL-style exploration for edge case discovery in complex state spaces"
+            enforcement: "strict"
+
+          - name: "adversarial_testing"
+            rule: "Include adversarial/fuzzing tests for security-sensitive components"
+            enforcement: "strict"
+
+          - name: "performance_baseline"
+            rule: "Performance tests must validate against established baselines"
+            enforcement: "strict"
+
+    constraints:
+      inline:
+        testing_constraints:
+          rl_exploration_enabled: true
+          security_testing_enabled: true
+          performance_testing_enabled: true
+
+        test_tools:
+          performance_testing:
+            - "k6"
+            - "jmeter"
+
+          security_testing:
+            - "owasp_zap"
+            - "semgrep"
+
+          rl_testing:
+            - "custom_rl_explorer"
+            - "state_space_analyzer"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "BasicTestsCompleteEvent | IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "advanced"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Scenarios"
+          location: "docs/testing/test_scenarios.md"
+          required: true
+
+        - type: "Architecture Design"
+          location: "docs/architecture/architecture_design.md"
+          required: true
+
+        - type: "Performance Baselines"
+          location: "docs/performance/baselines.md"
+          required: true
+
+        - type: "Security Requirements"
+          location: "docs/security/requirements.md"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "QAAgent"
+      role: "QA Engineer"
+      selection_logic:
+        reasoning: |
+          1. Task requires advanced testing techniques → QAAgent core competency
+          2. RL, security, and performance expertise needed → QAAgent (QA Engineer)
+          → Decision: QAAgent as Primary Agent (QA Engineer)
+
+      responsibilities:
+        - "Execute RL-style exploration testing"
+        - "Execute adversarial security testing"
+        - "Execute performance testing"
+        - "Generate advanced test reports"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      QAAgent:
+        - "rl_testing"
+        - "edge_case_exploration"
+        - "adversarial_testing"
+        - "fuzzing"
+        - "security_testing"
+        - "performance_testing"
+        - "load_testing"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "test_frameworks"
+        permissions:
+          - "k6:execute"
+          - "jmeter:execute"
+          - "owasp_zap:execute"
+          - "semgrep:execute"
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "test_commands"]
+
+      - tool: "monitoring_api"
+        permissions:
+          - "metrics:query"
+          - "logs:query"
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm QAAgent as Primary (QA Engineer)"
+        output: "QAAgent assigned as Primary Agent for advanced testing"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_frameworks:
+                performance: ["k6", "jmeter"]
+                security: ["owasp_zap", "semgrep"]
+
+              testing_standards:
+                performance_baseline: "must meet or exceed"
+                security_threshold: "no critical or high vulnerabilities"
+
+          - source: "Architecture Design"
+            content:
+              state_spaces: "Complex state spaces for RL exploration"
+              attack_surface: "Security-sensitive components"
+
+          - source: "Performance Baselines"
+            content:
+              response_time_p95: "< 200ms"
+              throughput_target: "1000 req/s"
+
+        output: "Advanced testing strategy formulated"
+
+      # Step 3: Execute Advanced Testing
+      step_3:
+        action: "Primary Agent → Execute Advanced Testing"
+        dependency_graph:
+          blocks:
+            # Block B15: RL-style exploration testing
+            - block_id: "B15"
+              name: "rl_style_exploration_testing"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: []
+              skills: ["rl_testing", "edge_case_exploration"]
+              output: "Edge cases discovered and documented"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/rl_exploration.md"
+              timeout: 5400
+              max_retries: 1
+
+            # Block B16: Adversarial security testing
+            - block_id: "B16"
+              name: "adversarial_security_testing"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: []
+              skills: ["adversarial_testing", "fuzzing", "security_testing"]
+              output: "Security test results and vulnerability report"
+              runner: "claude-code"
+              runner_config:
+                prompt_template: |
+                  Run security static analysis on the project source code. Auto-detect available tools:
+                  - If `semgrep` is installed: `semgrep --config auto . --severity ERROR`
+                  - If `bandit` is installed (Python): `bandit -r . -ll`
+                  - If neither is available: perform a manual code review for OWASP top-10 patterns
+                    (SQL injection, XSS, hardcoded secrets, command injection) and report findings.
+                  Report: tool used, issues found (severity + location), and pass/fail summary.
+              timeout: 3600
+              max_retries: 1
+
+            # Block B17: Performance testing
+            - block_id: "B17"
+              name: "performance_testing"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: []
+              skills: ["performance_testing", "load_testing"]
+              output: "Performance test results and baseline comparison"
+              runner: "claude-code"
+              runner_config:
+                prompt_template: |
+                  Run performance tests for this project. Auto-detect available tools:
+                  - If `k6` is installed: `k6 run tests/performance/load_test.js` (or smoke_test.js)
+                  - If `locust` is installed (Python): `locust --headless -f tests/performance/locustfile.py`
+                  - If neither is available: write and run a simple benchmark script using the project's
+                    native language (e.g., Python timeit, Go benchmark, JS perf_hooks).
+                  Report: tool used, requests/sec, p95 latency, and pass/fail against baselines.
+              timeout: 3600
+              max_retries: 1
+
+          execution_order: "(B15 + B16 + B17) [parallel]"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ rl_style_exploration_testing (QAAgent) - Complete"
+                - "✅ adversarial_security_testing (QAAgent) - Complete"
+                - "✅ performance_testing (QAAgent) - Complete"
+                - ""
+                - "📊 **Advanced Test Results:**"
+                - "- RL exploration: XX edge cases discovered"
+                - "- Security: XX vulnerabilities found (Critical: 0, High: 0)"
+                - "- Performance: Baseline met"
+                - "- P95 response time: XXms"
+              labels:
+                add: ["advanced-tests-complete"]
+
+          - type: "artifact"
+            artifact_type: "advanced_testing"
+            content:
+              blueprint_id: "bp_test_advanced.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "edge_case_report"
+                  name: "Edge Case Discovery Report"
+                  storage_location: "s3://artifacts/testing/edge_cases_[timestamp].json"
+                  format: "JSON"
+
+                - artifact_type: "security_report"
+                  name: "Security Test Report"
+                  storage_location: "s3://artifacts/security/security_test_[timestamp].json"
+                  format: "JSON"
+
+                - artifact_type: "performance_report"
+                  name: "Performance Test Report"
+                  storage_location: "s3://artifacts/performance/perf_test_[timestamp].json"
+                  format: "JSON"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "SecurityAuditAgent"
+            scope: "Security Audit"
+            checks:
+              - "No critical vulnerabilities": "passed"
+              - "No high vulnerabilities": "passed"
+              - "OWASP testing覆盖": "passed"
+            output: "SecurityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "PerformanceAuditAgent"
+            scope: "Performance Audit"
+            checks:
+              - "Performance baseline met": "passed"
+              - "Response time within SLA": "passed"
+              - "Throughput target met": "passed"
+            output: "PerformanceAuditReport Artifact"
+            status: "passed"
+
+          - agent: "QualityAuditAgent"
+            scope: "RL Testing Audit"
+            checks:
+              - "Edge cases documented": "passed"
+              - "State space explored": "passed"
+              - "Bug discovery有效": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            security_gate:
+              condition: "no_critical_vulnerabilities AND no_high_vulnerabilities"
+              status: "passed"
+
+            performance_gate:
+              condition: "performance_baseline_met = true"
+              status: "passed"
+
+            rl_gate:
+              condition: "edge_cases_discovered ≥ 5"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Advanced testing complete, proceed to results aggregation"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      advanced_testing:
+        - "RL-style exploration completed with ≥ 5 edge cases discovered"
+        - "Security testing completed with no critical/high vulnerabilities"
+        - "Performance testing completed with baselines met"
+        - "All advanced test reports generated"
+
+      artifacts:
+        - "Edge case discovery report"
+        - "Security test report"
+        - "Performance test report"
+
+    artifacts:
+      report_artifacts:
+        - artifact_type: "edge_case_report"
+          name: "Edge Case Discovery Report"
+          storage_location: "s3://artifacts/testing/edge_cases_[timestamp].json"
+          format: "JSON"
+          content:
+            rl_discovered_cases: 8
+            confirmed_bugs: 3
+            test_enhancements: 5
+
+        - artifact_type: "security_report"
+          name: "Security Test Report"
+          storage_location: "s3://artifacts/security/security_test_[timestamp].json"
+          format: "JSON"
+          content:
+            vulnerabilities_found: 2
+            critical: 0
+            high: 0
+            medium: 2
+            low: 0
+
+        - artifact_type: "performance_report"
+          name: "Performance Test Report"
+          storage_location: "s3://artifacts/performance/perf_test_[timestamp].json"
+          format: "JSON"
+          content:
+            baseline_met: true
+            response_time_p95: "within SLA"
+            throughput_target: "met"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Advanced Tests Complete"
+          labels:
+            add: ["advanced-tests-complete"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "rl_testing_time"
+        description: "RL exploration testing time"
+        unit: "hours"
+        target: "≤ 2h"
+
+      - metric_name: "security_testing_time"
+        description: "Security testing time"
+        unit: "hours"
+        target: "≤ 1h"
+
+      - metric_name: "performance_testing_time"
+        description: "Performance testing time"
+        unit: "hours"
+        target: "≤ 1h"
+
+    quality:
+      - metric_name: "edge_cases_discovered"
+        description: "Edge cases discovered by RL"
+        unit: "count"
+        target: "≥ 5"
+
+      - metric_name: "critical_vulnerabilities"
+        description: "Critical vulnerabilities"
+        unit: "count"
+        target: "0"
+        threshold: "hard_gate"
+
+      - metric_name: "high_vulnerabilities"
+        description: "High vulnerabilities"
+        unit: "count"
+        target: "0"
+        threshold: "hard_gate"
+
+      - metric_name: "performance_baseline_met"
+        description: "Performance baseline met"
+        unit: "boolean"
+        target: "true"
+        threshold: "hard_gate"
+
+    summary:
+      total_blocks: 3
+      phase: "advanced_testing"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "rl_timeout"
+        description: "RL exploration may timeout or exceed budget"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Set clear time/budget limits"
+
+      - risk_id: "R002"
+        risk_type: "security"
+        description: "Security testing may find critical vulnerabilities"
+        probability: "low"
+        impact: "critical"
+        mitigation: "Have remediation plan ready"
+
+      - risk_id: "R003"
+        risk_type: "performance"
+        description: "Performance tests may affect production"
+        probability: "very_low"
+        impact: "critical"
+        mitigation: "Use staging environment, limit load"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+
+    testing:
+      mandatory: true
+
+    rl_testing:
+      enabled: true
+      exploration_budget: "2h"
+      max_episodes: 100
+      reward_function: "bug_discovery"
+
+    security_testing:
+      enabled: true
+      tools: ["owasp_zap", "semgrep"]
+
+    performance_testing:
+      enabled: true
+      tools: ["k6", "jmeter"]
+      baseline_required: true
+
+    timeouts:
+      block_timeout: "2h"
+      blueprint_timeout: "4h"
+
+    retry:
+      max_retries: 1
+      retry_delay: "5m"
+
+# ================================================================
+# Advanced Testing Blueprint End
+# ================================================================

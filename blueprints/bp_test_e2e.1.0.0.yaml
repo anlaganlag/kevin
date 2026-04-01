@@ -1,0 +1,450 @@
+# E2E Testing Blueprint
+# Blueprint for end-to-end testing design and execution
+# Ralph Loop execution with QAAgent (QA Engineer) for E2E test development
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_e2e.1.0.0"
+    blueprint_name: "E2E Testing"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "QAAgent"
+    tags:
+      - "testing"
+      - "e2e"
+      - "ui_test"
+      - "scenario_test"
+    phase: "test_execution"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for E2E testing"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+
+      inline:
+        custom_rules:
+          - name: "e2e_scenario_coverage"
+            rule: "All critical user journeys must have E2E test coverage"
+            enforcement: "strict"
+
+          - name: "cross_browser_testing"
+            rule: "E2E tests must run on multiple browsers"
+            enforcement: "moderate"
+
+    constraints:
+      inline:
+        testing_constraints:
+          minimum_coverage: 85
+          critical_journey_coverage: 100
+
+        test_tools:
+          e2e_testing:
+            - "playwright"
+            - "cypress"
+
+        browser_coverage:
+          - "chrome"
+          - "firefox"
+          - "safari"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "EnvironmentReadyEvent | FrontendTestsCompleteEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "e2e"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Scenarios"
+          location: "docs/testing/test_scenarios.md"
+          required: true
+
+        - type: "User Journeys"
+          location: "docs/user_journeys.md"
+          required: true
+
+        - type: "UI Specifications"
+          location: "docs/ui/"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "QAAgent"
+      role: "QA Engineer"
+      selection_logic:
+        reasoning: |
+          1. Task requires E2E test design and execution → QAAgent core competency
+          2. UI/scenario testing expertise needed → QAAgent (QA Engineer)
+          → Decision: QAAgent as Primary Agent (QA Engineer)
+
+      responsibilities:
+        - "Design E2E test scenarios"
+        - "Implement E2E tests"
+        - "Execute E2E tests"
+        - "Generate screenshots and videos"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      QAAgent:
+        - "e2e_test_design"
+        - "e2e_test_execution"
+        - "ui_testing"
+        - "scenario_testing"
+        - "test_reporting"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "test_frameworks"
+        permissions:
+          - "playwright:execute"
+          - "cypress:execute"
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "test_commands"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm QAAgent as Primary (QA Engineer)"
+        output: "QAAgent assigned as Primary Agent for E2E testing"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_frameworks:
+                e2e: ["playwright", "cypress"]
+
+              testing_standards:
+                coverage_minimum: 85
+                critical_journey_coverage: 100
+
+          - source: "Test Scenarios"
+            content:
+              e2e_test_scenarios: "E2E test scenarios from test design"
+
+          - source: "User Journeys"
+            content:
+              critical_user_journeys: "Critical user paths"
+
+        output: "E2E test strategy formulated"
+
+      # Step 3: Execute E2E Testing
+      step_3:
+        action: "Primary Agent → Execute E2E Testing"
+        dependency_graph:
+          blocks:
+            # Block B8: Design E2E tests
+            - block_id: "B8"
+              name: "design_e2e_tests"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: []
+              skills: ["e2e_test_design", "scenario_testing"]
+              output: "E2E test scenarios"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_e2e_tests.md"
+              timeout: 2700
+              max_retries: 2
+
+            # Block B11: Generate synthetic test data
+            - block_id: "B11"
+              name: "generate_synthetic_test_data"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: ["B8"]
+              skills: ["synthetic_data_generation", "test_data_management"]
+              output: "Synthetic test datasets ready"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/generate_e2e_data.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B14 (partial): Execute E2E tests
+            - block_id: "B14"
+              name: "execute_e2e_tests"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: ["B8", "B11"]
+              skills: ["e2e_test_execution", "ui_testing"]
+              output: "E2E test results with screenshots"
+              runner: "claude-code"
+              runner_config:
+                prompt_template: |
+                  Run E2E tests for this project. Auto-detect the framework:
+                  - If playwright.config exists: `npx playwright test --reporter=list`
+                  - If cypress.config exists: `npx cypress run`
+                  - If selenium tests exist: detect and run accordingly
+                  - Python (pytest + selenium/playwright): `python3 -m pytest tests/e2e/ -v`
+                  Report pass/fail count, screenshots of failures if available.
+              timeout: 3600
+              max_retries: 1
+
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+
+          execution_order: "B8 → B11 → B14"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ design_e2e_tests (QAAgent) - Complete"
+                - "✅ generate_synthetic_test_data (QAAgent) - Complete"
+                - "✅ execute_e2e_tests (QAAgent) - Complete"
+                - ""
+                - "📊 **E2E Test Results:**"
+                - "- User journeys: XX/XX passed"
+                - "- Coverage: XX% (≥ 85% requirement)"
+                - "- Browsers: Chrome, Firefox, Safari"
+                - "- Screenshots captured"
+              labels:
+                add: ["e2e-tests-complete"]
+
+          - type: "artifact"
+            artifact_type: "e2e_testing"
+            content:
+              blueprint_id: "bp_test_e2e.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "e2e_tests"
+                  name: "E2E Test Suite"
+                  storage_location: "tests/e2e/"
+                  format: "Playwright / Cypress"
+
+                - artifact_type: "test_data"
+                  name: "E2E Test Data"
+                  storage_location: "tests/data/e2e/"
+                  format: "JSON / YAML"
+
+                - artifact_type: "screenshots"
+                  name: "E2E Test Screenshots"
+                  storage_location: "tests/e2e/screenshots/"
+                  format: "PNG"
+
+                - artifact_type: "videos"
+                  name: "E2E Test Videos"
+                  storage_location: "tests/e2e/videos/"
+                  format: "WEBM"
+
+                - artifact_type: "coverage_report"
+                  name: "E2E Test Coverage Report"
+                  storage_location: "coverage/e2e/"
+                  format: "JSON / HTML"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "E2E Test Audit"
+            checks:
+              - "E2E test覆盖率 ≥ 85%": "passed"
+              - "Tests通过": "passed"
+              - "Critical journeys覆盖": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "UxAuditAgent"
+            scope: "User Experience Audit"
+            checks:
+              - "Critical user journeys测试": "passed"
+              - "Cross-browser兼容": "passed"
+              - "UI flow正确": "passed"
+            output: "UxAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            coverage_gate:
+              condition: "e2e_coverage ≥ 85%"
+              status: "passed"
+
+            journey_gate:
+              condition: "critical_journeys_covered = 100%"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "E2E testing complete, proceed to advanced testing phase"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      e2e_testing:
+        - "E2E test coverage ≥ 85%"
+        - "Critical user journey coverage = 100%"
+        - "All E2E tests passing"
+        - "Tests run on multiple browsers"
+
+      artifacts:
+        - "E2E test suite"
+        - "Test screenshots and videos"
+        - "E2E test data"
+        - "Coverage report"
+
+    artifacts:
+      test_code_artifacts:
+        - artifact_type: "e2e_tests"
+          name: "E2E Test Suite"
+          storage_location: "tests/e2e/"
+          format: "Playwright / Cypress"
+          content:
+            framework: "playwright / cypress"
+            total_scenarios: 30
+            browser_coverage: "chrome, firefox, safari"
+            mobile_coverage: "ios, android"
+
+        - artifact_type: "test_data"
+          name: "E2E Test Data"
+          storage_location: "tests/data/e2e/"
+          format: "JSON / YAML"
+
+        - artifact_type: "screenshots"
+          name: "E2E Test Screenshots"
+          storage_location: "tests/e2e/screenshots/"
+          format: "PNG"
+
+        - artifact_type: "videos"
+          name: "E2E Test Videos"
+          storage_location: "tests/e2e/videos/"
+          format: "WEBM"
+
+        - artifact_type: "coverage_report"
+          name: "E2E Test Coverage Report"
+          storage_location: "coverage/e2e/"
+          format: "JSON / HTML"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → E2E Tests Complete"
+          labels:
+            add: ["e2e-tests-complete"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "e2e_test_design_time"
+        description: "E2E test design time"
+        unit: "hours"
+        target: "≤ 1.5h"
+
+      - metric_name: "e2e_test_execution_time"
+        description: "E2E test execution time"
+        unit: "hours"
+        target: "≤ 1h"
+
+    quality:
+      - metric_name: "e2e_test_coverage"
+        description: "E2E test coverage"
+        unit: "percentage"
+        target: "≥ 85%"
+        threshold: "hard_gate"
+
+      - metric_name: "e2e_test_pass_rate"
+        description: "E2E test pass rate"
+        unit: "percentage"
+        target: "≥ 90%"
+
+      - metric_name: "critical_journey_coverage"
+        description: "Critical user journey coverage"
+        unit: "percentage"
+        target: "100%"
+
+    summary:
+      total_blocks: 3
+      phase: "e2e_testing"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "flakiness"
+        description: "E2E tests may be flaky due to timing issues"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Use proper waits, avoid hard-coded delays"
+
+      - risk_id: "R002"
+        risk_type: "environment"
+        description: "E2E test environment may be unstable"
+        probability: "low"
+        impact: "high"
+        mitigation: "Use dedicated staging environment"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 85
+      critical_journey_coverage: 100
+
+    browser_coverage:
+      - "chrome"
+      - "firefox"
+      - "safari"
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "3h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# E2E Testing Blueprint End
+# ================================================================

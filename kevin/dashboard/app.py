@@ -40,7 +40,7 @@ def main() -> None:
     st.sidebar.title("Kevin Dashboard")
     page = st.sidebar.radio(
         "Navigation",
-        ["Run List", "Run Detail", "Blueprints"],
+        ["Run List", "Run Detail", "Blueprints", "Remote Runs"],
         label_visibility="collapsed",
     )
 
@@ -59,6 +59,9 @@ def main() -> None:
     elif page == "Blueprints":
         from kevin.dashboard.components.blueprint_view import render
         render(blueprints_dir)
+    elif page == "Remote Runs":
+        from kevin.dashboard.components.remote_runs import render
+        render()
 
 
 main()

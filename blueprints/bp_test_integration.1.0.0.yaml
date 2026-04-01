@@ -1,0 +1,457 @@
+# Integration Testing Blueprint
+# Blueprint for integration testing design and execution
+# Ralph Loop execution with PlanningAgent (Architecture Designer) and QAAgent
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_integration.1.0.0"
+    blueprint_name: "Integration Testing"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "PlanningAgent"
+    tags:
+      - "testing"
+      - "integration"
+      - "api_test"
+      - "contract_test"
+    phase: "test_execution"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for integration testing"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+        - ".agentic/rules/api/"
+
+      inline:
+        custom_rules:
+          - name: "integration_test_coverage"
+            rule: "All integration points must have test coverage ≥ 90%"
+            enforcement: "strict"
+
+          - name: "contract_testing"
+            rule: "API contracts must be validated with contract tests"
+            enforcement: "strict"
+
+    constraints:
+      inline:
+        testing_constraints:
+          minimum_coverage: 90
+          critical_integration_coverage: 100
+
+        test_tools:
+          integration_testing:
+            - "testcontainers"
+            - "docker-compose"
+            - "postman"
+            - "grpc_test"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "EnvironmentReadyEvent | UnitTestsCompleteEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "integration"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Scenarios"
+          location: "docs/testing/test_scenarios.md"
+          required: true
+
+        - type: "Architecture Design"
+          location: "docs/architecture/architecture_design.md"
+          required: true
+
+        - type: "API Specifications"
+          location: "docs/api/api_contract_openapi.yaml"
+          required: true
+
+        - type: "Service Implementation"
+          location: "src/services/"
+          required: true
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "PlanningAgent"
+      role: "Architecture Designer"
+      selection_logic:
+        reasoning: |
+          1. Task requires integration test design based on architecture → PlanningAgent core competency
+          2. Architecture expertise needed for integration points → PlanningAgent
+          3. QAAgent supports test execution
+          → Decision: PlanningAgent as Primary Agent (Architecture Designer)
+
+      responsibilities:
+        - "Analyze architecture for integration points"
+        - "Design integration test strategy"
+        - "Design contract testing approach"
+        - "Validate integration test coverage"
+
+    sub_agents:
+      - agent_type: "QAAgent"
+        role: "QA Engineer"
+        phase: "test_execution"
+        responsibilities:
+          - "Execute integration tests"
+          - "Generate test data"
+          - "Report test results"
+        coordination: "event_driven"
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      PlanningAgent:
+        - "architecture_analysis"
+        - "integration_test_design"
+        - "contract_testing"
+        - "test_environment_architecture"
+
+      QAAgent:
+        - "test_execution"
+        - "integration_testing"
+        - "synthetic_data_generation"
+        - "test_reporting"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "test_frameworks"
+        permissions:
+          - "testcontainers:execute"
+          - "docker-compose:execute"
+
+      - tool: "test_infrastructure"
+        permissions:
+          - "docker:manage"
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "test_commands"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm PlanningAgent as Primary (Architecture Designer)"
+        output: "PlanningAgent assigned as Primary Agent for integration testing"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_frameworks:
+                integration: ["testcontainers", "docker-compose"]
+
+              testing_standards:
+                coverage_minimum: 90
+                contract_testing: "required"
+
+          - source: "Architecture Design"
+            content:
+              integration_points: "Service integrations and dependencies"
+              api_contracts: "API specifications"
+
+          - source: "Test Scenarios"
+            content:
+              integration_test_scenarios: "Integration test scenarios from test design"
+
+        output: "Integration test strategy formulated"
+
+      # Step 3: Execute Integration Testing
+      step_3:
+        action: "Primary Agent → Execute Integration Testing"
+        dependency_graph:
+          blocks:
+            # Block B7: Design integration tests
+            - block_id: "B7"
+              name: "design_integration_tests"
+              assigned_to: "PlanningAgent (Architecture Designer)"
+              dependencies: []
+              skills: ["integration_test_design", "contract_testing"]
+              output: "Integration test specifications"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_integration_tests.md"
+              timeout: 2700
+              max_retries: 2
+
+            # Block B11: Generate synthetic test data
+            - block_id: "B11"
+              name: "generate_synthetic_test_data"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: ["B7"]
+              skills: ["synthetic_data_generation", "test_data_management"]
+              output: "Synthetic test datasets ready"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/generate_integration_data.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B13: Execute integration tests
+            - block_id: "B13"
+              name: "execute_integration_tests"
+              assigned_to: "QAAgent (QA Engineer)"
+              dependencies: ["B7", "B11"]
+              skills: ["test_execution", "integration_testing"]
+              output: "Integration test results"
+              runner: "claude-code"
+              runner_config:
+                prompt_template: |
+                  Run integration tests for this project. Auto-detect the stack:
+                  - If docker-compose.test.yml exists: `docker-compose -f docker-compose.test.yml up --abort-on-container-exit`
+                  - Python: `python3 -m pytest tests/integration/ -v`
+                  - Go: `go test ./tests/integration/... -v`
+                  - JS/TS: `npx jest --testPathPattern=integration` or `npx vitest run tests/integration`
+                  Report pass/fail count and any failures.
+              timeout: 3600
+              max_retries: 1
+
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+
+          execution_order: "B7 → B11 → B13"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ design_integration_tests (PlanningAgent) - Complete"
+                - "✅ generate_synthetic_test_data (QAAgent) - Complete"
+                - "✅ execute_integration_tests (QAAgent) - Complete"
+                - ""
+                - "📊 **Integration Test Results:**"
+                - "- API tests: XX/XX passed"
+                - "- Service integrations: XX/XX passed"
+                - "- Coverage: XX% (≥ 90% requirement)"
+                - "- Contract tests: All passed"
+              labels:
+                add: ["integration-tests-complete"]
+
+          - type: "artifact"
+            artifact_type: "integration_testing"
+            content:
+              blueprint_id: "bp_test_integration.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "integration_tests"
+                  name: "Integration Test Suite"
+                  storage_location: "tests/integration/"
+                  format: "Testcontainers"
+
+                - artifact_type: "contract_tests"
+                  name: "Contract Test Suite"
+                  storage_location: "tests/contract/"
+                  format: "Pact / OpenAPI"
+
+                - artifact_type: "test_data"
+                  name: "Integration Test Data"
+                  storage_location: "tests/data/integration/"
+                  format: "JSON / YAML"
+
+                - artifact_type: "coverage_report"
+                  name: "Integration Test Coverage Report"
+                  storage_location: "coverage/integration/"
+                  format: "JSON / HTML"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "Integration Test Audit"
+            checks:
+              - "Integration test覆盖率 ≥ 90%": "passed"
+              - "Tests通过": "passed"
+              - "Contract tests完整": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+          - agent: "ArchitectureAuditAgent"
+            scope: "Integration Architecture Audit"
+            checks:
+              - "All integration points测试": "passed"
+              - "Contract validation通过": "passed"
+              - "Service dependencies正确": "passed"
+            output: "ArchitectureAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            coverage_gate:
+              condition: "integration_coverage ≥ 90%"
+              status: "passed"
+
+            contract_gate:
+              condition: "all_contract_tests_passed"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Integration testing complete, proceed to next test phase"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      integration_testing:
+        - "Integration test coverage ≥ 90%"
+        - "Critical integration coverage = 100%"
+        - "All integration tests passing"
+        - "Contract tests validate all API contracts"
+
+      artifacts:
+        - "Integration test suite"
+        - "Contract test suite"
+        - "Integration test data"
+        - "Coverage report"
+
+    artifacts:
+      test_code_artifacts:
+        - artifact_type: "integration_tests"
+          name: "Integration Test Suite"
+          storage_location: "tests/integration/"
+          format: "Testcontainers"
+          content:
+            framework: "testcontainers"
+            total_tests: 40
+            test_isolation: "container"
+            data_setup: "automated"
+
+        - artifact_type: "contract_tests"
+          name: "Contract Test Suite"
+          storage_location: "tests/contract/"
+          format: "Pact / OpenAPI"
+
+        - artifact_type: "test_data"
+          name: "Integration Test Data"
+          storage_location: "tests/data/integration/"
+          format: "JSON / YAML"
+
+        - artifact_type: "coverage_report"
+          name: "Integration Test Coverage Report"
+          storage_location: "coverage/integration/"
+          format: "JSON / HTML"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Integration Tests Complete"
+          labels:
+            add: ["integration-tests-complete"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "integration_test_design_time"
+        description: "Integration test design time"
+        unit: "hours"
+        target: "≤ 1.5h"
+
+      - metric_name: "integration_test_execution_time"
+        description: "Integration test execution time"
+        unit: "hours"
+        target: "≤ 1h"
+
+    quality:
+      - metric_name: "integration_test_coverage"
+        description: "Integration test coverage"
+        unit: "percentage"
+        target: "≥ 90%"
+        threshold: "hard_gate"
+
+      - metric_name: "integration_test_pass_rate"
+        description: "Integration test pass rate"
+        unit: "percentage"
+        target: "≥ 95%"
+
+      - metric_name: "contract_test_pass_rate"
+        description: "Contract test pass rate"
+        unit: "percentage"
+        target: "100%"
+
+    summary:
+      total_blocks: 3
+      phase: "integration_testing"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "environment"
+        description: "Integration test environment may be unstable"
+        probability: "medium"
+        impact: "high"
+        mitigation: "Use containerized environments, proper cleanup"
+
+      - risk_id: "R002"
+        risk_type: "data"
+        description: "Test data may not cover all integration scenarios"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Generate comprehensive synthetic data"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "medium"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 90
+      critical_integration_coverage: 100
+      contract_testing: "required"
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "3h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# Integration Testing Blueprint End
+# ================================================================

@@ -71,11 +71,50 @@ Deno.serve(async (req) => {
     .update(update)
     .eq("run_id", run_id);
 
+  // Emit event to run_events log (best-effort, don't fail the callback)
+  await db.from("run_events").insert({
+    run_id,
+    event_type: "status_change",
+    payload: { from: run.status, to: status, error_code, error_message },
+  }).then(() => {}, () => {});
+
   if (updateErr) {
     return new Response(
       JSON.stringify({ error: "Failed to update run", detail: updateErr.message }),
       { status: 500 },
     );
+  }
+
+  // Webhook forwarding: if run reached a terminal state and has a client callback_url,
+  // forward the result to the client so they don't need to poll.
+  const TERMINAL = new Set(["completed", "failed", "dispatch_failed"]);
+  if (TERMINAL.has(status)) {
+    const { data: fullRun } = await db
+      .from("runs")
+      .select("callback_url, result, error_code, error_message")
+      .eq("run_id", run_id)
+      .single();
+
+    const clientUrl = fullRun?.callback_url;
+    // Only forward if the client provided their own callback_url (not the internal one)
+    const internalBase = Deno.env.get("CALLBACK_BASE_URL") ?? "";
+    if (clientUrl && !clientUrl.startsWith(internalBase)) {
+      try {
+        await fetch(clientUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            run_id,
+            status,
+            result: fullRun.result,
+            error_code: fullRun.error_code,
+            error_message: fullRun.error_message,
+          }),
+        });
+      } catch {
+        // Best-effort: don't fail the callback if webhook forwarding fails
+      }
+    }
   }
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });

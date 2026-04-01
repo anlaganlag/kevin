@@ -12,12 +12,7 @@ from streamlit_mermaid import st_mermaid
 from kevin.dashboard.data_loader import BlockInfo, load_block_log, load_run, list_runs
 
 
-STATUS_COLORS = {
-    "passed": "#28a745",
-    "failed": "#dc3545",
-    "running": "#007bff",
-    "pending": "#6c757d",
-}
+from kevin.dashboard.components.status_badge import STATUS_COLORS
 
 STATUS_MERMAID_CLASS = {
     "passed": "passed",

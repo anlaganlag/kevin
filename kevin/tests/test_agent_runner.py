@@ -1,4 +1,4 @@
-"""Tests for kevin.agent_runner — runners, validators, pre_check, heartbeat."""
+"""Tests for kevin.agent_runner — runners, validators, pre_check."""
 
 import pytest
 from pathlib import Path
@@ -6,10 +6,8 @@ from kevin.agent_runner import (
     _subprocess_run,
     _run_pre_check,
     run_block,
-    HEARTBEAT_TIMEOUT_SECONDS,
 )
 from kevin.blueprint_loader import Block, Validator
-import time
 
 
 def _make_block(**overrides) -> Block:
@@ -25,7 +23,7 @@ def _make_block(**overrides) -> Block:
 
 
 class TestSubprocessRun:
-    """Non-blocking subprocess with heartbeat."""
+    """Subprocess via _subprocess_run (no in-process timeout)."""
 
     def test_should_capture_stdout(self) -> None:
         r = _subprocess_run("t", ["echo", "hello"], cwd=Path("."), timeout=5)
@@ -41,24 +39,10 @@ class TestSubprocessRun:
         assert not r.success
         assert r.exit_code == 42
 
-    def test_should_kill_on_timeout(self) -> None:
-        start = time.monotonic()
-        r = _subprocess_run("t", ["sleep", "30"], cwd=Path("."), timeout=2)
-        elapsed = time.monotonic() - start
-        assert not r.success
-        assert elapsed < 5
-        assert "imeout" in r.stderr  # "Timeout" or "timeout"
-
-    def test_should_count_stderr_as_heartbeat(self) -> None:
-        """stderr output should reset the heartbeat timer."""
-        r = _subprocess_run(
-            "t",
-            ["bash", "-c", "for i in 1 2 3; do echo alive >&2; sleep 1; done; echo done"],
-            cwd=Path("."), timeout=10,
-        )
+    def test_should_complete_long_running_command(self) -> None:
+        r = _subprocess_run("t", ["bash", "-c", "sleep 1; echo done"], cwd=Path("."), timeout=2)
         assert r.success
         assert "done" in r.stdout
-        assert "alive" in r.stderr
 
     def test_should_handle_command_not_found(self) -> None:
         r = _subprocess_run("t", ["nonexistent_xyz_cmd"], cwd=Path("."), timeout=5)

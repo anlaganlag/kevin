@@ -2,23 +2,7 @@
 
 from typing import Any
 
-
-def format_duration(seconds: float | None) -> str:
-    """Format a duration in seconds to a human-readable string.
-
-    Args:
-        seconds: Duration in seconds, or None if not available.
-
-    Returns:
-        Formatted string like "32s", "2m13s", or "" for None.
-    """
-    if seconds is None:
-        return ""
-    total = int(seconds)
-    minutes, secs = divmod(total, 60)
-    if minutes:
-        return f"{minutes}m{secs}s"
-    return f"{secs}s"
+from kevin.state import format_duration
 
 
 def _status_icon(status: str) -> str:
@@ -76,13 +60,17 @@ def build_run_status_card(payload: dict[str, Any]) -> dict[str, Any]:
     }
     title = f"{title_icon} {title_map.get(status, 'Kevin Update')}"
 
-    # Block status lines with optional duration
+    # Block status lines with optional duration and live tail
     block_lines = []
     for block in blocks:
         icon = _status_icon(block.get("status", "pending"))
         duration_str = format_duration(block.get("duration_seconds"))
         suffix = f" ({duration_str})" if duration_str else ""
-        block_lines.append(f"{icon} **{block['block_id']}**: {block['name']}{suffix}")
+        line = f"{icon} **{block['block_id']}**: {block['name']}{suffix}"
+        tail = block.get("tail", "")
+        if tail and block.get("status") == "running":
+            line += f" — _{tail}_"
+        block_lines.append(line)
 
     blocks_text = "\n\n".join(block_lines) if block_lines else "No blocks"
 

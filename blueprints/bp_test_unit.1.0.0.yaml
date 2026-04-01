@@ -1,0 +1,417 @@
+# Unit Testing Blueprint
+# Blueprint for unit testing implementation and execution
+# Ralph Loop execution with BuilderAgent (Backend Expert) for unit test development
+
+blueprint:
+  # ================================================================
+  # 1. Basic Information
+  # ================================================================
+  metadata:
+    blueprint_id: "bp_test_unit.1.0.0"
+    blueprint_name: "Unit Testing"
+    blueprint_type: "test"
+    version: "1.0.0"
+    created_at: "2026-03-31T10:00:00Z"
+    created_by: "BuilderAgent"
+    tags:
+      - "testing"
+      - "unit_test"
+      - "backend"
+      - "tdd"
+    phase: "test_execution"
+
+  # ================================================================
+  # 2. Configuration Loading Declaration
+  # ================================================================
+  configuration:
+    profile:
+      name: "strict_profile"
+      description: "Strict profile for unit testing"
+
+    rules:
+      load_from:
+        - ".agentic/rules/naming/"
+        - ".agentic/rules/testing/"
+
+      inline:
+        custom_rules:
+          - name: "test_coverage_mandatory"
+            rule: "All code must have test coverage ≥ 95%"
+            enforcement: "strict"
+
+          - name: "tdd_approach"
+            rule: "Write tests before implementation when possible"
+            enforcement: "moderate"
+
+    constraints:
+      inline:
+        testing_constraints:
+          minimum_coverage: 95
+          critical_path_coverage: 100
+
+        test_tools:
+          unit_testing:
+            - "go test"
+            - "jest"
+            - "pytest"
+
+  # ================================================================
+  # 3. Input Definition
+  # ================================================================
+  input:
+    trigger:
+      event_type: "EnvironmentReadyEvent | IssueCreatedEvent"
+      event_source: "github"
+      event_schema:
+        issue_id: "23"
+        issue_type: "test"
+        labels: ["testing", "unit"]
+        priority: "high"
+
+    context:
+      source_documents:
+        - type: "Test Scenarios"
+          location: "docs/testing/test_scenarios.md"
+          required: true
+
+        - type: "Implementation Code"
+          location: "src/"
+          required: true
+
+        - type: "Existing Test Suite"
+          location: "tests/unit/"
+          required: false
+
+  # ================================================================
+  # 4. Execution Agent Configuration
+  # ================================================================
+  execution:
+    primary_agent:
+      agent_type: "BuilderAgent"
+      role: "Backend Expert"
+      selection_logic:
+        reasoning: |
+          1. Task requires unit test design and implementation → BuilderAgent core competency
+          2. Backend expertise needed for backend unit tests → BuilderAgent (Backend)
+          → Decision: BuilderAgent as Primary Agent (Backend Expert)
+
+      responsibilities:
+        - "Design unit test specifications"
+        - "Implement unit tests"
+        - "Execute unit tests"
+        - "Ensure coverage targets are met"
+
+    sub_agents: []
+
+  # ================================================================
+  # 5. Capabilities and Tools Configuration
+  # ================================================================
+  capabilities:
+    agent_skills:
+      BuilderAgent:
+        - "unit_test_design"
+        - "test_implementation"
+        - "mock_creation"
+        - "testability_review"
+        - "backend_testing"
+        - "api_testing"
+
+    tool_access:
+      - tool: "github_api"
+        permissions: ["issues:read/write", "pull_requests:read/write"]
+
+      - tool: "test_frameworks"
+        permissions:
+          - "go_test:execute"
+          - "jest:execute"
+          - "pytest:execute"
+
+      - tool: "bash_execution"
+        permissions: ["command_execution", "test_commands"]
+
+  # ================================================================
+  # 6. Task Execution Workflow (Ralph Loop)
+  # ================================================================
+  workflow:
+    ralph_loop:
+      # Step 1: Confirm Primary Agent
+      step_1:
+        action: "PlannerAgent → Confirm BuilderAgent as Primary (Backend Expert)"
+        output: "BuilderAgent assigned as Primary Agent for unit testing"
+
+      # Step 2: Load Rules and Context
+      step_2:
+        action: "Primary Agent → Load Rules + Context"
+        input_sources:
+          - source: "Infra Dependency Layer"
+            content:
+              testing_frameworks:
+                unit: ["go test", "jest", "pytest"]
+
+              testing_standards:
+                coverage_minimum: 95
+                test_documentation: "required"
+
+          - source: "Test Scenarios"
+            content:
+              unit_test_scenarios: "Unit test scenarios from test design"
+
+          - source: "Implementation Context"
+            content:
+              source_code_location: "src/"
+              existing_tests: "tests/unit/"
+
+        output: "Unit test strategy formulated"
+
+      # Step 3: Execute Unit Testing
+      step_3:
+        action: "Primary Agent → Execute Unit Testing"
+        dependency_graph:
+          blocks:
+            # Block B5: Design unit tests
+            - block_id: "B5"
+              name: "design_unit_tests"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: []
+              skills: ["unit_test_design", "backend_testing"]
+              output: "Unit test specifications and fixtures"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/design_unit_tests.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B9: Implement unit tests
+            - block_id: "B9"
+              name: "implement_unit_tests"
+              assigned_to: "BuilderAgent (Development Lead)"
+              dependencies: ["B5"]
+              skills: ["test_implementation", "mock_creation"]
+              output: "Unit tests implemented"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/implement_unit_tests.md"
+              timeout: 3600
+              max_retries: 2
+
+            # Block B11: Generate synthetic test data
+            - block_id: "B11"
+              name: "generate_synthetic_test_data"
+              assigned_to: "BuilderAgent (Backend Expert)"
+              dependencies: ["B5"]
+              skills: ["synthetic_data_generation", "test_data_management"]
+              output: "Synthetic test datasets ready"
+              runner: "claude-code"
+              runner_config:
+                prompt_file: "blueprints/prompts/test/generate_data.md"
+              timeout: 1800
+              max_retries: 2
+
+            # Block B12: Execute unit tests
+            - block_id: "B12"
+              name: "execute_unit_tests"
+              assigned_to: "BuilderAgent (Development Lead)"
+              dependencies: ["B9", "B11"]
+              skills: ["test_execution", "coverage_analysis"]
+              output: "Unit test results and coverage report"
+              runner: "claude-code"
+              runner_config:
+                prompt_template: |
+                  Detect the project's test framework and run all unit tests with coverage.
+                  - Python: `python3 -m pytest --tb=short -q`
+                  - Go: `go test ./... -cover`
+                  - JS/TS: `npx jest --coverage` or `npx vitest run --coverage`
+                  Report the pass/fail count and coverage percentage.
+              timeout: 1800
+              max_retries: 1
+
+              validators:
+                - type: "git_diff_check"
+                  min_files_changed: 1
+
+          execution_order: "B5 → (B9 + B11) → B12"
+
+      # Step 4: Confirm Completion and Deliver Output
+      step_4:
+        action: "Confirm Completion + Deliver Output"
+        deliverables:
+          - type: "github_issue_update"
+            content:
+              parent_issue: "GH-23"
+              status: "In Progress"
+              comments:
+                - "✅ design_unit_tests (BuilderAgent) - Complete"
+                - "✅ implement_unit_tests (BuilderAgent) - Complete"
+                - "✅ generate_synthetic_test_data (BuilderAgent) - Complete"
+                - "✅ execute_unit_tests (BuilderAgent) - Complete"
+                - ""
+                - "📊 **Unit Test Results:**"
+                - "- Tests: XX/XX passed"
+                - "- Coverage: XX% (≥ 95% requirement)"
+              labels:
+                add: ["unit-tests-complete"]
+
+          - type: "artifact"
+            artifact_type: "unit_testing"
+            content:
+              blueprint_id: "bp_test_unit.1.0.0"
+              status: "success"
+
+              output_artifacts:
+                - artifact_type: "unit_tests"
+                  name: "Unit Test Suite"
+                  storage_location: "tests/unit/"
+                  format: "Go / Jest / PyTest"
+
+                - artifact_type: "test_data"
+                  name: "Unit Test Data"
+                  storage_location: "tests/data/unit/"
+                  format: "JSON / YAML"
+
+                - artifact_type: "coverage_report"
+                  name: "Unit Test Coverage Report"
+                  storage_location: "coverage/unit/"
+                  format: "JSON / HTML"
+
+      # Step 5: Audit and Governance Decision
+      step_5:
+        action: "Audit Agents → Generate Audit Report"
+        phase_1_parallel_audits:
+          - agent: "QualityAuditAgent"
+            scope: "Unit Test Audit"
+            checks:
+              - "Unit test覆盖率 ≥ 95%": "passed"
+              - "Tests通过": "passed"
+              - "Testability良好": "passed"
+            output: "QualityAuditReport Artifact"
+            status: "passed"
+
+        phase_2_governance_decision:
+          gates_check:
+            coverage_gate:
+              condition: "unit_coverage ≥ 95%"
+              status: "passed"
+
+          final_decision:
+            status: "passed"
+            action: "Unit testing complete, proceed to next test phase"
+
+  # ================================================================
+  # 7. Completion Criteria and Output
+  # ================================================================
+  completion:
+    acceptance_criteria:
+      unit_testing:
+        - "Unit test coverage ≥ 95%"
+        - "Critical path coverage = 100%"
+        - "All unit tests passing"
+        - "Test fixtures and mocks implemented"
+
+      artifacts:
+        - "Unit test suite"
+        - "Test fixtures"
+        - "Mock implementations"
+        - "Coverage report"
+
+    artifacts:
+      test_code_artifacts:
+        - artifact_type: "unit_tests"
+          name: "Unit Test Suite"
+          storage_location: "tests/unit/"
+          format: "Go / Jest / PyTest"
+          content:
+            framework: "go test / jest / pytest"
+            total_tests: 80
+            test_fixtures: "included"
+            mocks: "included"
+
+        - artifact_type: "test_data"
+          name: "Unit Test Data"
+          storage_location: "tests/data/unit/"
+          format: "JSON / YAML"
+
+        - artifact_type: "coverage_report"
+          name: "Unit Test Coverage Report"
+          storage_location: "coverage/unit/"
+          format: "JSON / HTML"
+
+    status_updates:
+      github_issues:
+        parent_issue:
+          action: "Update progress"
+          status_transition: "In Progress → Unit Tests Complete"
+          labels:
+            add: ["unit-tests-complete"]
+
+  # ================================================================
+  # 8. Metrics
+  # ================================================================
+  metrics:
+    execution:
+      - metric_name: "unit_test_design_time"
+        description: "Unit test design time"
+        unit: "hours"
+        target: "≤ 1h"
+
+      - metric_name: "unit_test_implementation_time"
+        description: "Unit test implementation time"
+        unit: "hours"
+        target: "≤ 2h"
+
+    quality:
+      - metric_name: "unit_test_coverage"
+        description: "Unit test coverage"
+        unit: "percentage"
+        target: "≥ 95%"
+        threshold: "hard_gate"
+
+      - metric_name: "unit_test_pass_rate"
+        description: "Unit test pass rate"
+        unit: "percentage"
+        target: "100%"
+
+    summary:
+      total_blocks: 4
+      phase: "unit_testing"
+
+  # ================================================================
+  # 9. Risk Management
+  # ================================================================
+  risk_management:
+    risks:
+      - risk_id: "R001"
+        risk_type: "coverage"
+        description: "Unit test coverage may not reach 95%"
+        probability: "low"
+        impact: "medium"
+        mitigation: "Identify uncovered code, add targeted tests"
+
+      - risk_id: "R002"
+        risk_type: "test_quality"
+        description: "Tests may be brittle or poorly designed"
+        probability: "medium"
+        impact: "medium"
+        mitigation: "Review test design, use proper fixtures"
+
+  # ================================================================
+  # 10. Configuration and Parameters
+  # ================================================================
+  config:
+    risk_level: "low"
+
+    testing:
+      mandatory: true
+      coverage_minimum: 95
+      critical_path_coverage: 100
+
+    timeouts:
+      block_timeout: "1h"
+      blueprint_timeout: "4h"
+
+    retry:
+      max_retries: 2
+      retry_delay: "5m"
+
+# ================================================================
+# Unit Testing Blueprint End
+# ================================================================

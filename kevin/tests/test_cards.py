@@ -73,6 +73,21 @@ RUNNING_PAYLOAD = {
     ],
 }
 
+PROGRESS_PAYLOAD = {
+    "event": "block_progress",
+    "run_id": "run-005",
+    "issue_number": 6,
+    "issue_title": "My feature",
+    "repo": "org/repo",
+    "blueprint_id": "bp-001",
+    "status": "running",
+    "blocks": [
+        {"block_id": "B1", "name": "Analysis", "status": "passed", "duration_seconds": 10.0},
+        {"block_id": "B2", "name": "Implementation", "status": "running", "duration_seconds": None, "tail": "Writing test_auth.py..."},
+        {"block_id": "B3", "name": "Validation", "status": "pending", "duration_seconds": None},
+    ],
+}
+
 
 # ---------------------------------------------------------------------------
 # TestFormatDuration
@@ -84,7 +99,7 @@ class TestFormatDuration:
         assert format_duration(32.0) == "32s"
 
     def test_should_return_minutes_and_seconds_when_over_60(self) -> None:
-        assert format_duration(133.0) == "2m13s"
+        assert format_duration(133.0) == "2m 13s"
 
     def test_should_return_zero_seconds_when_zero(self) -> None:
         assert format_duration(0.0) == "0s"
@@ -103,7 +118,7 @@ class TestBuildRunStatusCardDuration:
         card = build_run_status_card(COMPLETED_PAYLOAD)
         blocks_text = card["body"][3]["text"]
         assert "(32s)" in blocks_text
-        assert "(2m13s)" in blocks_text
+        assert "(2m 13s)" in blocks_text
 
     def test_should_show_duration_only_for_completed_blocks_when_running(self) -> None:
         card = build_run_status_card(RUNNING_PAYLOAD)
@@ -258,3 +273,40 @@ class TestBuildTerminalCard:
         )
         title_block = card["body"][0]
         assert "Retry" in title_block["text"]
+
+
+# ---------------------------------------------------------------------------
+# TestProgressTailDisplay
+# ---------------------------------------------------------------------------
+
+
+class TestProgressTailDisplay:
+    def test_should_show_tail_on_running_block(self) -> None:
+        card = build_run_status_card(PROGRESS_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        assert "Writing test_auth.py..." in blocks_text
+
+    def test_should_show_tail_in_italic(self) -> None:
+        card = build_run_status_card(PROGRESS_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        # Tail is wrapped in underscores for Adaptive Card italic
+        assert "_Writing test_auth.py..._" in blocks_text
+
+    def test_should_not_show_tail_on_completed_block(self) -> None:
+        payload = {
+            **PROGRESS_PAYLOAD,
+            "blocks": [
+                {"block_id": "B1", "name": "Analysis", "status": "passed",
+                 "duration_seconds": 10.0, "tail": "should not appear"},
+            ],
+        }
+        card = build_run_status_card(payload)
+        blocks_text = card["body"][3]["text"]
+        assert "should not appear" not in blocks_text
+
+    def test_should_not_show_tail_when_absent(self) -> None:
+        card = build_run_status_card(RUNNING_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        lines = blocks_text.split("\n\n")
+        b2_line = next(line for line in lines if "B2" in line)
+        assert "—" not in b2_line

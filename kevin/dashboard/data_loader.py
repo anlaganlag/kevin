@@ -183,6 +183,8 @@ def list_blueprints(blueprints_dir: Path) -> list[BlueprintInfo]:
             continue
         try:
             blueprint = _load_blueprint_file(yaml_file)
+            if not blueprint.blueprint_id:
+                continue  # skip non-standard blueprints (e.g. orchestrator)
             infos.append(_blueprint_to_info(blueprint))
         except Exception:  # noqa: BLE001 — fault-tolerant by design
             continue

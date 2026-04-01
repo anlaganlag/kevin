@@ -1,8 +1,9 @@
 // supabase/functions/status/index.ts
 
 import { validateApiKey } from "../_shared/auth.ts";
-import { getSupabase } from "../_shared/supabase.ts";
 import { corsOptions, json } from "../_shared/cors.ts";
+import { checkRateLimit } from "../_shared/rate_limit.ts";
+import { getSupabase } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return corsOptions();
@@ -16,6 +17,14 @@ Deno.serve(async (req) => {
       error: "Unauthorized",
       hint: "Add header: Authorization: Bearer <your-api-key>",
     }, 401);
+  }
+
+  const rl = checkRateLimit(req);
+  if (rl.limited) {
+    return json(
+      { error: "Rate limit exceeded", hint: "Max 10 requests per minute" },
+      429,
+    );
   }
 
   // Extract run_id from URL path: /status/{run_id}
@@ -64,7 +73,19 @@ Deno.serve(async (req) => {
 
   // Add elapsed time hint for long-running tasks
   const elapsed = Math.round((Date.now() - new Date(run.created_at).getTime()) / 1000);
-  const response = { ...run, elapsed_seconds: elapsed };
+
+  // Fetch event timeline if ?events=true
+  let events: unknown[] | undefined;
+  if (url.searchParams.get("events") === "true") {
+    const { data: evts } = await db
+      .from("run_events")
+      .select("event_id, event_type, payload, created_at")
+      .eq("run_id", runId)
+      .order("created_at", { ascending: true });
+    events = evts ?? [];
+  }
+
+  const response = { ...run, elapsed_seconds: elapsed, ...(events ? { events } : {}) };
 
   return json(response);
 });

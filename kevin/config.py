@@ -18,7 +18,24 @@ DEFAULT_INTENT_MAP: dict[str, str] = {
     "frontend": "bp_frontend_feature_ui_design.1.0.0",
     "deployment": "bp_deployment_monitoring_automation.1.0.0",
     "architecture": "bp_architecture_blueprint_design.1.0.0",
+    "function": "bp_function_implementation_fip_blueprint.1.0.0",
+    "testing": "bp_test_feature_comprehensive_testing.1.0.0",
+    "unit-test": "bp_test_unit.1.0.0",
+    "integration-test": "bp_test_integration.1.0.0",
+    "e2e-test": "bp_test_e2e.1.0.0",
+    "frontend-test": "bp_test_frontend.1.0.0",
+    "advanced-test": "bp_test_advanced.1.0.0",
+    "test-env-setup": "bp_test_environment_setup.1.0.0",
+    "test-strategy": "bp_test_strategy_design.1.0.0",
+    "test-report": "bp_test_report_signoff.1.0.0",
+    "planning": "bp_planning_agent.1.0.0",
 }
+
+# Orchestrator blueprints — use Claude SDK directly, not the executor pipeline.
+# _execute_agentic() rejects these with a clear error message.
+NON_EXECUTABLE_BLUEPRINTS: frozenset[str] = frozenset({
+    "bp_planning_agent.1.0.0",
+})
 
 # Aliases: common GitHub labels → Kevin task-type labels.
 # These are checked AFTER exact intent_map match fails.
@@ -28,7 +45,7 @@ DEFAULT_LABEL_ALIASES: dict[str, str] = {
     "feature": "coding-task",
     "documentation": "coding-task",
     "refactor": "coding-task",
-    "testing": "coding-task",
+    # "testing" removed — now has a dedicated blueprint in DEFAULT_INTENT_MAP
 }
 
 # Label that triggers Kevin
@@ -84,6 +101,12 @@ def build_config(
     kevin_root = Path(__file__).resolve().parent.parent
     blueprints_dir = kevin_root / "blueprints"
     target = Path(target_repo) if target_repo else Path.cwd()
+
+    if not target.is_dir():
+        raise FileNotFoundError(
+            f"target_repo '{target}' does not exist or is not a directory"
+        )
+
     state_dir = target / ".kevin" / "runs"
 
     owner, name = "", ""
