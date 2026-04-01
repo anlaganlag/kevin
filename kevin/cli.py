@@ -759,6 +759,10 @@ def _execute_agentic(
     run.status = "running"
     state_mgr.save_run(run)
 
+    # Execute + validate in same cwd (critical for worktree isolation)
+    exec_cwd = config.target_repo
+    validator_results: list[dict] = []
+
     if config.dry_run:
         result = WorkerResult(
             success=True,
@@ -770,8 +774,16 @@ def _execute_agentic(
             _log(config, f"  Worktree: {wt_path}")
             task = dc_replace(task, workspace=dc_replace(task.workspace, cwd=wt_path))
             result = worker.execute(task)
+            # Run validators inside worktree before cleanup
+            if result.success:
+                try:
+                    validator_results = run_post_validators(semantic, variables, wt_path)
+                except Exception as exc:
+                    _log(config, f"  Validator execution error: {exc}")
+                    validator_results = [{"name": "validator_error", "passed": False, "error": str(exc)}]
     else:
         result = worker.execute(task)
+        exec_cwd = config.target_repo
 
     # 6. Save logs
     state_mgr.save_executor_logs(
@@ -785,15 +797,15 @@ def _execute_agentic(
                  f"duration={result.duration_seconds:.0f}s, "
                  f"stdout={len(result.stdout)} chars")
 
-    # 7. Post-execution validators (only if executor succeeded)
+    # 7. Post-execution validators (skip if already ran in worktree)
     all_passed = result.success
-    validator_results: list[dict] = []
-    if result.success and not config.dry_run:
+    if result.success and not config.dry_run and not use_worktree:
         try:
-            validator_results = run_post_validators(semantic, variables, config.target_repo)
+            validator_results = run_post_validators(semantic, variables, exec_cwd)
         except Exception as exc:
             _log(config, f"  Validator execution error: {exc}")
             validator_results = [{"name": "validator_error", "passed": False, "error": str(exc)}]
+    if validator_results:
         failed_validators = [v for v in validator_results if not v.get("passed")]
         if failed_validators:
             all_passed = False
@@ -930,8 +942,30 @@ async def _execute_blocks_async(
     """Execute blocks grouped into waves with parallel dispatch."""
     from kevin.scheduler import compute_waves
 
+    import time as _time
+
     waves = compute_waves(blocks, variables)
     all_passed = True
+
+    def _make_progress_callback(
+        block_id: str, *, throttle_seconds: float = 10.0,
+    ):
+        """Build a throttled progress callback that pushes to Teams."""
+        state = {"last_push": 0.0, "tail": ""}
+
+        def _on_progress(line: str) -> None:
+            state["tail"] = line
+            now = _time.monotonic()
+            if now - state["last_push"] < throttle_seconds:
+                return
+            state["last_push"] = now
+            if not config.dry_run:
+                _notify_teams(
+                    config, run, blocks, issue, "running",
+                    progress_tail={block_id: line[:120]},
+                )
+
+        return _on_progress
 
     async def _run_single(block: Block) -> tuple[Block, bool]:
         """Run a single block with retry logic."""
@@ -944,6 +978,8 @@ async def _execute_blocks_async(
         if not config.dry_run:
             _notify_teams(config, run, blocks, issue, "running")
 
+        progress_cb = _make_progress_callback(block.block_id)
+
         result: BlockResult | None = None
         for attempt in range(block.max_retries + 1):
             if attempt > 0:
@@ -954,6 +990,7 @@ async def _execute_blocks_async(
                 dry_run=config.dry_run,
                 is_retry=attempt > 0,
                 previous_result=result if attempt > 0 else None,
+                on_progress=progress_cb,
             )
 
             # Save logs
