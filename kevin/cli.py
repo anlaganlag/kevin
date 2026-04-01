@@ -251,6 +251,30 @@ def _cmd_run_executor(args: argparse.Namespace) -> int:
         if k not in variables:
             variables[k] = str(v)
 
+    # Opportunistic issue fetch: enrich context when issue_number is available
+    issue_num = int(variables.get("issue_number", "0"))
+    if issue_num > 0 and repo_full:
+        try:
+            issue = fetch_issue(repo_full, issue_num)
+            variables["issue_title"] = issue.title
+            variables["issue_body"] = issue.body
+            variables["issue_labels"] = ",".join(issue.labels)
+            _log(cfg, f"  Enriched context from issue #{issue_num}")
+        except Exception:
+            _log(cfg, f"  Issue #{issue_num} fetch failed, using instruction as fallback")
+
+    # Opportunistic learning context injection
+    try:
+        from kevin.learning import advise
+        from kevin.learning.advisor import format_learning_context
+        lc_ctx = advise(cfg.knowledge_db, blueprint_id, variables["issue_title"], variables["issue_body"])
+        lc = format_learning_context(lc_ctx)
+        if lc:
+            variables["learning_context"] = lc
+            _log(cfg, f"  Learning: injected {len(lc)} chars of historical context")
+    except Exception:
+        _log(cfg, "  Learning: advisor unavailable (silent degradation)")
+
     # Create local run state
     state_mgr = StateManager(cfg.state_dir)
     run = state_mgr.create_run(

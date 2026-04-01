@@ -467,3 +467,176 @@ class TestExecutorModeAgenticIntegration:
         assert result == 0
         mock_exec_blocks.assert_called_once()
         mock_exec_agentic.assert_not_called()
+
+
+class TestExecutorOpportunisticEnrich:
+    """Test opportunistic issue fetch and learning context in executor mode."""
+
+    def _make_state_mgr(self):
+        mock_run = MagicMock()
+        mock_run.run_id = "enrich-test"
+        mock_run.blocks = {}
+        mock_state_mgr = MagicMock()
+        mock_state_mgr.create_run.return_value = mock_run
+        mock_state_mgr.load_run.return_value = mock_run
+        return mock_state_mgr
+
+    @patch("kevin.cli._execute_agentic")
+    @patch("kevin.cli.load")
+    @patch("kevin.cli.find_blueprint")
+    @patch("kevin.cli.StateManager")
+    @patch("kevin.cli.fetch_issue")
+    def test_should_enrich_variables_when_issue_fetch_succeeds(
+        self,
+        mock_fetch: MagicMock,
+        mock_state_mgr_cls: MagicMock,
+        mock_find: MagicMock,
+        mock_load: MagicMock,
+        mock_exec: MagicMock,
+        tmp_path,
+    ) -> None:
+        """should override issue_title/body/labels from fetched issue."""
+        from kevin.github_client import Issue
+
+        mock_fetch.return_value = Issue(
+            number=99,
+            title="Real title from GH",
+            body="Real body from GH",
+            labels=["bug", "kevin"],
+        )
+        mock_find.return_value = tmp_path / "bp.yaml"
+        mock_bp = MagicMock()
+        mock_bp.blueprint_id = "bp_test"
+        mock_bp.blocks = []
+        mock_load.return_value = mock_bp
+        mock_exec.return_value = 0
+        mock_state_mgr_cls.return_value = self._make_state_mgr()
+
+        ctx = json.dumps({"issue_number": 99, "repo": "owner/app"})
+
+        with patch("kevin.callback.CallbackClient.report_status"), \
+             patch("kevin.learning.advise", return_value=MagicMock()), \
+             patch("kevin.learning.advisor.format_learning_context", return_value=""):
+            main([
+                "run",
+                "--run-id", "enrich-001",
+                "--blueprint", "bp_test",
+                "--instruction", "Fix the bug",
+                "--context", ctx,
+            ])
+
+        # Verify _execute_agentic received enriched variables
+        call_args = mock_exec.call_args
+        variables = call_args[1].get("variables") or call_args[0][4]
+        assert variables["issue_title"] == "Real title from GH"
+        assert variables["issue_body"] == "Real body from GH"
+        assert variables["issue_labels"] == "bug,kevin"
+
+    @patch("kevin.cli._execute_agentic")
+    @patch("kevin.cli.load")
+    @patch("kevin.cli.find_blueprint")
+    @patch("kevin.cli.StateManager")
+    @patch("kevin.cli.fetch_issue", side_effect=RuntimeError("gh auth failed"))
+    def test_should_fallback_to_instruction_when_issue_fetch_fails(
+        self,
+        mock_fetch: MagicMock,
+        mock_state_mgr_cls: MagicMock,
+        mock_find: MagicMock,
+        mock_load: MagicMock,
+        mock_exec: MagicMock,
+        tmp_path,
+    ) -> None:
+        """should keep instruction as issue_title/body when fetch_issue raises."""
+        mock_find.return_value = tmp_path / "bp.yaml"
+        mock_bp = MagicMock()
+        mock_bp.blueprint_id = "bp_test"
+        mock_bp.blocks = []
+        mock_load.return_value = mock_bp
+        mock_exec.return_value = 0
+        mock_state_mgr_cls.return_value = self._make_state_mgr()
+
+        ctx = json.dumps({"issue_number": 99, "repo": "owner/app"})
+
+        with patch("kevin.callback.CallbackClient.report_status"):
+            main([
+                "run",
+                "--run-id", "enrich-002",
+                "--blueprint", "bp_test",
+                "--instruction", "Fix the bug",
+                "--context", ctx,
+            ])
+
+        call_args = mock_exec.call_args
+        variables = call_args[1].get("variables") or call_args[0][4]
+        assert variables["issue_title"] == "Fix the bug"
+        assert variables["issue_body"] == "Fix the bug"
+        assert variables["issue_labels"] == ""
+
+    @patch("kevin.cli._execute_agentic")
+    @patch("kevin.cli.load")
+    @patch("kevin.cli.find_blueprint")
+    @patch("kevin.cli.StateManager")
+    def test_should_inject_learning_context_when_available(
+        self,
+        mock_state_mgr_cls: MagicMock,
+        mock_find: MagicMock,
+        mock_load: MagicMock,
+        mock_exec: MagicMock,
+        tmp_path,
+    ) -> None:
+        """should populate learning_context from advisor when knowledge DB is available."""
+        mock_find.return_value = tmp_path / "bp.yaml"
+        mock_bp = MagicMock()
+        mock_bp.blueprint_id = "bp_test"
+        mock_bp.blocks = []
+        mock_load.return_value = mock_bp
+        mock_exec.return_value = 0
+        mock_state_mgr_cls.return_value = self._make_state_mgr()
+
+        with patch("kevin.callback.CallbackClient.report_status"), \
+             patch("kevin.learning.advise") as mock_advise, \
+             patch("kevin.learning.advisor.format_learning_context", return_value="historical insight here"):
+            main([
+                "run",
+                "--run-id", "learn-001",
+                "--blueprint", "bp_test",
+                "--instruction", "Add feature",
+            ])
+
+        call_args = mock_exec.call_args
+        variables = call_args[1].get("variables") or call_args[0][4]
+        assert variables["learning_context"] == "historical insight here"
+
+    @patch("kevin.cli._execute_agentic")
+    @patch("kevin.cli.load")
+    @patch("kevin.cli.find_blueprint")
+    @patch("kevin.cli.StateManager")
+    def test_should_degrade_silently_when_learning_fails(
+        self,
+        mock_state_mgr_cls: MagicMock,
+        mock_find: MagicMock,
+        mock_load: MagicMock,
+        mock_exec: MagicMock,
+        tmp_path,
+    ) -> None:
+        """should keep empty learning_context when advisor raises."""
+        mock_find.return_value = tmp_path / "bp.yaml"
+        mock_bp = MagicMock()
+        mock_bp.blueprint_id = "bp_test"
+        mock_bp.blocks = []
+        mock_load.return_value = mock_bp
+        mock_exec.return_value = 0
+        mock_state_mgr_cls.return_value = self._make_state_mgr()
+
+        with patch("kevin.callback.CallbackClient.report_status"), \
+             patch("kevin.learning.advise", side_effect=ImportError("no sqlite")):
+            main([
+                "run",
+                "--run-id", "learn-002",
+                "--blueprint", "bp_test",
+                "--instruction", "Add feature",
+            ])
+
+        call_args = mock_exec.call_args
+        variables = call_args[1].get("variables") or call_args[0][4]
+        assert variables["learning_context"] == ""
