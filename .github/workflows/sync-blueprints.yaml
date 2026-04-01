@@ -1,0 +1,50 @@
+name: Sync Blueprint Whitelist
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - kevin/config.py
+      - blueprints/**
+      - scripts/sync_blueprints_ts.py
+
+jobs:
+  sync-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kevin
+        run: pip install -e .
+
+      - name: Sync blueprints.ts from config.py
+        run: python scripts/sync_blueprints_ts.py
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet supabase/functions/_shared/blueprints.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit updated whitelist
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add supabase/functions/_shared/blueprints.ts
+          git commit -m "chore: auto-sync blueprint whitelist from config.py"
+          git push
+
+      - name: Deploy Edge Functions
+        if: steps.diff.outputs.changed == 'true'
+        run: npx supabase functions deploy execute callback --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
