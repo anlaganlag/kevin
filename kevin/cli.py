@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -942,8 +943,6 @@ async def _execute_blocks_async(
     """Execute blocks grouped into waves with parallel dispatch."""
     from kevin.scheduler import compute_waves
 
-    import time as _time
-
     waves = compute_waves(blocks, variables)
     all_passed = True
 
@@ -951,14 +950,14 @@ async def _execute_blocks_async(
         block_id: str, *, throttle_seconds: float = 10.0,
     ):
         """Build a throttled progress callback that pushes to Teams."""
-        state = {"last_push": 0.0, "tail": ""}
+        last_push = 0.0
 
         def _on_progress(line: str) -> None:
-            state["tail"] = line
-            now = _time.monotonic()
-            if now - state["last_push"] < throttle_seconds:
+            nonlocal last_push
+            now = time.monotonic()
+            if now - last_push < throttle_seconds:
                 return
-            state["last_push"] = now
+            last_push = now
             if not config.dry_run:
                 _notify_teams(
                     config, run, blocks, issue, "running",
@@ -1243,13 +1242,15 @@ def _notify_teams(
     status: str,
     *,
     error: str = "",
+    progress_tail: dict[str, str] | None = None,
 ) -> None:
     """Push run status to Teams Bot (if TEAMS_BOT_URL is set).
 
-    Called at three points:
+    Called at four points:
       1. Before each block starts (status="running") — real-time progress
-      2. After all blocks pass (status="completed")
-      3. On failure (status="failed", error=<summary>)
+      2. During block execution via throttled callback (status="running", progress_tail set)
+      3. After all blocks pass (status="completed")
+      4. On failure (status="failed", error=<summary>)
     """
     import json
     import os
@@ -1267,15 +1268,24 @@ def _notify_teams(
             started = datetime.fromisoformat(bs.started_at)
             completed = datetime.fromisoformat(bs.completed_at)
             duration = (completed - started).total_seconds()
-        block_list.append({
+        entry: dict[str, object] = {
             "block_id": b.block_id,
             "name": b.name,
             "status": bs.status if bs else "pending",
             "duration_seconds": duration,
-        })
+        }
+        # Attach live output tail for running blocks
+        if progress_tail and b.block_id in progress_tail:
+            entry["tail"] = progress_tail[b.block_id]
+        block_list.append(entry)
 
     # Map status to event type
-    event = "block_update" if status == "running" else f"run_{status}"
+    if status == "running" and progress_tail:
+        event = "block_progress"
+    elif status == "running":
+        event = "block_update"
+    else:
+        event = f"run_{status}"
 
     # Build GitHub Actions logs URL if available
     github_run_id = os.getenv("GITHUB_RUN_ID", "")
@@ -1314,7 +1324,16 @@ def _notify_teams(
         data = json.dumps(payload).encode()
         headers = _teams_headers(data)
         req = Request(f"{teams_url}/api/notify", data=data, headers=headers)
-        urlopen(req, timeout=10)
+
+        if event == "block_progress":
+            # Fire-and-forget for progress events — never block the stdout reader
+            import threading
+            threading.Thread(
+                target=lambda: urlopen(req, timeout=10),
+                daemon=True,
+            ).start()
+        else:
+            urlopen(req, timeout=10)
     except Exception as e:
         _log(config, f"  [WARN] Teams notify failed: {e}")
 

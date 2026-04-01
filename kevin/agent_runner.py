@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 
 from kevin.blueprint_loader import Block, Validator
 from kevin.prompt_template import render
-from kevin.subprocess_utils import run_with_heartbeat
+from kevin.subprocess_utils import ProgressCallback, run_with_heartbeat
 from kevin.utils import resolve_cwd
 
 
@@ -51,6 +51,7 @@ def run_block(
     dry_run: bool = False,
     is_retry: bool = False,
     previous_result: BlockResult | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> BlockResult:
     """Execute a block using the appropriate runner, then validate.
 
@@ -60,6 +61,7 @@ def run_block(
         previous_result: Result from the previous failed attempt. When provided
                          and runner is claude_cli, error context is appended to
                          the prompt so the agent can adapt its strategy.
+        on_progress: Optional callback invoked with each stdout line in real time.
     """
     runner = block.runner or "claude_cli"
 
@@ -89,9 +91,9 @@ def run_block(
     if previous_result is not None and runner == "claude_cli":
         retry_vars = {**variables}
         retry_vars["_previous_error"] = _build_retry_context(previous_result)
-        result = runner_fn(block, retry_vars)
+        result = runner_fn(block, retry_vars, on_progress=on_progress)
     else:
-        result = runner_fn(block, variables)
+        result = runner_fn(block, variables, on_progress=on_progress)
 
     # Run validators if block execution succeeded
     if result.success and block.validators:
@@ -124,7 +126,12 @@ def _build_retry_context(previous_result: BlockResult) -> str:
     return "\n".join(parts)
 
 
-def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
+def _run_claude_cli(
+    block: Block,
+    variables: dict[str, str],
+    *,
+    on_progress: ProgressCallback | None = None,
+) -> BlockResult:
     """Execute a block via `claude -p <prompt> --cwd <dir>`.
 
     Supports runner_config.context_filter: a list of gitignore-style patterns
@@ -170,7 +177,10 @@ def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
             pass  # cwd doesn't exist or not writable — skip context filter
 
     try:
-        result = _subprocess_run(block.block_id, cmd, cwd=cwd, timeout=block.timeout)
+        result = _subprocess_run(
+            block.block_id, cmd, cwd=cwd, timeout=block.timeout,
+            on_progress=on_progress,
+        )
         result.prompt = prompt
         return result
     finally:
@@ -178,7 +188,12 @@ def _run_claude_cli(block: Block, variables: dict[str, str]) -> BlockResult:
             claudeignore_path.unlink()
 
 
-def _run_shell(block: Block, variables: dict[str, str]) -> BlockResult:
+def _run_shell(
+    block: Block,
+    variables: dict[str, str],
+    *,
+    on_progress: ProgressCallback | None = None,
+) -> BlockResult:
     """Execute a shell command from runner_config.command."""
     command = block.runner_config.get("command", "")
     if not command:
@@ -196,10 +211,15 @@ def _run_shell(block: Block, variables: dict[str, str]) -> BlockResult:
         ["bash", "-c", command],
         cwd=cwd,
         timeout=block.timeout,
+        on_progress=on_progress,
     )
 
 
-def _run_api_call(block: Block, variables: dict[str, str]) -> BlockResult:
+def _run_api_call(
+    block: Block,
+    variables: dict[str, str],
+    **_kwargs: object,
+) -> BlockResult:
     """Execute an HTTP API call (no extra deps — uses urllib)."""
     config = block.runner_config
     method = config.get("method", "GET")
@@ -281,14 +301,40 @@ def _run_pre_check(block: Block, variables: dict[str, str]) -> BlockResult | Non
 # Validator implementations
 # ---------------------------------------------------------------------------
 
+def _has_unresolved_variables(params: dict[str, Any]) -> str | None:
+    """Return the first unresolved {{variable}} found in validator params, or None."""
+    import re
+    for value in params.values():
+        if isinstance(value, str):
+            m = re.search(r"\{\{(\w+)\}\}", value)
+            if m:
+                return m.group(1)
+    return None
+
+
 def _run_validators(
     validators: list[Validator],
     variables: dict[str, str],
     cwd: Path,
 ) -> list[dict[str, Any]]:
-    """Run all validators and return results."""
+    """Run all validators and return results.
+
+    Validators with unresolved {{variables}} are skipped (common in executor
+    mode where GitHub Issue context is unavailable).
+    """
     results: list[dict[str, Any]] = []
     for v in validators:
+        # Skip validators with unresolved template variables
+        unresolved = _has_unresolved_variables(v.params)
+        if unresolved:
+            results.append({
+                "type": v.type,
+                "passed": True,
+                "skipped": True,
+                "reason": f"unresolved variable: {{{{{unresolved}}}}}",
+            })
+            continue
+
         fn = VALIDATORS.get(v.type)
         if fn is None:
             results.append({"type": v.type, "passed": False, "error": f"Unknown validator: {v.type}"})
@@ -300,19 +346,24 @@ def _run_validators(
 def _validate_git_diff(v: Validator, variables: dict[str, str], cwd: Path) -> dict[str, Any]:
     """Check that the current branch has file changes vs main.
 
-    Checks three sources (any non-zero count passes):
+    Checks four sources (any non-zero count passes):
     1. Uncommitted changes (git status --porcelain)
-    2. Committed changes vs main (git diff main...HEAD --name-only)
-    3. Committed changes vs HEAD~ (git diff HEAD~1 --name-only) for single-commit branches
+    2. New files in .kevin/ output directory
+    3. Committed changes vs main (git diff main...HEAD --name-only)
+    4. Committed changes vs HEAD~ (git diff HEAD~1 --name-only) for single-commit branches
     """
     min_files = v.params.get("min_files_changed", 1)
 
-    # Check 1: uncommitted changes
+    # Check 1: uncommitted changes (includes untracked files)
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         capture_output=True, text=True, cwd=str(cwd), timeout=10,
     )
     uncommitted = len([l for l in status.stdout.strip().split("\n") if l.strip()])
+
+    # Check 1b: output files in .kevin/ (gitignored but still valid output)
+    kevin_outputs = list((cwd / ".kevin").rglob("*")) if (cwd / ".kevin").exists() else []
+    kevin_output_count = len([f for f in kevin_outputs if f.is_file() and f.stat().st_size > 0])
 
     # Check 2: committed diff vs main
     diff_vs_main = subprocess.run(
@@ -328,7 +379,7 @@ def _validate_git_diff(v: Validator, variables: dict[str, str], cwd: Path) -> di
     )
     committed_vs_prev = len([l for l in diff_vs_prev.stdout.strip().split("\n") if l.strip()])
 
-    changed_files = max(uncommitted, committed_vs_main, committed_vs_prev)
+    changed_files = max(uncommitted, committed_vs_main, committed_vs_prev, kevin_output_count)
     passed = changed_files >= min_files
     return {
         "type": "git_diff_check",
@@ -336,6 +387,7 @@ def _validate_git_diff(v: Validator, variables: dict[str, str], cwd: Path) -> di
         "files_changed": changed_files,
         "uncommitted": uncommitted,
         "committed_vs_main": committed_vs_main,
+        "kevin_outputs": kevin_output_count,
         "expected_min": min_files,
     }
 
@@ -346,6 +398,18 @@ def _validate_command(v: Validator, variables: dict[str, str], cwd: Path) -> dic
     timeout = v.params.get("timeout", 60)
     if not command:
         return {"type": "command", "passed": False, "error": "No command specified"}
+
+    # Skip commands that depend on GitHub Issue/PR context in executor mode
+    # (issue_number=0 means no real issue, common in Edge Function direct calls)
+    issue_num = variables.get("issue_number", "")
+    if issue_num == "0" and ("gh pr" in command or "gh issue" in command):
+        return {
+            "type": "command",
+            "passed": True,
+            "skipped": True,
+            "command": command,
+            "reason": "GitHub CLI command skipped — no issue context in executor mode",
+        }
 
     result = subprocess.run(
         ["bash", "-c", command],
@@ -403,9 +467,10 @@ def _subprocess_run(
     *,
     cwd: Path,
     timeout: int,
+    on_progress: ProgressCallback | None = None,
 ) -> BlockResult:
     """Run a subprocess to completion (see ``kevin.subprocess_utils``)."""
-    r = run_with_heartbeat(cmd, cwd=cwd, timeout=timeout)
+    r = run_with_heartbeat(cmd, cwd=cwd, timeout=timeout, on_progress=on_progress)
     return BlockResult(
         block_id=block_id,
         success=r.success,
@@ -426,6 +491,7 @@ async def run_block_async(
     dry_run: bool = False,
     is_retry: bool = False,
     previous_result: BlockResult | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> BlockResult:
     """Async wrapper — runs synchronous run_block in a thread pool.
 
@@ -436,4 +502,5 @@ async def run_block_async(
     return await asyncio.to_thread(
         run_block, block, variables,
         dry_run=dry_run, is_retry=is_retry, previous_result=previous_result,
+        on_progress=on_progress,
     )

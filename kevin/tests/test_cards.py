@@ -73,6 +73,21 @@ RUNNING_PAYLOAD = {
     ],
 }
 
+PROGRESS_PAYLOAD = {
+    "event": "block_progress",
+    "run_id": "run-005",
+    "issue_number": 6,
+    "issue_title": "My feature",
+    "repo": "org/repo",
+    "blueprint_id": "bp-001",
+    "status": "running",
+    "blocks": [
+        {"block_id": "B1", "name": "Analysis", "status": "passed", "duration_seconds": 10.0},
+        {"block_id": "B2", "name": "Implementation", "status": "running", "duration_seconds": None, "tail": "Writing test_auth.py..."},
+        {"block_id": "B3", "name": "Validation", "status": "pending", "duration_seconds": None},
+    ],
+}
+
 
 # ---------------------------------------------------------------------------
 # TestFormatDuration
@@ -258,3 +273,40 @@ class TestBuildTerminalCard:
         )
         title_block = card["body"][0]
         assert "Retry" in title_block["text"]
+
+
+# ---------------------------------------------------------------------------
+# TestProgressTailDisplay
+# ---------------------------------------------------------------------------
+
+
+class TestProgressTailDisplay:
+    def test_should_show_tail_on_running_block(self) -> None:
+        card = build_run_status_card(PROGRESS_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        assert "Writing test_auth.py..." in blocks_text
+
+    def test_should_show_tail_in_italic(self) -> None:
+        card = build_run_status_card(PROGRESS_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        # Tail is wrapped in underscores for Adaptive Card italic
+        assert "_Writing test_auth.py..._" in blocks_text
+
+    def test_should_not_show_tail_on_completed_block(self) -> None:
+        payload = {
+            **PROGRESS_PAYLOAD,
+            "blocks": [
+                {"block_id": "B1", "name": "Analysis", "status": "passed",
+                 "duration_seconds": 10.0, "tail": "should not appear"},
+            ],
+        }
+        card = build_run_status_card(payload)
+        blocks_text = card["body"][3]["text"]
+        assert "should not appear" not in blocks_text
+
+    def test_should_not_show_tail_when_absent(self) -> None:
+        card = build_run_status_card(RUNNING_PAYLOAD)
+        blocks_text = card["body"][3]["text"]
+        lines = blocks_text.split("\n\n")
+        b2_line = next(line for line in lines if "B2" in line)
+        assert "—" not in b2_line
